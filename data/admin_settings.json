@@ -1,0 +1,20 @@
+{
+  "enable3DCardFlip": true,
+  "enablePropertySetGlow": true,
+  "enableFloatingEmojis": true,
+  "enableCoinFlyEffect": true,
+  "enableBuildingSmoke": true,
+  "enableHoverCardSidebar": true,
+  "enableUndoInTraining": true,
+  "questsEnabled": true,
+  "codexTabEnabled": true,
+  "rankedLeagueEnabled": true,
+  "turnTimeoutSeconds": 60,
+  "actionTimeoutSeconds": 15,
+  "targetSets": 3,
+  "turnActionLimit": 3,
+  "goldMultiplier": 1,
+  "maintenanceMode": false,
+  "enableSystemVoiceovers": true,
+  "bonusTimePerActionSeconds": 5
+}
