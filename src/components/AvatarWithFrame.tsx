@@ -1,4 +1,5 @@
 import React from 'react';
+import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
 
 interface AvatarWithFrameProps {
   avatarId: string;
@@ -131,13 +132,9 @@ export const AvatarWithFrame: React.FC<AvatarWithFrameProps> = ({
     >
       <div className="w-full h-full rounded-full bg-slate-900/95 flex items-center justify-center overflow-hidden">
         {effectiveUrl ? (
-          effectiveUrl.endsWith('.mp4') || effectiveUrl.endsWith('.webm') || effectiveUrl.includes('video') ? (
-            <video
+          isVideoUrl(effectiveUrl) ? (
+            <HlsVideoPlayer
               src={effectiveUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
               className="w-full h-full object-cover rounded-full"
             />
           ) : (

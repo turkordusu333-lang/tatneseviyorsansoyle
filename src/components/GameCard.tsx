@@ -5,6 +5,7 @@ import { motion } from 'motion/react';
 import { Holo } from './Holo';
 import { t } from '../lib/TranslationSystem';
 import { findShopItem } from '../lib/shopItemsStore';
+import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
 
 const COLOR_KEYWORDS: Record<string, { tr: string[]; en: string[]; hex: string }> = {
   brown: { tr: ['kahverengi', 'kahve', 'kahve seti', 'kahverengi seti'], en: ['brown'], hex: '#A16207' },
@@ -329,7 +330,7 @@ export const GameCard: React.FC<GameCardProps> = ({
 }) => {
   const skin = getSkinStyles(cardBack);
   const skinItem = findShopItem(cardSkin);
-  const isSkinVideo = skinItem?.mediaUrl && (skinItem.mediaType === 'video' || skinItem.mediaUrl.endsWith('.mp4') || skinItem.mediaUrl.endsWith('.webm') || skinItem.mediaUrl.includes('video') || skinItem.mediaUrl.startsWith('data:video'));
+  const isSkinVideo = skinItem?.mediaUrl && isVideoUrl(skinItem.mediaUrl, skinItem.mediaType);
 
   const getSkinOverlayClass = () => {
     if (size === 'normal') return 'rounded-2xl';
@@ -340,12 +341,8 @@ export const GameCard: React.FC<GameCardProps> = ({
     <>
       {skinItem?.mediaUrl ? (
         isSkinVideo ? (
-          <video
+          <HlsVideoPlayer
             src={skinItem.mediaUrl}
-            autoPlay
-            loop
-            muted
-            playsInline
             className={`absolute inset-0 w-full h-full object-cover pointer-events-none opacity-40 mix-blend-overlay z-35 ${getSkinOverlayClass()}`}
           />
         ) : (
@@ -388,7 +385,7 @@ export const GameCard: React.FC<GameCardProps> = ({
 
   // Render Face-Down Card Back if isFaceDown is true
   if (isFaceDown) {
-    const isVideo = (skin as any).mediaUrl && ((skin as any).mediaType === 'video' || (skin as any).mediaUrl.endsWith('.mp4') || (skin as any).mediaUrl.endsWith('.webm') || (skin as any).mediaUrl.includes('video') || (skin as any).mediaUrl.startsWith('data:video'));
+    const isVideo = (skin as any).mediaUrl && isVideoUrl((skin as any).mediaUrl, (skin as any).mediaType);
 
     return (
       <div
@@ -396,19 +393,15 @@ export const GameCard: React.FC<GameCardProps> = ({
         onClick={onClick}
         className={`rounded-xl border select-none relative overflow-hidden transition-all shadow-xl cursor-pointer hover:scale-105 flex flex-col justify-between p-2 ${skin.borderClass} ${className}`}
         style={{
-          width: size === 'mini' ? '32px' : size === 'medium' ? '48px' : '96px',
-          height: size === 'mini' ? '46px' : size === 'medium' ? '70px' : '140px',
+          width: size === 'mini' ? '40px' : size === 'medium' ? '48px' : '96px',
+          height: size === 'mini' ? '58px' : size === 'medium' ? '70px' : '140px',
           backgroundColor: (skin as any).previewColor || undefined
         }}
       >
         {(skin as any).mediaUrl ? (
           isVideo ? (
-            <video
+            <HlsVideoPlayer
               src={(skin as any).mediaUrl}
-              autoPlay
-              loop
-              muted
-              playsInline
               className="absolute inset-0 w-full h-full object-cover z-0"
             />
           ) : (
@@ -516,9 +509,9 @@ export const GameCard: React.FC<GameCardProps> = ({
       }
     } else { // mini
       if (len > 12) {
-        fontClass += 'text-[4.5px] sm:text-[5px] tracking-tighter leading-none truncate';
+        fontClass += 'text-[6px] sm:text-[7px] tracking-tight leading-none truncate fluid-card-title';
       } else {
-        fontClass += 'text-[5.5px] sm:text-[6.5px] leading-none';
+        fontClass += 'text-[7px] sm:text-[8px] tracking-tight leading-none fluid-card-title';
       }
     }
 
@@ -867,15 +860,15 @@ export const GameCard: React.FC<GameCardProps> = ({
           <div
             id={`card-mini-${card.id}`}
             onClick={onClick}
-            className={`w-[32px] h-[46px] rounded-lg border border-black/40 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none ${className}`}
+            className={`w-[40px] h-[58px] rounded-lg border border-black/40 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${className}`}
             style={{ backgroundColor: details.bgColor }}
             title={`${card.value}M Para`}
           >
-            <div className="absolute inset-0 bg-gradient-to-tr from-black/10 via-transparent to-white/10" />
-            <div className="w-4 h-4 rounded-full border border-black/20 bg-white/90 flex items-center justify-center mx-auto mt-0.5 shadow-sm">
-              <span className="text-[7px] font-black text-slate-800 leading-none">{card.value}</span>
+            <div className="absolute inset-0 bg-gradient-to-tr from-black/10 via-transparent to-white/10 pointer-events-none" />
+            <div className="w-5 h-5 rounded-full border border-black/20 bg-white/90 flex items-center justify-center mx-auto mt-0.5 shadow-sm">
+              <span className="text-[8.5px] font-black text-slate-800 leading-none">{card.value}</span>
             </div>
-            <span className="text-[7.5px] font-black text-white text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)] leading-none mt-auto mb-0.5">
+            <span className="text-[8.5px] font-black text-white text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)] leading-none mt-auto mb-0.5">
               {card.value}M
             </span>
           </div>
@@ -888,7 +881,7 @@ export const GameCard: React.FC<GameCardProps> = ({
           <div
             id={`card-mini-${card.id}`}
             onClick={onClick}
-            className={`w-[32px] h-[46px] rounded-lg border border-black/30 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none ${holoClass} ${className}`}
+            className={`w-[40px] h-[58px] rounded-lg border border-black/30 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${holoClass} ${className}`}
             style={{
               background: isMulticolor
                 ? 'linear-gradient(135deg, #EF5350, #FF9800, #FFEE58, #4CAF50, #29B6F6, #9C27B0)'
@@ -897,11 +890,11 @@ export const GameCard: React.FC<GameCardProps> = ({
             title={details.name}
           >
             <div className="flex-1 flex items-center justify-center">
-              <span className="text-[11px] drop-shadow-[0_1px_1.5px_rgba(0,0,0,0.7)]">
+              <span className="text-[13px] drop-shadow-[0_1px_1.5px_rgba(0,0,0,0.7)]">
                 {isMulticolor ? '🌈' : '🌟'}
               </span>
             </div>
-            <div className="bg-black/60 text-[5px] text-white font-black text-center py-0.5 leading-none rounded-sm">
+            <div className="bg-black/60 text-[6px] text-white font-black text-center py-0.5 leading-none rounded-sm">
               {isMulticolor ? 'JOKER' : 'ÇİFT'}
             </div>
           </div>
@@ -913,14 +906,14 @@ export const GameCard: React.FC<GameCardProps> = ({
           <div
             id={`card-mini-${card.id}`}
             onClick={onClick}
-            className={`w-[32px] h-[46px] rounded-lg bg-white border border-slate-350 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none ${holoClass} ${className}`}
+            className={`w-[40px] h-[58px] rounded-lg bg-white border border-slate-350 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${holoClass} ${className}`}
             title={`${details.name} (Tapu)`}
           >
-            <div className="h-2 w-full rounded-t-sm flex-shrink-0" style={{ backgroundColor: primaryColorHex }} />
+            <div className="h-2.5 w-full rounded-t-sm flex-shrink-0" style={{ backgroundColor: primaryColorHex }} />
             <div className="flex-1 flex items-center justify-center px-0.5 w-full overflow-hidden">
               {renderCardTitle(details.name, 'mini', true)}
             </div>
-            <span className="text-[6.5px] font-black text-slate-600 text-center leading-none mb-0.5">
+            <span className="text-[7.5px] font-black text-slate-600 text-center leading-none mb-0.5">
               {card.value}M
             </span>
           </div>
@@ -934,7 +927,7 @@ export const GameCard: React.FC<GameCardProps> = ({
           <div
             id={`card-mini-${card.id}`}
             onClick={onClick}
-            className={`w-[32px] h-[46px] rounded-lg border border-black/35 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none ${holoClass} ${className}`}
+            className={`w-[40px] h-[58px] rounded-lg border border-black/35 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${holoClass} ${className}`}
             style={{
               background: isMulticolor
                 ? 'linear-gradient(135deg, #EF5350, #FF9800, #FFEE58, #4CAF50, #29B6F6)'
@@ -944,9 +937,9 @@ export const GameCard: React.FC<GameCardProps> = ({
             }}
             title={details.name}
           >
-            <div className="flex justify-between items-center">
-              <span className="text-[4px] font-black text-slate-900 bg-white/90 px-0.5 rounded leading-none scale-90">KİRA</span>
-              <span className="text-[7px] leading-none drop-shadow-[0_0.5px_0.5px_rgba(0,0,0,0.5)]">💰</span>
+            <div className="flex justify-between items-center px-0.5">
+              <span className="text-[5.5px] font-black text-slate-900 bg-white/90 px-0.5 rounded leading-none">KİRA</span>
+              <span className="text-[8px] leading-none drop-shadow-[0_0.5px_0.5px_rgba(0,0,0,0.5)]">💰</span>
             </div>
             <div className="bg-black/50 py-0.5 rounded-sm flex items-center justify-center w-full px-0.5 overflow-hidden">
               {renderCardTitle(isMulticolor ? 'HER RENK' : 'KİRA', 'mini', false)}
@@ -960,11 +953,11 @@ export const GameCard: React.FC<GameCardProps> = ({
         <div
           id={`card-mini-${card.id}`}
           onClick={onClick}
-          className={`w-[32px] h-[46px] rounded-lg border border-black/30 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none ${holoClass} ${className}`}
+          className={`w-[40px] h-[58px] rounded-lg border border-black/30 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${holoClass} ${className}`}
           style={{ backgroundColor: details.isAction && details.bgColor !== '#FFFFFF' ? details.bgColor : '#e2e8f0' }}
           title={details.name}
         >
-          <div className="text-[10px] mx-auto leading-none mt-1">
+          <div className="text-[12px] mx-auto leading-none mt-0.5">
             {details.icon}
           </div>
           <div className="bg-black/35 py-0.5 rounded-sm flex items-center justify-center w-full px-0.5 overflow-hidden">

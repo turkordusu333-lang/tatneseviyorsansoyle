@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { API_BASE_URL } from '../lib/apiConfig';
 import { StoreItem } from '../types';
+import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
 
 interface Quest {
   id: string;
@@ -42,6 +43,16 @@ interface AdminSettings {
   bonusTimePerActionSeconds?: number;
   botPracticeRewardsEnabled?: boolean;
   botMultiplayerRewardMultiplier?: number;
+  matchmakingEnabled?: boolean;
+  matchmakingEntryFee?: number;
+  matchmakingWinnerShare?: number;
+  matchmakingTimeSec?: number;
+  rankedTurnDuration?: number;
+  rankedCompleteSetWeight?: number;
+  rankedIncompletePropWeight?: number;
+  rankedBankCashWeight?: number;
+  rankedSoloQueueOnly?: boolean;
+  rankedAnonymity?: boolean;
 }
 
 interface Stats {
@@ -79,7 +90,17 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     enableSystemVoiceovers: true,
     bonusTimePerActionSeconds: 10,
     botPracticeRewardsEnabled: false,
-    botMultiplayerRewardMultiplier: 0.5
+    botMultiplayerRewardMultiplier: 0.5,
+    matchmakingEnabled: true,
+    matchmakingEntryFee: 100,
+    matchmakingWinnerShare: 80,
+    matchmakingTimeSec: 10,
+    rankedTurnDuration: 15,
+    rankedCompleteSetWeight: 50,
+    rankedIncompletePropWeight: 2,
+    rankedBankCashWeight: 1,
+    rankedSoloQueueOnly: true,
+    rankedAnonymity: true
   });
 
   const [stats, setStats] = useState<Stats>({
@@ -231,7 +252,12 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     const audioUrl = `${API_BASE_URL}/assets/sounds/voices/${lang}/${filename}?t=${Date.now()}`;
     const audio = new Audio(audioUrl);
     audio.volume = 0.8;
-    audio.play().catch((err) => console.error('Preview playback failed:', err));
+    audio.onerror = () => {
+      setNotification({ message: `"${filename}" ses dosyası henüz yüklenmemiş veya sunucuda bulunamadı.`, type: 'error' });
+    };
+    audio.play().catch(() => {
+      // Ignore autoplay deferred errors
+    });
   };
 
   // Shop management state
@@ -329,8 +355,14 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
       return;
     }
 
+    const isVideo = isVideoUrl(shopForm.mediaUrl, shopForm.mediaType);
+    const finalForm = {
+      ...shopForm,
+      mediaType: isVideo ? ('video' as const) : shopForm.mediaType
+    };
+
     const endpoint = editingShopItem ? '/api/admin/shop/update' : '/api/admin/shop/add';
-    const payload = editingShopItem ? { id: editingShopItem.id, ...shopForm } : shopForm;
+    const payload = editingShopItem ? { id: editingShopItem.id, ...finalForm } : finalForm;
 
     fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
@@ -402,7 +434,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
           if (data.success) {
             let autoType: 'image' | 'gif' | 'video' = 'image';
             if (file.type.includes('gif') || file.name.toLowerCase().endsWith('.gif')) autoType = 'gif';
-            else if (file.type.includes('video') || file.name.toLowerCase().endsWith('.mp4') || file.name.toLowerCase().endsWith('.webm')) autoType = 'video';
+            else if (file.type.includes('video') || isVideoUrl(file.name)) autoType = 'video';
 
             setShopForm((prev) => ({
               ...prev,
@@ -1235,6 +1267,232 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                       onChange={(e) => handleSliderChange('botMultiplayerRewardMultiplier', Number(e.target.value))}
                       onMouseUp={() => handleSaveSettings()}
                       className="w-full accent-amber-500 cursor-pointer"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Otomatik Eşleşme (Matchmaking) Ayarları */}
+              <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-2xl space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🤝</span>
+                  <div>
+                    <h4 className="text-xs text-indigo-400 font-extrabold uppercase tracking-wider">
+                      OTOMATİK OYUNCU BULMA (MATCHMAKING) KONTROLLERİ
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Oyuncuların belli bir giriş ücretiyle otomatik eşleşmesini, havuz ödül dağılımını ve yapay zeka bekleme sürelerini yönetin.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                  {/* Matchmaking Enabled Toggle */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 flex items-center justify-between">
+                    <div className="pr-3">
+                      <span className="text-xs text-slate-200 font-bold block">Otomatik Eşleşme Etkin</span>
+                      <span className="text-[10px] text-slate-400 leading-relaxed block mt-1">
+                        Açık ise oyuncular ana menüden otomatik eşleşme sırasına girebilir. (Varsayılan: Açık)
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.matchmakingEnabled ?? false}
+                      onChange={() => handleToggle('matchmakingEnabled')}
+                      className="w-5 h-5 accent-indigo-500 cursor-pointer shrink-0"
+                    />
+                  </div>
+
+                  {/* Matchmaking Entry Fee Slider */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-2.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-200 font-bold">Giriş Ücreti (Altın)</span>
+                      <span className="text-indigo-400 font-black text-sm px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                        {settings.matchmakingEntryFee ?? 100} Altın
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Sıraya girerken her oyuncudan düşülecek altın miktarı. Toplam ödül havuzunun temelini oluşturur.
+                    </p>
+                    <input
+                      type="range"
+                      min="10"
+                      max="1000"
+                      step="10"
+                      value={settings.matchmakingEntryFee ?? 100}
+                      onChange={(e) => handleSliderChange('matchmakingEntryFee', Number(e.target.value))}
+                      onMouseUp={() => handleSaveSettings()}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Matchmaking Winner Share Slider */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-2.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-200 font-bold">Kazanan Payout Yüzdesi</span>
+                      <span className="text-indigo-400 font-black text-sm px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                        %{settings.matchmakingWinnerShare ?? 80}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Kazanan oyuncunun toplam havuzun (2x Giriş Ücreti) alacağı yüzde oranı. Kalan miktar sistem kasasında kalır.
+                    </p>
+                    <input
+                      type="range"
+                      min="50"
+                      max="100"
+                      step="5"
+                      value={settings.matchmakingWinnerShare ?? 80}
+                      onChange={(e) => handleSliderChange('matchmakingWinnerShare', Number(e.target.value))}
+                      onMouseUp={() => handleSaveSettings()}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Matchmaking Failsafe Time Sec Slider */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-2.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-200 font-bold">Yapay Zeka Geçiş Süresi</span>
+                      <span className="text-indigo-400 font-black text-sm px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                        {settings.matchmakingTimeSec ?? 10} Saniye
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Sırada beklerken başka gerçek oyuncu bulunamazsa, sistem tarafından akıllı Bot'un maça atanacağı bekleme süresi.
+                    </p>
+                    <input
+                      type="range"
+                      min="3"
+                      max="60"
+                      step="1"
+                      value={settings.matchmakingTimeSec ?? 10}
+                      onChange={(e) => handleSliderChange('matchmakingTimeSec', Number(e.target.value))}
+                      onMouseUp={() => handleSaveSettings()}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Ranked Turn Duration Slider */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-2.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-200 font-bold">Dereceli Hamle Süresi</span>
+                      <span className="text-indigo-400 font-black text-sm px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                        {settings.rankedTurnDuration ?? 15} Saniye
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Dereceli maçlarda oyunculara tanınan hamle süresi limitidir. Temponun yüksek tutulmasını sağlar.
+                    </p>
+                    <input
+                      type="range"
+                      min="10"
+                      max="30"
+                      step="1"
+                      value={settings.rankedTurnDuration ?? 15}
+                      onChange={(e) => handleSliderChange('rankedTurnDuration', Number(e.target.value))}
+                      onMouseUp={() => handleSaveSettings()}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Complete Sets Weight Slider */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-2.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-200 font-bold">Tamamlanmış Set Puan Ağırlığı</span>
+                      <span className="text-indigo-400 font-black text-sm px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                        {settings.rankedCompleteSetWeight ?? 50} Puan
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Maç bittiğinde kazanamayan oyuncuların tamamladığı her tam set başına verilecek skor puanı. (Varsayılan: 50)
+                    </p>
+                    <input
+                      type="range"
+                      min="10"
+                      max="100"
+                      step="5"
+                      value={settings.rankedCompleteSetWeight ?? 50}
+                      onChange={(e) => handleSliderChange('rankedCompleteSetWeight', Number(e.target.value))}
+                      onMouseUp={() => handleSaveSettings()}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Incomplete Properties Weight Slider */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-2.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-200 font-bold">Parçalı Mülk Çarpanı</span>
+                      <span className="text-indigo-400 font-black text-sm px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                        {settings.rankedIncompletePropWeight ?? 2}x
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Masadaki tamamlanmamış mülklerin milyon (M) değerinin skor puanı çarpanı. (Varsayılan: 2x)
+                    </p>
+                    <input
+                      type="range"
+                      min="1"
+                      max="10"
+                      step="1"
+                      value={settings.rankedIncompletePropWeight ?? 2}
+                      onChange={(e) => handleSliderChange('rankedIncompletePropWeight', Number(e.target.value))}
+                      onMouseUp={() => handleSaveSettings()}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Bank Cash Weight Slider */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 space-y-2.5">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-200 font-bold">Bankadaki Nakit Çarpanı</span>
+                      <span className="text-indigo-400 font-black text-sm px-2 py-0.5 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                        {settings.rankedBankCashWeight ?? 1}x
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-relaxed">
+                      Bankadaki nakit paranızın milyon (M) değerinin skor puanı çarpanı. (Varsayılan: 1x)
+                    </p>
+                    <input
+                      type="range"
+                      min="1"
+                      max="5"
+                      step="1"
+                      value={settings.rankedBankCashWeight ?? 1}
+                      onChange={(e) => handleSliderChange('rankedBankCashWeight', Number(e.target.value))}
+                      onMouseUp={() => handleSaveSettings()}
+                      className="w-full accent-indigo-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Ranked Solo Queue Only Toggle */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 flex items-center justify-between">
+                    <div className="pr-3">
+                      <span className="text-xs text-slate-200 font-bold block">Sadece Tekli Giriş (Solo Queue)</span>
+                      <span className="text-[10px] text-slate-400 leading-relaxed block mt-1">
+                        Dereceli maçlara grup/parti halinde girişi engelleyerek teaming (ittifak) hilelerini önler.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.rankedSoloQueueOnly ?? true}
+                      onChange={() => handleToggle('rankedSoloQueueOnly')}
+                      className="w-5 h-5 accent-indigo-500 cursor-pointer shrink-0"
+                    />
+                  </div>
+
+                  {/* Ranked Anonymity Toggle */}
+                  <div className="bg-slate-950/60 p-4 rounded-xl border border-white/5 flex items-center justify-between">
+                    <div className="pr-3">
+                      <span className="text-xs text-slate-200 font-bold block">Lobi Anonimliği</span>
+                      <span className="text-[10px] text-slate-400 leading-relaxed block mt-1">
+                        Eşleştirme ve oda lobisinde maç başlayana kadar oyuncu isimlerini ve avatarlarını gizler.
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={settings.rankedAnonymity ?? true}
+                      onChange={() => handleToggle('rankedAnonymity')}
+                      className="w-5 h-5 accent-indigo-500 cursor-pointer shrink-0"
                     />
                   </div>
                 </div>
@@ -2114,13 +2372,9 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                           {/* Media Preview Box */}
                           <div className="w-full h-36 bg-slate-950 border border-slate-850 rounded-xl overflow-hidden relative flex items-center justify-center mb-3 group-hover:border-indigo-500/30 transition-all">
                             {item.mediaUrl ? (
-                              item.mediaType === 'video' || item.mediaUrl.endsWith('.mp4') || item.mediaUrl.endsWith('.webm') || item.mediaUrl.includes('video') ? (
-                                <video
+                              isVideoUrl(item.mediaUrl, item.mediaType) ? (
+                                <HlsVideoPlayer
                                   src={item.mediaUrl}
-                                  autoPlay
-                                  loop
-                                  muted
-                                  playsInline
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
@@ -2141,7 +2395,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                             {/* Badge */}
                             <div className="absolute top-2 right-2 bg-slate-900/90 border border-slate-750 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold text-slate-300">
                               {item.mediaUrl ? (
-                                item.mediaType === 'video' || item.mediaUrl.endsWith('.mp4') ? '🎬 VİDEO' :
+                                isVideoUrl(item.mediaUrl, item.mediaType) ? '🎬 VİDEO' :
                                 item.mediaType === 'gif' || item.mediaUrl.endsWith('.gif') ? '✨ GIF' : '🖼️ RESİM'
                               ) : (
                                 '⚙️ STANDART'
@@ -2418,12 +2672,12 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                                   </>
                                 ) : (
                                   <>
-                                    <span>📤</span> Cihazdan Dosya Seç (GIF / Resim / MP4 Video)
+                                    <span>📤</span> Cihazdan Dosya Seç (GIF / Resim / MP4 / M3U8 Video)
                                   </>
                                 )}
                                 <input
                                   type="file"
-                                  accept="image/*,video/mp4,video/webm,image/gif"
+                                  accept="image/*,video/mp4,video/webm,application/x-mpegURL,application/vnd.apple.mpegurl,.m3u8"
                                   onChange={handleShopFileUpload}
                                   className="hidden"
                                   disabled={shopMediaUploading}
@@ -2437,8 +2691,17 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                                 type="text"
                                 placeholder="https://domain.com/media.gif veya /assets/uploads/file.mp4"
                                 value={shopForm.mediaUrl}
-                                onChange={(e) => setShopForm({ ...shopForm, mediaUrl: e.target.value })}
-                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
+                                onChange={(e) => {
+                                  const url = e.target.value;
+                                  let autoType = shopForm.mediaType;
+                                  if (isVideoUrl(url)) {
+                                    autoType = 'video';
+                                  } else if (url.toLowerCase().includes('.gif')) {
+                                    autoType = 'gif';
+                                  }
+                                  setShopForm({ ...shopForm, mediaUrl: url, mediaType: autoType });
+                                }}
+                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
                               />
                             </div>
                           </div>
@@ -2482,13 +2745,9 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
 
                               {/* Media / Video / Image with Overlay Opacity and Blend Mode */}
                               {shopForm.mediaUrl ? (
-                                shopForm.mediaType === 'video' || shopForm.mediaUrl.endsWith('.mp4') || shopForm.mediaUrl.endsWith('.webm') ? (
-                                  <video
+                                isVideoUrl(shopForm.mediaUrl, shopForm.mediaType) ? (
+                                  <HlsVideoPlayer
                                     src={shopForm.mediaUrl}
-                                    autoPlay
-                                    loop
-                                    muted
-                                    playsInline
                                     style={{
                                       opacity: shopForm.overlayOpacity,
                                       mixBlendMode: (shopForm.overlayMode as any) || 'normal'

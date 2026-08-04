@@ -8,6 +8,7 @@ import { initTranslations, addTranslationListener } from './lib/TranslationSyste
 import { API_BASE_URL } from './lib/apiConfig';
 import { GlobalToast } from './components/GlobalToast';
 import { STORE_ITEMS } from './components/ShopDialog';
+import { PrivacyAndDeleteAccountPages } from './components/PrivacyAndDeleteAccountPages';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -71,6 +72,17 @@ export default function App() {
 
   // Translation update listener state
   const [translationVersion, setTranslationVersion] = React.useState(0);
+
+  // Pathname routing state for standalone Google Play pages (/delete-account, /privacy-policy)
+  const [pathname, setPathname] = React.useState(window.location.pathname);
+
+  React.useEffect(() => {
+    const handlePopState = () => {
+      setPathname(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Fetch admin settings & translations on mount
   React.useEffect(() => {
@@ -256,6 +268,33 @@ export default function App() {
     }
   };
 
+  const isDeleteAccountRoute = ['/delete-account', '/data-deletion', '/delete-data', '/account-deletion'].includes(pathname);
+  const isPrivacyRoute = ['/privacy-policy', '/privacy'].includes(pathname);
+
+  if (isDeleteAccountRoute) {
+    return (
+      <PrivacyAndDeleteAccountPages
+        page="delete-account"
+        onGoHome={() => {
+          window.history.pushState({}, '', '/');
+          setPathname('/');
+        }}
+      />
+    );
+  }
+
+  if (isPrivacyRoute) {
+    return (
+      <PrivacyAndDeleteAccountPages
+        page="privacy-policy"
+        onGoHome={() => {
+          window.history.pushState({}, '', '/');
+          setPathname('/');
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0A0C10] flex flex-col justify-between selection:bg-red-500 selection:text-white">
 
@@ -332,13 +371,41 @@ export default function App() {
               </button>
             </form>
 
-            <div className="border-t border-white/10 pt-4 text-center">
-              <span className="text-[10px] text-slate-500 block font-bold uppercase tracking-wider">
-                Platform ve Cihaz Uyumluluğu
-              </span>
-              <p className="text-[9px] text-slate-400 mt-1">
-                Hem masaüstü tarayıcılarda hem de mobil tarayıcılarda tam dokunmatik hassasiyeti ve optimize performans.
-              </p>
+            <div className="border-t border-white/10 pt-4 text-center space-y-3">
+              <div>
+                <span className="text-[10px] text-slate-500 block font-bold uppercase tracking-wider">
+                  Platform ve Cihaz Uyumluluğu
+                </span>
+                <p className="text-[9px] text-slate-400 mt-0.5">
+                  Hem masaüstü tarayıcılarda hem de mobil tarayıcılarda tam dokunmatik hassasiyeti ve optimize performans.
+                </p>
+              </div>
+
+              <div className="border-t border-white/5 pt-3 flex justify-center items-center gap-3 text-[10px] font-bold">
+                <a
+                  href="/privacy-policy"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.history.pushState({}, '', '/privacy-policy');
+                    setPathname('/privacy-policy');
+                  }}
+                  className="text-slate-400 hover:text-amber-400 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <span>🛡️</span> Gizlilik Politikası
+                </a>
+                <span className="text-white/10">|</span>
+                <a
+                  href="/delete-account"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.history.pushState({}, '', '/delete-account');
+                    setPathname('/delete-account');
+                  }}
+                  className="text-slate-400 hover:text-red-400 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <span>🗑️</span> Veri Silme Talebi
+                </a>
+              </div>
             </div>
           </div>
         </div>

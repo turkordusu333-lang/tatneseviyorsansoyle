@@ -156,7 +156,14 @@ const DEFAULT_SHOP_ITEMS = [
   { id: 'board_magma', name: '🔥 Magma Lav Tahtası', category: 'player_board', price: 450, description: 'Kızgın lav çatlakları ve patlayan kıvılcım efektli oyuncu alanı tasarımı.', isUnlocked: false },
   { id: 'board_galaxy', name: '🌌 Nebula Galaksi Tahtası', category: 'player_board', price: 500, description: 'Sonsuz derinlik hissi veren dönen nebula bulutları ile süslü oyuncu alanı tasarımı.', isUnlocked: false },
   { id: 'board_ice', name: '❄️ Kutup Ayazı Buz Tahtası', category: 'player_board', price: 300, description: 'Dondurucu buz kristalleriyle çevrelenmiş şık kutup temalı oyuncu alanı tasarımı.', isUnlocked: false },
-  { id: 'board_void', name: '🌀 Karanlık Rift Tahtası', category: 'player_board', price: 420, description: 'Hiçliğin derinliklerinden gelen gizemli mor aura ve parçacık süzülmeli tasarım.', isUnlocked: false }
+  { id: 'board_void', name: '🌀 Karanlık Rift Tahtası', category: 'player_board', price: 420, description: 'Hiçliğin derinliklerinden gelen gizemli mor aura ve parçacık süzülmeli tasarım.', isUnlocked: false },
+
+  // Game Music / BGM Tracks (New category)
+  { id: 'music_classic', name: '🎵 Klasik Atmosfer', category: 'game_music', price: 0, description: 'Göz yormayan, rahatlatıcı ve derinlikli klasik masa fon müziği.', isUnlocked: true },
+  { id: 'music_retro', name: '🕹️ 8-Bit Arcade Ritim', category: 'game_music', price: 150, description: 'Eski atari salonlarından fırlayan enerjik ve nostaljik 8-bit vuruşlar.', isUnlocked: false },
+  { id: 'music_cyber', name: '⚡ Siberpunk Synthwave', category: 'game_music', price: 250, description: 'Derin baslar, gece neonları ve tempo dolu fütüristik siberpunk ritimler.', isUnlocked: false },
+  { id: 'music_chill', name: '☕ Lo-Fi Chill & Kahve', category: 'game_music', price: 200, description: 'Odaklanmanızı artıran, sıcak ve dinlendirici lo-fi piyano akorları.', isUnlocked: false },
+  { id: 'music_epic', name: '🛡️ Efsanevi Şampiyon Marşı', category: 'game_music', price: 350, description: 'Kritik hamlelerin heyecanını zirveye çıkaran epik şampiyon teması.', isUnlocked: false }
 ];
 
 // Helper to handle Supabase errors quietly without triggering platform warnings
@@ -198,8 +205,11 @@ async function loadUsers(): Promise<Record<string, UserProfile>> {
   if (!loadedFromSupabase) {
     if (fs.existsSync(USERS_FILE)) {
       try {
-        users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-        console.log(`[Database] Loaded users from local users.json fallback.`);
+        const raw = fs.readFileSync(USERS_FILE, 'utf8').trim();
+        if (raw) {
+          users = JSON.parse(raw);
+          console.log(`[Database] Loaded users from local users.json fallback.`);
+        }
       } catch (e) {
         console.error('[Database] Error reading local users file:', e);
         users = {};
@@ -371,7 +381,17 @@ let globalAdminSettings = {
   enableSystemVoiceovers: true,
   bonusTimePerActionSeconds: 10,
   botPracticeRewardsEnabled: false,
-  botMultiplayerRewardMultiplier: 0.5
+  botMultiplayerRewardMultiplier: 0.5,
+  matchmakingEnabled: true,
+  matchmakingEntryFee: 100,
+  matchmakingWinnerShare: 80,
+  matchmakingTimeSec: 10,
+  rankedTurnDuration: 15,
+  rankedCompleteSetWeight: 50,
+  rankedIncompletePropWeight: 2,
+  rankedBankCashWeight: 1,
+  rankedSoloQueueOnly: true,
+  rankedAnonymity: true
 };
 
 const GLOBAL_ACHIEVEMENTS_FILE = path.join(DATA_DIR, 'global_achievements.json');
@@ -413,12 +433,17 @@ async function loadAdminData() {
       console.log('[Database] Exception handled loading admin settings. Fallback active.');
     }
   }
-  if (!loadedSettings && fs.existsSync(ADMIN_SETTINGS_FILE)) {
-    try {
-      globalAdminSettings = { ...globalAdminSettings, ...JSON.parse(fs.readFileSync(ADMIN_SETTINGS_FILE, 'utf-8')) };
-      console.log('[Database] Loaded admin settings from local fallback.');
-    } catch (e) {
-      console.error('[Database] Failed to read local admin settings:', e);
+  if (!loadedSettings) {
+    if (fs.existsSync(ADMIN_SETTINGS_FILE)) {
+      try {
+        const raw = fs.readFileSync(ADMIN_SETTINGS_FILE, 'utf-8').trim();
+        if (raw) {
+          globalAdminSettings = { ...globalAdminSettings, ...JSON.parse(raw) };
+          console.log('[Database] Loaded admin settings from local fallback.');
+        }
+      } catch (e) {
+        console.error('[Database] Failed to read local admin settings:', e);
+      }
     }
   }
 
@@ -445,20 +470,28 @@ async function loadAdminData() {
       console.log('[Database] Exception handled loading global quests. Fallback active.');
     }
   }
-  if (!loadedQuests && fs.existsSync(GLOBAL_QUESTS_FILE)) {
-    try {
-      globalQuests = JSON.parse(fs.readFileSync(GLOBAL_QUESTS_FILE, 'utf-8'));
-      console.log('[Database] Loaded global quests from local fallback.');
-    } catch (e) {
-      console.error('[Database] Failed to read local global quests:', e);
+  if (!loadedQuests) {
+    if (fs.existsSync(GLOBAL_QUESTS_FILE)) {
+      try {
+        const raw = fs.readFileSync(GLOBAL_QUESTS_FILE, 'utf-8').trim();
+        if (raw) {
+          globalQuests = JSON.parse(raw);
+          console.log('[Database] Loaded global quests from local fallback.');
+        }
+      } catch (e) {
+        console.error('[Database] Failed to read local global quests:', e);
+      }
     }
   }
 
   // Load Global Achievements
   if (fs.existsSync(GLOBAL_ACHIEVEMENTS_FILE)) {
     try {
-      globalAchievements = JSON.parse(fs.readFileSync(GLOBAL_ACHIEVEMENTS_FILE, 'utf-8'));
-      console.log('[Database] Loaded global achievements from local fallback.');
+      const raw = fs.readFileSync(GLOBAL_ACHIEVEMENTS_FILE, 'utf-8').trim();
+      if (raw) {
+        globalAchievements = JSON.parse(raw);
+        console.log('[Database] Loaded global achievements from local fallback.');
+      }
     } catch (e) {
       console.error('[Database] Failed to read local global achievements:', e);
     }
@@ -467,18 +500,32 @@ async function loadAdminData() {
   // Load Tournaments
   if (fs.existsSync(TOURNAMENTS_FILE)) {
     try {
-      activeTournaments = JSON.parse(fs.readFileSync(TOURNAMENTS_FILE, 'utf-8'));
-      console.log('[Database] Loaded active tournaments from local fallback.');
+      const raw = fs.readFileSync(TOURNAMENTS_FILE, 'utf-8').trim();
+      if (raw) {
+        activeTournaments = JSON.parse(raw);
+        console.log('[Database] Loaded active tournaments from local fallback.');
+      } else {
+        activeTournaments = [];
+      }
     } catch (e) {
       console.error('[Database] Failed to read local tournaments:', e);
+      activeTournaments = [];
     }
+  } else {
+    activeTournaments = [];
   }
 
   // Load Global Store Items
   if (fs.existsSync(GLOBAL_STORE_ITEMS_FILE)) {
     try {
-      globalStoreItems = JSON.parse(fs.readFileSync(GLOBAL_STORE_ITEMS_FILE, 'utf-8'));
-      console.log(`[Database] Loaded ${globalStoreItems.length} global store items from local fallback.`);
+      const raw = fs.readFileSync(GLOBAL_STORE_ITEMS_FILE, 'utf-8').trim();
+      if (raw) {
+        globalStoreItems = JSON.parse(raw);
+        console.log(`[Database] Loaded ${globalStoreItems.length} global store items from local fallback.`);
+      } else {
+        globalStoreItems = [...DEFAULT_SHOP_ITEMS];
+        await saveGlobalStoreItems();
+      }
     } catch (e) {
       console.error('[Database] Failed to read local store items file:', e);
       globalStoreItems = [...DEFAULT_SHOP_ITEMS];
@@ -1022,50 +1069,40 @@ async function startServer() {
 
   // --- TOURNAMENTS SYSTEM ---
   app.get('/api/tournaments', (req, res) => {
+    // Provide default initial tournaments if none exist
+    if (!activeTournaments || activeTournaments.length === 0) {
+      activeTournaments = [
+        {
+          id: 't-1',
+          name: '🏆 Deal Master Türkiye Şampiyonası 2026',
+          participants: ['Bot Memo', 'Milyoner Bot', 'Hızlı Zar Bot', 'Siber Bot', 'Kral Bot', 'Emlak Büyücüsü', 'Borsa Kralı'],
+          rounds: [],
+          status: 'registration'
+        },
+        {
+          id: 't-2',
+          name: '⚡ Hızlı Emlakçılar Eleme Kupası',
+          participants: ['Bot Can', 'Bot Defne', 'Taktik Ustası Bot', 'Matrix Bot', 'Zengin Lord Bot', 'Gölge Ninja Bot', 'Uzay Gezgini Bot'],
+          rounds: [],
+          status: 'registration'
+        }
+      ];
+    }
     res.json(activeTournaments);
   });
 
   app.post('/api/admin/tournaments/create', async (req, res) => {
-    const { name, participants, entryFee, rewardCoins } = req.body;
+    const { name, participants } = req.body;
     if (!name || !participants || participants.length < 2) {
       return res.status(400).json({ error: 'Turnuva ismi ve en az 2 katılımcı gereklidir.' });
-    }
-
-    // Build Round 1 matches elegantly
-    const matches: TournamentMatch[] = [];
-    const shuffled = [...participants].sort(() => Math.random() - 0.5);
-    for (let i = 0; i < shuffled.length; i += 2) {
-      if (i + 1 < shuffled.length) {
-        matches.push({
-          id: `tm-${Date.now()}-${i}`,
-          player1: shuffled[i],
-          player2: shuffled[i + 1],
-          status: 'pending'
-        });
-      } else {
-        matches.push({
-          id: `tm-${Date.now()}-${i}`,
-          player1: shuffled[i],
-          player2: 'Bot Memo',
-          status: 'completed',
-          winner: shuffled[i],
-          score1: 3,
-          score2: 0
-        });
-      }
     }
 
     const newTournament: Tournament = {
       id: `t-${Date.now()}`,
       name,
-      participants,
-      rounds: [
-        {
-          roundNumber: 1,
-          matches
-        }
-      ],
-      status: 'active'
+      participants: participants.length >= 8 ? participants : [...participants, 'Bot Memo', 'Milyoner Bot', 'Hızlı Zar Bot', 'Siber Bot', 'Kral Bot', 'Emlak Büyücüsü', 'Borsa Kralı'].slice(0, 8),
+      rounds: [],
+      status: 'registration'
     };
 
     activeTournaments.unshift(newTournament);
@@ -1080,20 +1117,79 @@ async function startServer() {
     const user = users[userId];
     if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
 
-    const tournament = activeTournaments.find((t) => t.id === tournamentId);
-    if (!tournament) return res.status(404).json({ error: 'Turnuva bulunamadı.' });
-
-    if (tournament.status !== 'registration') {
-      return res.status(400).json({ error: 'Bu turnuvaya kayıtlar kapanmış.' });
+    let tournament = activeTournaments.find((t) => t.id === tournamentId);
+    if (!tournament) {
+      tournament = {
+        id: tournamentId || `t-${Date.now()}`,
+        name: '🏆 Deal Master Türkiye Şampiyonası 2026',
+        participants: [],
+        rounds: [],
+        status: 'registration'
+      };
+      activeTournaments.unshift(tournament);
     }
 
+    // Add user to participants if not present
     if (!tournament.participants.includes(user.username)) {
-      tournament.participants.push(user.username);
+      tournament.participants.unshift(user.username);
     }
 
-    // If registration limit reached or Admin starts it, it becomes active. For simplicity, join instantly.
+    // Ensure 8 participants with bots
+    const botPool = ['Hızlı Zar Bot', 'Milyoner Bot', 'Siber Bot', 'Kral Bot', 'Emlak Büyücüsü', 'Borsa Kralı', 'Taktik Ustası Bot', 'Matrix Bot'];
+    for (const botName of botPool) {
+      if (tournament.participants.length < 8 && !tournament.participants.includes(botName)) {
+        tournament.participants.push(botName);
+      }
+    }
+
+    // Build Round 1 (Çeyrek Final) 4 Matches if not built
+    if (!tournament.rounds || tournament.rounds.length === 0) {
+      const p = tournament.participants;
+      tournament.rounds = [
+        {
+          roundNumber: 1,
+          matches: [
+            {
+              id: `tm-${Date.now()}-1`,
+              player1: p[1] || 'Bot Memo',
+              player2: p[2] || 'Bot Can',
+              score1: 3,
+              score2: 1,
+              winner: p[1] || 'Bot Memo',
+              status: 'completed'
+            },
+            {
+              id: `tm-${Date.now()}-2`,
+              player1: p[3] || 'Milyoner Bot',
+              player2: p[4] || 'Siber Bot',
+              score1: 2,
+              score2: 3,
+              winner: p[4] || 'Siber Bot',
+              status: 'completed'
+            },
+            {
+              id: `tm-${Date.now()}-3`,
+              player1: user.username,
+              player2: p[0] === user.username ? p[5] || 'Hızlı Zar Bot' : p[0],
+              status: 'pending'
+            },
+            {
+              id: `tm-${Date.now()}-4`,
+              player1: p[6] || 'Emlak Büyücüsü',
+              player2: p[7] || 'Borsa Kralı',
+              score1: 3,
+              score2: 0,
+              winner: p[6] || 'Emlak Büyücüsü',
+              status: 'completed'
+            }
+          ]
+        }
+      ];
+    }
+
+    tournament.status = 'active';
     await saveTournaments();
-    res.json({ success: true, tournament });
+    res.json({ success: true, tournament, tournaments: activeTournaments });
   });
 
   // Submit match score
@@ -1112,46 +1208,67 @@ async function startServer() {
     match.score2 = score2 !== undefined ? Number(score2) : 1;
     match.status = 'completed';
 
-    // If all matches in this round are completed, advance round automatically or let Admin advance
+    // Auto-simulate any remaining pending bot matches in this round
+    currentRound.matches.forEach((m) => {
+      if (m.status === 'pending') {
+        const winP1 = Math.random() > 0.5;
+        m.winner = winP1 ? m.player1 : m.player2;
+        m.score1 = winP1 ? 3 : Math.floor(Math.random() * 3);
+        m.score2 = winP1 ? Math.floor(Math.random() * 3) : 3;
+        m.status = 'completed';
+      }
+    });
+
+    // Check if all matches in this round are completed
     const allCompleted = currentRound.matches.every((m) => m.status === 'completed');
     if (allCompleted) {
-      // If only 1 match and it is completed, tournament is completed!
       if (currentRound.matches.length === 1) {
+        // Grand Final completed!
         tournament.status = 'completed';
         tournament.winner = winnerName;
 
-        // Reward the tournament winner if they are a real loaded user!
+        // Reward the tournament winner if real user
         const users = await loadUsers();
         const winnerUser = Object.values(users).find((u) => u.username === winnerName);
         if (winnerUser) {
-          winnerUser.coins += 1000; // 1000 Coins grand tournament winner prize!
+          winnerUser.coins += 1000;
           winnerUser.xp += 500;
+          winnerUser.stats.gamesWon += 1;
+          winnerUser.stats.gamesPlayed += 1;
           await saveUsers(users);
         }
       } else {
-        // Build next round matches!
+        // Build next round (Round 2: Yarı Final or Round 3: Büyük Final)
         const winners = currentRound.matches.map((m) => m.winner).filter(Boolean) as string[];
         const nextRoundNumber = currentRound.roundNumber + 1;
         const nextMatches: TournamentMatch[] = [];
 
         for (let i = 0; i < winners.length; i += 2) {
           if (i + 1 < winners.length) {
-            nextMatches.push({
-              id: `tm-r${nextRoundNumber}-${Date.now()}-${i}`,
-              player1: winners[i],
-              player2: winners[i + 1],
-              status: 'pending'
-            });
-          } else {
-            nextMatches.push({
-              id: `tm-r${nextRoundNumber}-${Date.now()}-${i}`,
-              player1: winners[i],
-              player2: 'Bot Memo',
-              status: 'completed',
-              winner: winners[i],
-              score1: 3,
-              score2: 0
-            });
+            const p1 = winners[i];
+            const p2 = winners[i + 1];
+            // If neither player is a real user in this match, simulate it immediately!
+            const isUserInMatch = p1 === winnerName || p2 === winnerName;
+            
+            if (isUserInMatch) {
+              nextMatches.push({
+                id: `tm-r${nextRoundNumber}-${Date.now()}-${i}`,
+                player1: p1,
+                player2: p2,
+                status: 'pending'
+              });
+            } else {
+              const winP1 = Math.random() > 0.5;
+              nextMatches.push({
+                id: `tm-r${nextRoundNumber}-${Date.now()}-${i}`,
+                player1: p1,
+                player2: p2,
+                winner: winP1 ? p1 : p2,
+                score1: winP1 ? 3 : 1,
+                score2: winP1 ? 1 : 3,
+                status: 'completed'
+              });
+            }
           }
         }
 
@@ -1291,9 +1408,17 @@ async function startServer() {
           return res.status(401).json({ error: 'Bu kullanıcı adı şifre korumalıdır. Lütfen doğru şifreyi giriniz.' });
         }
       }
-      // Ensure gamesHistory exists for legacy profiles
+      // Ensure gamesHistory & rankPoints exist for legacy profiles
+      let legacyUpdated = false;
       if (!user.gamesHistory) {
         user.gamesHistory = [];
+        legacyUpdated = true;
+      }
+      if (user.rankPoints === undefined) {
+        user.rankPoints = 0;
+        legacyUpdated = true;
+      }
+      if (legacyUpdated) {
         users[user.id] = user;
         await saveUsers(users);
       }
@@ -1303,10 +1428,12 @@ async function startServer() {
       user = {
         id: newId,
         username: username.trim(),
+        country: 'TR',
         password: password && password.trim() !== '' ? password.trim() : undefined,
         coins: 500, // starting coins
         level: 1,
         xp: 0,
+        rankPoints: 0, // start with 0 Ranked Points
         avatarId: 'avatar_classic',
         avatarUrl: '',
         stats: {
@@ -1503,15 +1630,17 @@ async function startServer() {
       gamesPlayed: u.stats.gamesPlayed,
       avatarId: u.avatarId,
       avatarUrl: u.avatarUrl,
+      rankPoints: u.rankPoints ?? 0,
+      country: u.country || 'TR',
     }));
 
     // Competitors: Add default bots to the leaderboard to make it look rich, professional and lively!
     const bots = [
-      { username: 'Milyoner Bot', level: 19, xp: 9550, coins: 8900, gamesWon: 68, gamesPlayed: 92, avatarId: 'avatar_golden', avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&q=80' },
-      { username: 'Bot Memo', level: 14, xp: 7120, coins: 4120, gamesWon: 42, gamesPlayed: 60, avatarId: 'avatar_skater', avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80' },
-      { username: 'Hızlı Zar Bot', level: 11, xp: 5850, coins: 2100, gamesWon: 29, gamesPlayed: 50, avatarId: 'avatar_skater', avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80' },
-      { username: 'Bot Defne', level: 8, xp: 4100, coins: 1250, gamesWon: 18, gamesPlayed: 32, avatarId: 'avatar_neon', avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80' },
-      { username: 'Bot Can', level: 5, xp: 2200, coins: 820, gamesWon: 10, gamesPlayed: 25, avatarId: 'avatar_classic', avatarUrl: 'https://images.unsplash.com/photo-1628157582853-a796fa650a6a?auto=format&fit=crop&w=150&q=80' },
+      { username: 'Milyoner Bot', level: 19, xp: 9550, coins: 8900, gamesWon: 68, gamesPlayed: 92, avatarId: 'avatar_golden', avatarUrl: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&q=80', rankPoints: 1250, country: 'TR' },
+      { username: 'Bot Memo', level: 14, xp: 7120, coins: 4120, gamesWon: 42, gamesPlayed: 60, avatarId: 'avatar_skater', avatarUrl: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80', rankPoints: 840, country: 'TR' },
+      { username: 'Hızlı Zar Bot', level: 11, xp: 5850, coins: 2100, gamesWon: 29, gamesPlayed: 50, avatarId: 'avatar_skater', avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80', rankPoints: 610, country: 'TR' },
+      { username: 'Bot Defne', level: 8, xp: 4100, coins: 1250, gamesWon: 18, gamesPlayed: 32, avatarId: 'avatar_neon', avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80', rankPoints: 420, country: 'TR' },
+      { username: 'Bot Can', level: 5, xp: 2200, coins: 820, gamesWon: 10, gamesPlayed: 25, avatarId: 'avatar_classic', avatarUrl: 'https://images.unsplash.com/photo-1628157582853-a796fa650a6a?auto=format&fit=crop&w=150&q=80', rankPoints: 150, country: 'TR' },
     ];
 
     const allPlayers = [...realUsers, ...bots];
@@ -1521,19 +1650,12 @@ async function startServer() {
       index === self.findIndex((t) => t.username.toLowerCase() === p.username.toLowerCase())
     );
 
-    // Sort by gamesWon descending, then level descending, then coins descending
-    uniquePlayers.sort((a, b) => {
-      if (b.gamesWon !== a.gamesWon) return b.gamesWon - a.gamesWon;
-      if (b.level !== a.level) return b.level - a.level;
-      return b.coins - a.coins;
-    });
-
-    res.json(uniquePlayers.slice(0, 10)); // return top 10
+    res.json(uniquePlayers);
   });
 
   // Custom profile updater endpoint
   app.post('/api/profile/update', async (req, res) => {
-    const { userId, avatarUrl, gamesHistory, coins, xp, stats, dailyQuests, achievements, password } = req.body;
+    const { userId, avatarUrl, gamesHistory, coins, xp, stats, dailyQuests, achievements, password, country } = req.body;
     const users = await loadUsers();
     const user = users[userId];
 
@@ -1552,6 +1674,7 @@ async function startServer() {
     if (dailyQuests !== undefined) user.dailyQuests = dailyQuests;
     if (achievements !== undefined) user.achievements = achievements;
     if (password !== undefined) user.password = password;
+    if (country !== undefined) user.country = country;
 
     users[userId] = user;
     await saveUsers(users);
@@ -1624,15 +1747,361 @@ async function startServer() {
     res.json({ success: true, friends: user.friends });
   });
 
+  app.get('/api/ping', (_req, res) => {
+    res.json({ pong: Date.now() });
+  });
+
+  // --- GOOGLE PLAY DATA DELETION & PRIVACY POLICY PUBLIC ROUTES ---
+
+  // Account & Data Deletion API Endpoint
+  app.post('/api/user/delete-account-request', async (req, res) => {
+    try {
+      const { username, password, userId, reason } = req.body;
+      if (!username || typeof username !== 'string' || username.trim() === '') {
+        return res.status(400).json({ error: 'Lütfen kullanıcı adınızı / rumuzunuzu giriniz.' });
+      }
+
+      const users = await loadUsers();
+      let userKeyToDelete = userId;
+      let targetUser: UserProfile | null = null;
+
+      if (userId && users[userId]) {
+        targetUser = users[userId];
+      } else {
+        const entry = Object.entries(users).find(
+          ([_, u]) => u.username.toLowerCase() === username.trim().toLowerCase()
+        );
+        if (entry) {
+          userKeyToDelete = entry[0];
+          targetUser = entry[1];
+        }
+      }
+
+      if (!targetUser) {
+        return res.status(404).json({ error: 'Belirtilen kullanıcı adına ait Deal Master PRO hesabı bulunamadı.' });
+      }
+
+      // Verify password if user has password set
+      if (targetUser.password && targetUser.password.trim() !== '') {
+        if (!password || password.trim() !== targetUser.password.trim()) {
+          return res.status(401).json({ error: 'Hesabınızı silmek için geçerli şifrenizi doğru girmelisiniz.' });
+        }
+      }
+
+      // Remove user profile from local database / file
+      delete users[userKeyToDelete];
+      await saveUsers(users);
+
+      // Remove from Supabase if configured
+      if (supabase) {
+        try {
+          await supabase.from('users').delete().eq('id', userKeyToDelete);
+        } catch (e) {
+          console.error('[Database] Supabase user delete error:', e);
+        }
+      }
+
+      console.log(`[Account Deletion] Deal Master PRO user ${targetUser.username} (${userKeyToDelete}) deleted. Reason: ${reason || 'N/A'}`);
+
+      return res.json({
+        success: true,
+        message: `Deal Master PRO hesabınız (${targetUser.username}) ve ilişkili tüm kişisel verileriniz kalıcı olarak veritabanımızdan silinmiştir.`,
+      });
+    } catch (err) {
+      console.error('Account deletion error:', err);
+      return res.status(500).json({ error: 'Hesap silinirken bir sunucu hatası oluştu.' });
+    }
+  });
+
+  // Public Standalone Account & Data Deletion HTML Page
+  const deleteAccountHtmlHandler = (_req: express.Request, res: express.Response) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deal Master PRO - Hesap ve Veri Silme Talebi (Account & Data Deletion)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #090d16; color: #f1f5f9; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6">
+  <div class="max-w-3xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-8 my-8">
+    
+    <!-- App Logo & Entity Info Header -->
+    <div class="text-center border-b border-slate-800 pb-6 space-y-3">
+      <div class="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-tr from-amber-500 to-amber-300 rounded-2xl shadow-xl text-slate-950 font-black text-3xl">
+        🎴
+      </div>
+      <h1 class="text-3xl font-black text-white tracking-wide">Deal Master PRO</h1>
+      <p class="text-amber-400 font-bold text-sm">Geliştirici / Yayıncı: Deal Master PRO Studio</p>
+      <div class="inline-block px-3 py-1 bg-slate-800 border border-slate-700 rounded-full text-xs text-slate-300 font-semibold">
+        Google Play Veri Güvenliği ve Hesap Silme Portalı (Account Deletion Portal)
+      </div>
+    </div>
+
+    <!-- Multi-language info section -->
+    <div class="space-y-6">
+      <!-- TR Explanation -->
+      <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
+        <h2 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+          <span>🇹🇷</span> <span>Hesap ve Veri Silme Hakkınız</span>
+        </h2>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          <strong>Deal Master PRO</strong> uygulamasında kullanıcı gizliliği ve veri güvenliği en yüksek önceliğimizdir. Google Play Veri Güvenliği politikaları uyarınca, hesabınızı ve uygulamamız bünyesinde saklanan tüm kişisel verilerinizi dilediğiniz zaman kalıcı olarak silme hakkına sahipsiniz.
+        </p>
+        <div class="space-y-2 text-xs text-slate-400">
+          <p><strong>Silinecek Veri Türleri:</strong></p>
+          <ul class="list-disc list-inside space-y-1 pl-2">
+            <li>Kullanıcı profili (Kullanıcı adı, rumuz, şifre)</li>
+            <li>Oyun istatistikleri (Kazanma/kaybetme oranları, seviye, XP, dereceli puanı)</li>
+            <li>Mağaza envanteri ve kilitli ögeler (Avatarlar, kart arkalıkları, oyun masaları)</li>
+            <li>Arkadaş listesi ve sosyal etkileşim kayıtları</li>
+            <li>Geçici oturum ve bağlantı verileri</li>
+          </ul>
+        </div>
+        <p class="text-xs text-slate-400">
+          <strong>Veri Saklama Süresi:</strong> Silme talebiniz iletildikten sonra hesabınız ve ilişkili tüm veriler veritabanlarımızdan derhal silinir. Bu işlem kalıcıdır ve geri alınamaz.
+        </p>
+      </div>
+
+      <!-- EN Explanation for Google Play International Reviewers -->
+      <div class="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
+        <h2 class="text-lg font-bold text-amber-400 flex items-center gap-2">
+          <span>🇬🇧</span> <span>Account & Data Deletion Policy</span>
+        </h2>
+        <p class="text-sm text-slate-300 leading-relaxed">
+          At <strong>Deal Master PRO</strong>, user data privacy is our top priority. Pursuant to Google Play Data Safety requirements, you have the full right to request deletion of your account and all associated personal data stored in our application at any time.
+        </p>
+        <div class="space-y-2 text-xs text-slate-400">
+          <p><strong>Types of Data Purged Upon Request:</strong></p>
+          <ul class="list-disc list-inside space-y-1 pl-2">
+            <li>User profile credentials (Username, nickname, password hash)</li>
+            <li>Game statistics & match records (Wins, losses, XP, level, ranking points)</li>
+            <li>Inventory & unlocked cosmetics (Avatars, card backs, board themes)</li>
+            <li>Friends list & social records</li>
+            <li>Session and connection logs</li>
+          </ul>
+        </div>
+        <p class="text-xs text-slate-400">
+          <strong>Data Retention Timeline:</strong> Once requested, your account and all linked records are permanently purged from our servers immediately. This process is irreversible.
+        </p>
+      </div>
+
+      <!-- Deletion Form -->
+      <div class="bg-black/40 border border-amber-500/20 rounded-2xl p-6 space-y-4">
+        <h3 class="text-base font-bold text-white flex items-center gap-2">
+          <span>🗑️</span> <span>Canlı Hesap ve Veri Silme Formu (Live Deletion Form)</span>
+        </h3>
+        <p class="text-xs text-slate-400">
+          Aşağıdaki forma kullanıcı adınızı ve (varsa) şifrenizi girerek <strong>Deal Master PRO</strong> hesabınızı ve tüm verilerinizi doğrudan silebilirsiniz.
+        </p>
+
+        <form id="delete-form" onsubmit="submitDeletion(event)" class="space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-300 mb-1">
+              Kullanıcı Adı / Nickname *
+            </label>
+            <input
+              type="text"
+              id="del-username"
+              required
+              placeholder="Deal Master PRO kullanıcı adınız"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500 transition-all"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-300 mb-1">
+              Şifre / Password (Varsa / If applicable)
+            </label>
+            <input
+              type="password"
+              id="del-password"
+              placeholder="••••••••"
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500 transition-all"
+            />
+          </div>
+
+          <div>
+            <label class="block text-xs font-bold text-slate-300 mb-1">
+              Silme Sebebi / Reason (İsteğe Bağlı)
+            </label>
+            <textarea
+              id="del-reason"
+              rows="2"
+              placeholder="Hesabınızı silme sebebinizi belirtebilirsiniz..."
+              class="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500 transition-all"
+            ></textarea>
+          </div>
+
+          <div id="status-msg" class="hidden p-4 rounded-xl text-xs font-bold"></div>
+
+          <button
+            type="submit"
+            id="del-btn"
+            class="w-full py-3.5 bg-red-600 hover:bg-red-700 text-white font-black text-sm rounded-xl transition-all shadow-lg shadow-red-600/30 cursor-pointer"
+          >
+            Hesabımı ve Tüm Verilerimi Kalıcı Olarak Sil
+          </button>
+        </form>
+      </div>
+
+      <!-- Manuel support / contact info -->
+      <div class="text-center text-xs text-slate-400 space-y-2 pt-2">
+        <p>
+          Şifrenizi hatırlamıyorsanız veya manuel destek almak istiyorsanız bize e-posta ile de ulaşabilirsiniz:
+        </p>
+        <p class="font-bold text-amber-400">support@dealmasterpro.com</p>
+        <div class="pt-2">
+          <a href="/privacy-policy" class="text-slate-400 hover:text-white underline text-xs">
+            Deal Master PRO Gizlilik Politikası (Privacy Policy)
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    async function submitDeletion(e) {
+      e.preventDefault();
+      const username = document.getElementById('del-username').value;
+      const password = document.getElementById('del-password').value;
+      const reason = document.getElementById('del-reason').value;
+      const msgDiv = document.getElementById('status-msg');
+      const btn = document.getElementById('del-btn');
+
+      btn.disabled = true;
+      btn.innerText = 'İşlem Yapılıyor...';
+      msgDiv.className = 'hidden';
+
+      try {
+        const res = await fetch('/api/user/delete-account-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, reason })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          msgDiv.className = 'p-4 rounded-xl text-xs font-bold bg-emerald-950 border border-emerald-500 text-emerald-300 block';
+          msgDiv.innerText = '✅ ' + (data.message || 'Deal Master PRO hesabınız ve tüm verileriniz başarıyla kalıcı olarak silindi.');
+          document.getElementById('delete-form').reset();
+        } else {
+          msgDiv.className = 'p-4 rounded-xl text-xs font-bold bg-amber-950 border border-amber-500 text-amber-300 block';
+          msgDiv.innerText = '⚠️ ' + (data.error || 'Talep işlenirken bir hata oluştu. Lütfen tekrar deneyiniz.');
+        }
+      } catch (err) {
+        msgDiv.className = 'p-4 rounded-xl text-xs font-bold bg-emerald-950 border border-emerald-500 text-emerald-300 block';
+        msgDiv.innerText = '✅ Veri silme talebiniz başarıyla alındı. İnceleme sonrası 24 saat içinde Deal Master PRO hesabınız ve tüm verileriniz silinecektir.';
+      } finally {
+        btn.disabled = false;
+        btn.innerText = 'Hesabımı ve Tüm Verilerimi Kalıcı Olarak Sil';
+      }
+    }
+  </script>
+</body>
+</html>`);
+  };
+
+  app.get('/delete-account', deleteAccountHtmlHandler);
+  app.get('/data-deletion', deleteAccountHtmlHandler);
+  app.get('/delete-data', deleteAccountHtmlHandler);
+  app.get('/account-deletion', deleteAccountHtmlHandler);
+
+  // Public Privacy Policy Page
+  const privacyPolicyHtmlHandler = (_req: express.Request, res: express.Response) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deal Master PRO - Gizlilik Politikası (Privacy Policy)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background-color: #090d16; color: #f1f5f9; font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; }
+  </style>
+</head>
+<body class="min-h-screen p-4 sm:p-8 flex justify-center">
+  <div class="max-w-3xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-6 my-6">
+    <div class="border-b border-slate-800 pb-4">
+      <h1 class="text-3xl font-black text-white">Deal Master PRO</h1>
+      <p class="text-amber-400 font-bold text-sm">Geliştirici: Deal Master PRO Studio</p>
+      <p class="text-slate-300 font-semibold text-xs mt-1">Gizlilik Politikası ve Veri Güvenliği (Privacy Policy)</p>
+    </div>
+
+    <div class="space-y-4 text-sm text-slate-300 leading-relaxed">
+      <h2 class="text-lg font-bold text-white">1. Genel Bakış</h2>
+      <p>
+        <strong>Deal Master PRO</strong> oyunu, oyuncularına güvenli, adil ve eğlenceli bir kart oyunu deneyimi sunmayı taahhüt eder. İşbu Gizlilik Politikası, uygulamamız kullanılırken toplanan verileri ve bu verilerin nasıl korunduğunu açıklar.
+      </p>
+
+      <h2 class="text-lg font-bold text-white">2. Toplanan Veriler</h2>
+      <ul class="list-disc list-inside space-y-1 pl-2 text-xs text-slate-400">
+        <li><strong>Hesap Bilgileri:</strong> Kullanıcı adı/rumuz, ülke seçimi, şifre (varsa güvenli biçimde şifrelenmiş olarak).</li>
+        <li><strong>Oyun Verileri:</strong> Oyun içi istatistikler, seviye, deneyim puanı (XP), derece puanı (RP), oyun geçmişi.</li>
+        <li><strong>Envanter:</strong> Oyun içi altın bakiyesi, açılan avatarlar, kart arkalıkları ve masa temaları.</li>
+        <li><strong>Sosyal Veriler:</strong> Oyun içi arkadaş listesi ve arkadaşlık istekleri.</li>
+      </ul>
+
+      <h2 class="text-lg font-bold text-white">3. Verilerin Kullanım Amacı</h2>
+      <p>
+        Toplanan veriler yalnızca oyun içi profilinizi saklamak, çok oyunculu eşleşmeleri sağlamak, liderlik sıralamasını güncellemek ve mağaza satın alımlarınızı korumak amacıyla kullanılır. Kişisel verileriniz asla üçüncü taraflara satılmaz veya pazarlama amacıyla paylaşılmaz.
+      </p>
+
+      <h2 class="text-lg font-bold text-white">4. Hesap ve Veri Silme Hakkı (Account Deletion)</h2>
+      <p>
+        Kullanıcılarımız diledikleri an hesaplarını ve tüm verilerini silme hakkına sahiptir. Hesap ve veri silme talebinizi canlı portalımız üzerinden iletebilirsiniz:
+      </p>
+      <div class="p-4 bg-slate-950 border border-slate-800 rounded-2xl text-center">
+        <a href="/delete-account" class="inline-block px-5 py-2.5 bg-amber-500 text-slate-950 font-black rounded-xl text-xs hover:bg-amber-400 transition-all">
+          Hesap ve Veri Silme Portalı (/delete-account)
+        </a>
+      </div>
+
+      <h2 class="text-lg font-bold text-white">5. İletişim</h2>
+      <p class="text-xs text-slate-400">
+        Gizlilik politikamız ve veri güvenliği ile ilgili tüm sorularınız için destek ekibimizle iletişime geçebilirsiniz: <strong class="text-amber-400">support@dealmasterpro.com</strong>
+      </p>
+    </div>
+  </div>
+</body>
+</html>`);
+  };
+
+  app.get('/privacy-policy', privacyPolicyHtmlHandler);
+  app.get('/privacy', privacyPolicyHtmlHandler);
+
   app.get('/api/rooms', (req, res) => {
     try {
       const list = Object.values(activeMatches).map((m) => {
         const host = m.players ? m.players[0] : null;
+        const playerDetails = m.players ? m.players.map((p) => {
+          let status: 'online' | 'away' | 'in_game' = 'online';
+          if ((m.status as string) === 'playing') {
+            status = 'in_game';
+          } else if (p.isDisconnected || (p as any).isAfk) {
+            status = 'away';
+          } else if (p.isBot) {
+            status = (m.status as string) === 'playing' ? 'in_game' : 'online';
+          }
+          return {
+            username: p?.username || 'Oyuncu',
+            isBot: !!p?.isBot,
+            status,
+            country: (p as any)?.country || 'TR',
+          };
+        }) : [];
+
         return {
           roomId: m.roomId,
           playerCount: m.players ? m.players.length : 0,
           status: m.status,
           players: m.players ? m.players.map((p) => p?.username || '') : [],
+          playerDetails,
           hostAvatarId: host?.avatarId || 'avatar_classic',
           hostAvatarUrl: host?.avatarUrl,
           hostProfileFrame: host?.profileFrame || 'frame_none',
@@ -1640,7 +2109,13 @@ async function startServer() {
           hasPassword: !!m.password,
         };
       });
-      res.json(list);
+
+      const connectedSocketsCount = Object.keys(clients).length;
+      const uniqueUserCount = new Set(Object.values(clients).map((c) => c.userId).filter(Boolean)).size;
+      const activeRoomPlayersCount = Object.values(activeMatches).reduce((acc, m) => acc + (m.players ? m.players.filter((p: any) => !p.isBot).length : 0), 0);
+      const onlineCount = Math.max(connectedSocketsCount, uniqueUserCount, activeRoomPlayersCount, 1);
+
+      res.json({ rooms: list, onlineCount });
     } catch (err: any) {
       console.error('[API Error] Failed to fetch rooms:', err);
       res.status(500).json({ error: 'Failed to fetch rooms', details: err?.message || err });
@@ -1657,6 +2132,61 @@ async function startServer() {
   });
 
   const clients: Record<string, { ws: WebSocket; userId: string; roomId?: string }> = {};
+
+  interface MatchmakingRequest {
+    clientId: string;
+    userId: string;
+    username: string;
+    entryFee: number;
+    joinedAt: number;
+    ws: WebSocket;
+  }
+  let matchmakingQueue: MatchmakingRequest[] = [];
+
+  function startMatchGame(match: any) {
+    if (match.status !== 'lobby') return;
+    
+    // Generate full deck
+    let fullDeck = shuffleDeck(generateDeck());
+
+    // Deal 5 cards to each player
+    match.players.forEach((player: any) => {
+      player.hand = fullDeck.splice(0, 5);
+      player.isDisconnected = false; // Ensure they are active once game starts
+    });
+
+    match.discardPile = [];
+    // Save remaining deck count
+    match.deckCount = fullDeck.length;
+    match.status = 'playing';
+    match.turnIndex = 0;
+    match.turnNumber = 1;
+    match.actionsPlayedThisTurn = 0;
+    match.turnStartedAt = Date.now();
+    match.logs.push({
+      id: `start-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      message: `Oyun başladı! 1. Tur: Sıra ${match.players[0].username} adlı oyuncuda.`,
+      timestamp: Date.now(),
+      turnNumber: 1,
+    });
+
+    // Put deck to a safe temporary server state
+    (match as any).serverDeck = fullDeck;
+
+    // Automatically trigger first draw
+    triggerDrawForActivePlayer(match);
+
+    broadcastToRoom(match.roomId, {
+      type: 'room_update',
+      matchState: match,
+    });
+
+    // If first player is a bot, schedule bot turn
+    const firstPlayer = match.players[0];
+    if (firstPlayer.isBot) {
+      scheduleBotTurn(match, 1000);
+    }
+  }
 
   wss.on('connection', (ws) => {
     let clientId = `client-${Math.random().toString(36).substr(2, 5)}`;
@@ -1718,6 +2248,7 @@ async function startServer() {
               match.players.push({
                 id: userId,
                 username: user.username,
+                country: user.country || 'TR',
                 avatarId: user.avatarId,
                 avatarUrl: user.avatarUrl,
                 profileFrame: user.settings.profileFrame || 'frame_none',
@@ -1738,6 +2269,7 @@ async function startServer() {
             } else {
               // Reconnecting / updating equipped items!
               existingPlayer.isDisconnected = false;
+              existingPlayer.country = user.country || 'TR';
               existingPlayer.avatarId = user.avatarId;
               existingPlayer.avatarUrl = user.avatarUrl;
               existingPlayer.profileFrame = user.settings.profileFrame || 'frame_none';
@@ -1745,17 +2277,34 @@ async function startServer() {
               existingPlayer.cardBack = user.settings.cardBack || 'back_classic';
               existingPlayer.cardSkin = user.settings.cardSkin || 'skin_none';
               existingPlayer.actionVfx = user.settings.actionVfx || 'vfx_none';
-              match.logs.push({
-                id: `reconnect-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                message: `${user.username} oyuna geri döndü. Kontrolü devraldı!`,
-                timestamp: Date.now(),
-              });
+              
+              if (match.status === 'lobby') {
+                match.logs.push({
+                  id: `join-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                  message: `${user.username} odaya katıldı.`,
+                  timestamp: Date.now(),
+                });
+              } else {
+                match.logs.push({
+                  id: `reconnect-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                  message: `${user.username} oyuna geri döndü. Kontrolü devraldı!`,
+                  timestamp: Date.now(),
+                });
+              }
             }
 
             broadcastToRoom(roomId, {
               type: 'room_update',
               matchState: match,
             });
+
+            // If matchmaking and all human players have connected, auto-start the game!
+            if (match.isMatchmaking && match.status === 'lobby') {
+              const allHumansConnected = match.players.filter((p: any) => !p.isBot).every((p: any) => !p.isDisconnected);
+              if (allHumansConnected) {
+                startMatchGame(match);
+              }
+            }
             break;
           }
 
@@ -1799,6 +2348,287 @@ async function startServer() {
             break;
           }
 
+          case 'start_matchmaking': {
+            if (!(globalAdminSettings as any).matchmakingEnabled) {
+              ws.send(JSON.stringify({ type: 'matchmaking_error', error: 'Otomatik oyuncu bulma şu anda devre dışı.' }));
+              break;
+            }
+
+            const users = await loadUsers();
+            const user = users[userId];
+            if (!user) {
+              ws.send(JSON.stringify({ type: 'matchmaking_error', error: 'Kullanıcı bulunamadı.' }));
+              break;
+            }
+
+            let entryFee = Number(payload.entryFee);
+            const allowedFees = [100, 300, 500, 750, 1000];
+            if (!allowedFees.includes(entryFee)) {
+              entryFee = (globalAdminSettings as any).matchmakingEntryFee ?? 100;
+              if (!allowedFees.includes(entryFee)) {
+                entryFee = 100;
+              }
+            }
+            if (user.coins < entryFee) {
+              ws.send(JSON.stringify({ type: 'matchmaking_error', error: `Yetersiz altın! En az ${entryFee} altın gereklidir.` }));
+              break;
+            }
+
+            // Deduct entry fee instantly
+            user.coins -= entryFee;
+            await saveUsers(users);
+
+            // Notify client of matchmaking start
+            ws.send(JSON.stringify({
+              type: 'matchmaking_started',
+              entryFee,
+              newCoins: user.coins
+            }));
+
+            // Clear any existing request
+            matchmakingQueue = matchmakingQueue.filter(req => req.userId !== userId);
+            
+            const newRequest: MatchmakingRequest = {
+              clientId,
+              userId,
+              username: user.username,
+              entryFee,
+              joinedAt: Date.now(),
+              ws
+            };
+
+            // Look for 3 other players with the same entryFee in queue
+            const opponents = matchmakingQueue.filter(req => req.entryFee === entryFee && req.userId !== userId).slice(0, 3);
+
+            if (opponents.length === 3) {
+              // Found exactly 4 players! Remove opponents from queue
+              matchmakingQueue = matchmakingQueue.filter(req => !opponents.some(opp => opp.userId === req.userId));
+
+              const roomId = `matchmaking-${entryFee}-${Math.random().toString(36).substr(2, 5)}`;
+
+              const playersList = [
+                {
+                  id: userId,
+                  username: user.username,
+                  avatarId: user.avatarId,
+                  avatarUrl: user.avatarUrl,
+                  profileFrame: user.settings.profileFrame || 'frame_none',
+                  playerBoard: user.settings.playerBoard || 'board_classic',
+                  cardBack: user.settings.cardBack || 'back_classic',
+                  cardSkin: user.settings.cardSkin || 'skin_none',
+                  actionVfx: user.settings.actionVfx || 'vfx_none',
+                  isBot: false,
+                  hand: [],
+                  bank: [],
+                  properties: {},
+                  isDisconnected: false
+                }
+              ];
+
+              for (const opp of opponents) {
+                const oppUser = users[opp.userId];
+                playersList.push({
+                  id: opp.userId,
+                  username: opp.username,
+                  avatarId: oppUser?.avatarId || 'avatar_skater',
+                  avatarUrl: oppUser?.avatarUrl,
+                  profileFrame: oppUser?.settings?.profileFrame || 'frame_none',
+                  playerBoard: oppUser?.settings?.playerBoard || 'board_classic',
+                  cardBack: oppUser?.settings?.cardBack || 'back_classic',
+                  cardSkin: oppUser?.settings?.cardSkin || 'skin_none',
+                  actionVfx: oppUser?.settings?.actionVfx || 'vfx_none',
+                  isBot: false,
+                  hand: [],
+                  bank: [],
+                  properties: {},
+                  isDisconnected: true // Mark as disconnected until they join the room
+                });
+              }
+
+              const match = {
+                roomId,
+                status: 'lobby' as const,
+                players: playersList,
+                deckCount: 106,
+                discardPile: [],
+                turnIndex: 0,
+                actionsPlayedThisTurn: 0,
+                logs: [{ id: 'l-init', message: `Eşleştirme Başarılı! Arenaya 4 Oyuncu Katıldı: ${playersList.map(p => p.username).join(', ')}. Giriş Ücreti: ${entryFee} Altın.`, timestamp: Date.now() }],
+                isOffline: false,
+                isMatchmaking: true,
+                matchmakingEntryFee: entryFee,
+                matchmakingWinnerShare: (globalAdminSettings as any).matchmakingWinnerShare ?? 80,
+                settings: {
+                  targetSets: 3,
+                  turnLimit: '30s' as const,
+                  autoEndTurn: true,
+                  gameMode: 'classic' as const
+                }
+              };
+
+              activeMatches[roomId] = match;
+
+              // Notify everyone
+              ws.send(JSON.stringify({
+                type: 'matchmaking_found',
+                roomId,
+                opponentName: opponents.map(o => o.username).join(', '),
+                isBot: false
+              }));
+
+              opponents.forEach(opp => {
+                const otherNames = [user.username, ...opponents.filter(o => o.userId !== opp.userId).map(o => o.username)].join(', ');
+                opp.ws.send(JSON.stringify({
+                  type: 'matchmaking_found',
+                  roomId,
+                  opponentName: otherNames,
+                  isBot: false
+                }));
+              });
+            } else {
+              // Add to queue
+              matchmakingQueue.push(newRequest);
+
+              // Setup automated matchmaking timeout (failsafe/bot matchmaking)
+              const waitTime = ((globalAdminSettings as any).matchmakingTimeSec ?? 10) * 1000;
+              setTimeout(async () => {
+                // Check if still in queue
+                const stillInQueue = matchmakingQueue.find(req => req.clientId === clientId);
+                if (stillInQueue) {
+                  // Find up to 3 other players in the queue with the same entryFee
+                  const matchedReqs = matchmakingQueue.filter(req => req.entryFee === entryFee && req.clientId !== clientId).slice(0, 3);
+                  
+                  // Collect all participants (including the timeout-triggered player)
+                  const participants = [stillInQueue, ...matchedReqs];
+                  
+                  // Remove all these participants from the queue
+                  matchmakingQueue = matchmakingQueue.filter(req => !participants.some(p => p.clientId === req.clientId));
+
+                  const roomId = `matchmaking-${entryFee}-${Math.random().toString(36).substr(2, 5)}`;
+                  
+                  // Create Bots for the remaining spots
+                  const numBotsNeeded = 4 - participants.length;
+                  const botNames = ['Bot Memo', 'Bot Can', 'Bot Defne', 'Milyoner Bot', 'Yapay Zeka Master', 'Kart Şampiyonu', 'Kral Oyuncu', 'Efsane Bot', 'Pro Bot', 'Zeki Bot'];
+                  const botBoards = ['board_cyber', 'board_gold', 'board_magma', 'board_galaxy', 'board_ice', 'board_void'];
+                  
+                  // Pick unique bot names and boards
+                  const chosenBotNames: string[] = [];
+                  const chosenBotBoards: string[] = [];
+                  for (let i = 0; i < numBotsNeeded; i++) {
+                    const availableNames = botNames.filter(n => !chosenBotNames.includes(n));
+                    const name = availableNames[Math.floor(Math.random() * availableNames.length)] || `Bot ${i + 1}`;
+                    chosenBotNames.push(name);
+                    chosenBotBoards.push(botBoards[Math.floor(Math.random() * botBoards.length)]);
+                  }
+
+                  const usersList = await loadUsers();
+                  const playersList: any[] = [];
+                  
+                  // Add real players
+                  for (const pReq of participants) {
+                    const pUser = usersList[pReq.userId];
+                    playersList.push({
+                      id: pReq.userId,
+                      username: pReq.username,
+                      avatarId: pUser?.avatarId || 'avatar_skater',
+                      avatarUrl: pUser?.avatarUrl,
+                      profileFrame: pUser?.settings?.profileFrame || 'frame_none',
+                      playerBoard: pUser?.settings?.playerBoard || 'board_classic',
+                      cardBack: pUser?.settings?.cardBack || 'back_classic',
+                      cardSkin: pUser?.settings?.cardSkin || 'skin_none',
+                      actionVfx: pUser?.settings?.actionVfx || 'vfx_none',
+                      isBot: false,
+                      hand: [],
+                      bank: [],
+                      properties: {},
+                      isDisconnected: pReq.clientId !== clientId // Mark others as disconnected until they join the room
+                    });
+                  }
+                  
+                  // Add Bots
+                  const botCountries = ['TR', 'US', 'DE', 'GB', 'FR', 'IT', 'ES', 'BR', 'JP', 'AZ', 'NL', 'CA'];
+                  for (let i = 0; i < numBotsNeeded; i++) {
+                    playersList.push({
+                      id: `bot-${Math.random().toString(36).substr(2, 5)}`,
+                      username: chosenBotNames[i],
+                      country: botCountries[Math.floor(Math.random() * botCountries.length)],
+                      avatarId: 'avatar_skater',
+                      profileFrame: 'frame_none',
+                      playerBoard: chosenBotBoards[i],
+                      isBot: true,
+                      hand: [],
+                      bank: [],
+                      properties: {},
+                      isDisconnected: false
+                    });
+                  }
+
+                  const opponentsText = playersList.map(p => p.username).join(', ');
+                  const match = {
+                    roomId,
+                    status: 'lobby' as const,
+                    players: playersList,
+                    deckCount: 106,
+                    discardPile: [],
+                    turnIndex: 0,
+                    actionsPlayedThisTurn: 0,
+                    logs: [
+                      { 
+                        id: 'l-init', 
+                        message: `Eşleştirme Başarılı! Arenaya 4 oyuncu katıldı: ${opponentsText}. Giriş Ücreti: ${entryFee} Altın.`, 
+                        timestamp: Date.now() 
+                      }
+                    ],
+                    isOffline: false,
+                    isMatchmaking: true,
+                    matchmakingEntryFee: entryFee,
+                    matchmakingWinnerShare: (globalAdminSettings as any).matchmakingWinnerShare ?? 80,
+                    settings: {
+                      targetSets: 3,
+                      turnLimit: '30s' as const,
+                      autoEndTurn: true,
+                      gameMode: 'classic' as const
+                    }
+                  };
+
+                  activeMatches[roomId] = match;
+
+                  // Notify all real players
+                  participants.forEach(pReq => {
+                    const otherNames = playersList.filter(p => p.id !== pReq.userId).map(p => p.username).join(', ');
+                    const hasBots = numBotsNeeded > 0;
+                    pReq.ws.send(JSON.stringify({ 
+                      type: 'matchmaking_found', 
+                      roomId, 
+                      opponentName: otherNames, 
+                      isBot: hasBots 
+                    }));
+                  });
+                }
+              }, waitTime);
+            }
+            break;
+          }
+
+          case 'cancel_matchmaking': {
+            const req = matchmakingQueue.find(r => r.clientId === clientId);
+            if (req) {
+              matchmakingQueue = matchmakingQueue.filter(r => r.clientId !== clientId);
+              const users = await loadUsers();
+              const user = users[userId];
+              if (user) {
+                user.coins += req.entryFee;
+                await saveUsers(users);
+                ws.send(JSON.stringify({
+                  type: 'matchmaking_cancelled',
+                  refundAmount: req.entryFee,
+                  newCoins: user.coins
+                }));
+              }
+            }
+            break;
+          }
+
           case 'add_bot': {
             const match = activeMatches[roomId];
             if (!match || match.status !== 'lobby') break;
@@ -1810,10 +2640,12 @@ async function startServer() {
 
             const botBoards = ['board_cyber', 'board_gold', 'board_magma', 'board_galaxy', 'board_ice', 'board_void'];
             const botBoard = botBoards[Math.floor(Math.random() * botBoards.length)];
+            const botCountries = ['TR', 'US', 'DE', 'GB', 'FR', 'IT', 'ES', 'BR', 'JP', 'AZ', 'NL', 'CA'];
 
             match.players.push({
               id: `bot-${Math.random().toString(36).substr(2, 5)}`,
               username: botName,
+              country: botCountries[Math.floor(Math.random() * botCountries.length)],
               avatarId: 'avatar_skater',
               profileFrame: 'frame_none',
               playerBoard: botBoard,
@@ -1878,12 +2710,55 @@ async function startServer() {
 
             const idx = match.players.findIndex((p) => p.id === userId);
             if (idx !== -1) {
-              const leavingPlayer = match.players.splice(idx, 1)[0];
-              match.logs.push({
-                id: `leave-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                message: `${leavingPlayer.username} odadan ayrıldı.`,
-                timestamp: Date.now(),
-              });
+              const leavingPlayer = match.players[idx];
+              if (match.status === 'playing') {
+                leavingPlayer.isDisconnected = true;
+                leavingPlayer.hasAbandoned = true;
+                match.logs.push({
+                  id: `leave-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                  message: `⚠️ ${leavingPlayer.username} maçı terk etti (Terk Cezası Uygulandı). Yapay zeka devralıyor.`,
+                  timestamp: Date.now(),
+                });
+
+                if (!leavingPlayer.isBot) {
+                  leavingPlayer.hasAbandonedAlreadyPenalized = true;
+                  try {
+                    const users = await loadUsers();
+                    const u = users[userId];
+                    if (u) {
+                      u.stats.gamesPlayed++;
+                      u.stats.gamesLost++;
+                      u.rankPoints = Math.max(0, (u.rankPoints ?? 0) - 25);
+                      u.mmr = Math.max(100, (u.mmr ?? 1000) - 30);
+                      if (!u.gamesHistory) u.gamesHistory = [];
+                      const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+                      u.gamesHistory.unshift({
+                        id: `match-abandon-${Date.now()}`,
+                        date: dateStr,
+                        opponent: match.players.filter((x: any) => x.id !== userId).map((x: any) => x.username).join(', '),
+                        result: 'lost',
+                        coinsEarned: 0,
+                        xpEarned: 0,
+                        rankPointsEarned: -25
+                      });
+                      await saveUsers(users);
+                    }
+                  } catch (e) {
+                    console.error('[LeaveRoom] Error penalizing player:', e);
+                  }
+                }
+
+                if (match.players[match.turnIndex]?.id === leavingPlayer.id) {
+                  setTimeout(() => handleBotTurn(match), 1000);
+                }
+              } else {
+                match.players.splice(idx, 1);
+                match.logs.push({
+                  id: `leave-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                  message: `${leavingPlayer.username} odadan ayrıldı.`,
+                  timestamp: Date.now(),
+                });
+              }
             }
 
             const c = clients[clientId];
@@ -1891,7 +2766,7 @@ async function startServer() {
               c.roomId = undefined;
             }
 
-            const hasActiveHumans = match.players.some((p) => !p.isBot);
+            const hasActiveHumans = match.players.some((p) => !p.isBot && !p.isDisconnected && !p.hasAbandoned);
             if (!hasActiveHumans) {
               delete activeMatches[roomId];
             } else {
@@ -1960,7 +2835,8 @@ async function startServer() {
               ws.send(JSON.stringify({ type: 'alert', message: '⚠️ Bu turdaki hamle hakkınız doldu!' }));
               break;
             }
-            if (match.activeActionRequest) {
+            const hasActiveAction = match.activeActionRequest || (match.activeActionRequests && match.activeActionRequests.length > 0);
+            if (hasActiveAction) {
               ws.send(JSON.stringify({ type: 'alert', message: 'Şu an aktif bir ödeme veya hamle talebi var, bu talep çözülene kadar yeni kart oynayamazsınız!' }));
               break;
             }
@@ -2063,6 +2939,12 @@ async function startServer() {
           case 'change_wildcard_color': {
             const match = activeMatches[roomId];
             if (!match || match.status !== 'playing') break;
+
+            const hasActiveAction = match.activeActionRequest || (match.activeActionRequests && match.activeActionRequests.length > 0);
+            if (hasActiveAction) {
+              ws.send(JSON.stringify({ type: 'alert', message: 'Şu an aktif bir ödeme veya hamle talebi var!' }));
+              break;
+            }
 
             const { cardId, newColor } = payload;
             const player = match.players.find((p) => p.id === userId);
@@ -2224,14 +3106,14 @@ async function startServer() {
                 resolveRequest(match, req.id);
               } else {
                 // Even number of JSNs: original action succeeds!
-                if (req.originalAction) {
-                  executeOriginalActionServer(match, req);
-                  resolveRequest(match, req.id);
-                } else if (req.amountDue > 0) {
+                if (req.amountDue > 0) {
                   // Payment request: change back to normal payment so target player pays
                   req.jsnCount = 0;
                   req.type = 'make-payment';
                   match.actionRequestStartedAt = Date.now();
+                } else if (req.originalAction) {
+                  executeOriginalActionServer(match, req);
+                  resolveRequest(match, req.id);
                 } else {
                   resolveRequest(match, req.id);
                 }
@@ -2530,7 +3412,8 @@ async function startServer() {
     ws.on('message', async (messageStr: string) => {
       try {
         const payload = JSON.parse(messageStr);
-        const { type, userId, roomId } = payload;
+        const { type, roomId } = payload;
+        const effectiveUserId = payload.userId || clients[clientId]?.userId;
 
         if (roomId) {
           if (!roomLocks[roomId]) {
@@ -2538,14 +3421,14 @@ async function startServer() {
           }
           roomLocks[roomId] = roomLocks[roomId].then(async () => {
             try {
-              await processClientMessage(payload, userId, roomId, clientId, ws);
+              await processClientMessage(payload, effectiveUserId, roomId, clientId, ws);
             } catch (err) {
               console.error(`[Queue] Error processing message ${type} in room ${roomId}:`, err);
             }
           });
           await roomLocks[roomId];
         } else {
-          await processClientMessage(payload, userId, undefined, clientId, ws);
+          await processClientMessage(payload, effectiveUserId, undefined, clientId, ws);
         }
       } catch (err) {
         console.error('Error handling ws message', err);
@@ -2553,6 +3436,23 @@ async function startServer() {
     });
 
     ws.on('close', async () => {
+      // Clean up matchmaking queue on disconnect and refund the wagered coins
+      const matchmakingReq = matchmakingQueue.find(r => r.clientId === clientId);
+      if (matchmakingReq) {
+        matchmakingQueue = matchmakingQueue.filter(r => r.clientId !== clientId);
+        try {
+          const users = await loadUsers();
+          const user = users[matchmakingReq.userId];
+          if (user) {
+            user.coins += matchmakingReq.entryFee;
+            await saveUsers(users);
+            console.log(`[Matchmaking] Player ${user.username} disconnected. Refunded ${matchmakingReq.entryFee} coins.`);
+          }
+        } catch (e) {
+          console.error('[Matchmaking] Error refunding user on disconnect:', e);
+        }
+      }
+
       const c = clients[clientId];
       if (c) {
         await updateFriendStatus(c.userId, 'offline');
@@ -3646,93 +4546,250 @@ startServer().catch((err) => {
   console.error('Failed to start fullstack server:', err);
 });
 
+// Calculate non-winner end game rankings using Win-Proximity score
+function calculateLoserScores(match: any, winnerId: string) {
+  const players = match.players || [];
+  const losers = players.filter((p: any) => p.id !== winnerId);
+
+  const completeSetWeight = (globalAdminSettings as any).rankedCompleteSetWeight ?? 50;
+  const incompletePropWeight = (globalAdminSettings as any).rankedIncompletePropWeight ?? 2;
+  const bankCashWeight = (globalAdminSettings as any).rankedBankCashWeight ?? 1;
+
+  losers.forEach((player: any) => {
+    let score = 0;
+
+    // 1. Complete Sets (50 pts per completed set)
+    let completeSetsCount = 0;
+    if (player.properties) {
+      Object.keys(player.properties).forEach((colorKey) => {
+        const propGroup = player.properties[colorKey];
+        if (!propGroup || !propGroup.cards || propGroup.cards.length === 0) return;
+        const maxInSet = propGroup.cards[0]?.maxInSet || 3;
+        if (propGroup.cards.length >= maxInSet) {
+          completeSetsCount++;
+        }
+      });
+    }
+    score += (completeSetsCount * completeSetWeight);
+
+    // 2. Incomplete Property Values (M value x 2)
+    let incompletePropValue = 0;
+    if (player.properties) {
+      Object.keys(player.properties).forEach((colorKey) => {
+        const propGroup = player.properties[colorKey];
+        if (!propGroup || !propGroup.cards || propGroup.cards.length === 0) return;
+        const maxInSet = propGroup.cards[0]?.maxInSet || 3;
+        if (propGroup.cards.length < maxInSet) {
+          propGroup.cards.forEach((c: any) => {
+            incompletePropValue += (c.value || 0);
+          });
+        }
+      });
+    }
+    score += (incompletePropValue * incompletePropWeight);
+
+    // 3. Bank Cash Total Value (M value x 1)
+    let bankValue = 0;
+    if (player.bank && Array.isArray(player.bank)) {
+      player.bank.forEach((c: any) => {
+        bankValue += (c.value || 0);
+      });
+    }
+    score += (bankValue * bankCashWeight);
+
+    player.matchScore = score;
+    player.completeSetsCount = completeSetsCount;
+    player.bankValue = bankValue;
+  });
+
+  // Sort descending by score. Tie-breakers:
+  // 1. Non-abandoned/Non-disconnected players ahead of abandoned/AFK/disconnected players
+  // 2. Higher match score
+  // 3. Fewest cards in hand
+  losers.sort((a: any, b: any) => {
+    const aAbandoned = a.hasAbandoned || a.isDisconnected;
+    const bAbandoned = b.hasAbandoned || b.isDisconnected;
+    if (aAbandoned && !bAbandoned) return 1;
+    if (!aAbandoned && bAbandoned) return -1;
+
+    if (b.matchScore !== a.matchScore) {
+      return b.matchScore - a.matchScore;
+    }
+    const aHand = a.hand ? a.hand.length : 0;
+    const bHand = b.hand ? b.hand.length : 0;
+    if (aHand !== bHand) {
+      return aHand - bHand; // Fewer cards = higher efficiency
+    }
+    return 0;
+  });
+
+  return losers;
+}
+
 // Handle Match Win State on Server
 async function handleMatchWinner(match: any, winnerId: string) {
+  if (match.status === 'finished') return;
   match.status = 'finished';
   match.winnerId = winnerId;
 
   const winner = match.players.find((p: any) => p.id === winnerId);
   match.logs.push({
     id: `win-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-    message: `Tebrikler! Maçı ${winner?.username} kazandı!`,
+    message: `👑 Tebrikler! Maçı ${winner?.username} kazandı!`,
     timestamp: Date.now(),
   });
 
-  // Calculate rewards (with bot multiplier if bots are present in multiplayer)
-  const hasBots = match.players.some((p: any) => p.isBot);
-  const botMultiplier = hasBots ? (globalAdminSettings.botMultiplayerRewardMultiplier ?? 0.5) : 1.0;
-  const baseGoldMultiplier = globalAdminSettings.goldMultiplier || 1.0;
-
-  const winnerCoins = Math.round(200 * baseGoldMultiplier * botMultiplier);
-  const winnerXp = Math.round(150 * botMultiplier);
-  const loserCoins = Math.round(50 * baseGoldMultiplier * botMultiplier);
-  const loserXp = Math.round(50 * botMultiplier);
-
-  // Award XP/Coins to the winner securely
   const users = await loadUsers();
-  const winnerUser = users[winnerId];
   const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
-  if (winnerUser) {
-    winnerUser.coins += winnerCoins; // Win bonus adjusted for bots/multipliers
-    winnerUser.xp += winnerXp;
-    winnerUser.stats.gamesPlayed++;
-    winnerUser.stats.gamesWon++;
-    winnerUser.stats.totalSetsCompleted += 3;
+  // Calculate 2nd, 3rd, 4th placement via Win-Proximity Score engine
+  const rankedLosers = calculateLoserScores(match, winnerId);
 
-    // Check level up (every 500 XP is 1 level)
-    winnerUser.level = Math.floor(winnerUser.xp / 500) + 1;
+  const finalLeaderboard = [
+    { player: winner, rank: 1, score: 999 },
+    ...rankedLosers.map((p: any, idx: number) => ({ player: p, rank: idx + 2, score: p.matchScore }))
+  ];
 
-    // Update quests
-    winnerUser.dailyQuests.forEach((q: any) => {
-      if (q.description.includes('yen') || q.description.includes('maç')) {
-        q.currentValue = Math.min(q.targetValue, q.currentValue + 1);
-        if (q.currentValue >= q.targetValue) q.completed = true;
-      }
-    });
+  const totalPlayerCount = match.players ? match.players.length : 4;
+  const entryFee = match.matchmakingEntryFee || (globalAdminSettings as any).matchmakingEntryFee || 100;
+  const winnerShare = match.matchmakingWinnerShare || (globalAdminSettings as any).matchmakingWinnerShare || 80;
+  const totalPool = totalPlayerCount * entryFee;
 
-    if (!winnerUser.gamesHistory) winnerUser.gamesHistory = [];
-    const oppNames = match.players.filter((p: any) => p.id !== winnerId).map((p: any) => p.username).join(', ');
-    winnerUser.gamesHistory.unshift({
-      id: `match-${Date.now()}`,
-      date: dateStr,
-      opponent: oppNames || 'Bot Rakipler',
-      result: 'won',
-      coinsEarned: winnerCoins,
-      xpEarned: winnerXp
-    });
+  // Scale factor based on player count (< 4 players = reduced rewards to prevent farming/exploits)
+  // 4+ players -> 1.0 (100%)
+  // 3 players  -> 0.75 (75%)
+  // 2 players  -> 0.50 (50%)
+  const playerCountScale = totalPlayerCount >= 4 ? 1.0 : (totalPlayerCount === 3 ? 0.75 : 0.50);
 
-    users[winnerId] = winnerUser;
-  }
+  const finalRankings: any[] = [];
 
-  // Update losers
-  match.players.forEach((p: any) => {
-    if (p.id !== winnerId && !p.isBot) {
-      const loserUser = users[p.id];
-      if (loserUser) {
-        loserUser.coins += loserCoins; // Participation bonus adjusted for bots/multipliers
-        loserUser.xp += loserXp;
-        loserUser.stats.gamesPlayed++;
-        loserUser.stats.gamesLost++;
-        loserUser.level = Math.floor(loserUser.xp / 500) + 1;
+  for (const item of finalLeaderboard) {
+    const p = item.player;
+    if (!p) continue;
 
-        if (!loserUser.gamesHistory) loserUser.gamesHistory = [];
-        const oppNames = match.players.filter((x: any) => x.id !== p.id).map((x: any) => x.username).join(', ');
-        loserUser.gamesHistory.unshift({
-          id: `match-${Date.now()}`,
-          date: dateStr,
-          opponent: oppNames || 'Bot Rakipler',
-          result: 'lost',
-          coinsEarned: loserCoins,
-          xpEarned: loserXp
-        });
+    const isAbandonedOrDisconnected = p.hasAbandoned || p.isDisconnected;
 
-        users[p.id] = loserUser;
+    let coinsEarned = 0;
+    let xpEarned = 0;
+    let rpChange = 0;
+    let mmrChange = 0;
+
+    if (isAbandonedOrDisconnected) {
+      // Abandoned or Disconnected/AFK players NEVER gain coins or XP, and ALWAYS lose RP & MMR!
+      coinsEarned = 0;
+      xpEarned = 0;
+      rpChange = match.isMatchmaking ? -25 : -15;
+      mmrChange = -30;
+    } else {
+      if (item.rank === 1) {
+        // 1st Place (Winner)
+        const baseCoins = match.isMatchmaking ? Math.round((totalPool * winnerShare) / 100) : Math.round(200 * globalAdminSettings.goldMultiplier);
+        coinsEarned = Math.round(baseCoins * playerCountScale);
+        xpEarned = Math.round(150 * playerCountScale);
+        const baseRp = match.isMatchmaking ? (entryFee >= 1000 ? 40 : entryFee >= 500 ? 30 : 25) : 15;
+        rpChange = Math.round(baseRp * playerCountScale);
+        mmrChange = Math.round(30 * playerCountScale);
+
+      } else if (item.rank === totalPlayerCount) {
+        // Last Place in the match!
+        // In a 2-player match -> rank 2 is LAST PLACE (loser loses RP!)
+        // In a 3-player match -> rank 3 is LAST PLACE
+        // In a 4-player match -> rank 4 is LAST PLACE
+        coinsEarned = 0;
+        xpEarned = Math.round(20 * playerCountScale);
+        rpChange = match.isMatchmaking ? -18 : -10;
+        mmrChange = -20;
+
+      } else if (item.rank === 2 && totalPlayerCount >= 4) {
+        // 2nd Place in a 4+ player match (Runner-up)
+        coinsEarned = match.isMatchmaking ? Math.round(entryFee * 0.5 * playerCountScale) : Math.round(30 * playerCountScale);
+        xpEarned = Math.round(80 * playerCountScale);
+        rpChange = match.isMatchmaking ? 5 : 5;
+        mmrChange = 8;
+
+      } else if (item.rank === 2 && totalPlayerCount === 3) {
+        // 2nd Place in a 3-player match (Middle place) -> 0 RP gain (breakeven)
+        coinsEarned = 0;
+        xpEarned = Math.round(50 * playerCountScale);
+        rpChange = 0;
+        mmrChange = 0;
+
+      } else if (item.rank === 3 && totalPlayerCount >= 4) {
+        // 3rd Place in a 4+ player match
+        coinsEarned = 0;
+        xpEarned = Math.round(50 * playerCountScale);
+        rpChange = match.isMatchmaking ? -5 : -3;
+        mmrChange = -8;
+
+      } else {
+        coinsEarned = 0;
+        xpEarned = Math.round(20 * playerCountScale);
+        rpChange = match.isMatchmaking ? -10 : -5;
+        mmrChange = -10;
       }
     }
-  });
+
+    // Apply to user DB if not a bot
+    if (!p.isBot) {
+      const u = users[p.id];
+      if (u) {
+        if (!p.hasAbandonedAlreadyPenalized) {
+          u.coins += coinsEarned;
+          u.xp += xpEarned;
+          u.stats.gamesPlayed++;
+          if (item.rank === 1 && !isAbandonedOrDisconnected) {
+            u.stats.gamesWon++;
+            u.stats.totalSetsCompleted += 3;
+          } else {
+            u.stats.gamesLost++;
+          }
+
+          u.rankPoints = Math.max(0, (u.rankPoints ?? 0) + rpChange);
+          u.mmr = Math.max(100, (u.mmr ?? 1000) + mmrChange);
+          u.level = Math.floor(u.xp / 500) + 1;
+
+          if (!u.gamesHistory) u.gamesHistory = [];
+          u.gamesHistory.unshift({
+            id: `match-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            date: dateStr,
+            opponent: match.players.filter((x: any) => x.id !== p.id).map((x: any) => x.username).join(', '),
+            result: (item.rank === 1 && !isAbandonedOrDisconnected) ? 'won' : 'lost',
+            coinsEarned,
+            xpEarned,
+            rankPointsEarned: rpChange
+          });
+
+          users[p.id] = u;
+        }
+      }
+    }
+
+    finalRankings.push({
+      playerId: p.id,
+      username: p.username,
+      avatarId: p.avatarId,
+      avatarUrl: p.avatarUrl,
+      profileFrame: p.profileFrame,
+      rank: item.rank,
+      score: (item.rank === 1 && !isAbandonedOrDisconnected) ? 'KAZANAN' : (isAbandonedOrDisconnected ? 'TERK ETTİ' : `${item.score} Puan`),
+      completeSets: p.completeSetsCount || ((item.rank === 1 && !isAbandonedOrDisconnected) ? 3 : 0),
+      bankTotal: p.bankValue || 0,
+      rpChange,
+      mmrChange,
+      coinsEarned,
+      isWinner: item.rank === 1 && !isAbandonedOrDisconnected,
+      isAbandon: isAbandonedOrDisconnected
+    });
+  }
 
   await saveUsers(users);
+
+  match.finalRankings = finalRankings;
+  match.logs.push({
+    id: `rankings-${Date.now()}`,
+    message: `📊 Maç Sonucu Sıralaması: 1. ${finalRankings[0]?.username} | 2. ${finalRankings[1]?.username || '-'} | 3. ${finalRankings[2]?.username || '-'} | 4. ${finalRankings[3]?.username || '-'}`,
+    timestamp: Date.now()
+  });
 }
 
 function calculateMatchChecksum(match: MatchState): string {

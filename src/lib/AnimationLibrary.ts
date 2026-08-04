@@ -139,6 +139,7 @@ export const BOARD_REACTION_VARIANTS: Variants = {
   idle: {
     boxShadow: '0 0 0px rgba(0,0,0,0)',
     borderColor: 'rgba(255, 255, 255, 0.05)',
+    scale: 1,
   },
   money_gain: {
     boxShadow: [

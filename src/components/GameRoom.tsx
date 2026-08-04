@@ -7,10 +7,13 @@ import { GameCard, TURKISH_NAMES } from './GameCard';
 import { motion, AnimatePresence } from 'motion/react';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { t } from '../lib/TranslationSystem';
-import { WS_BASE_URL } from '../lib/apiConfig';
+import { WS_BASE_URL, API_BASE_URL } from '../lib/apiConfig';
 import { PLAYER_BOARD_STYLES } from './ShopDialog';
 import { SPRING_PRESETS, CARD_VARIANTS, BOARD_REACTION_VARIANTS, ActionVFX } from '../lib/AnimationLibrary';
 import { findShopItem, loadShopItems, subscribeShopItems } from '../lib/shopItemsStore';
+import { useCompactLayout } from '../hooks/useCompactLayout';
+import { getCountryByCode } from '../lib/countryData';
+import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
 
 interface Props {
   roomId: string;
@@ -432,36 +435,103 @@ const countCompletedSets = (properties: any): number => {
   return count;
 };
 
-const renderCardColorIndicator = (card: Card, fallbackColor: CardColor) => {
-  const isMultiColorWildcard = card.isWildcard && (!card.secondaryColor || (card.secondaryColor as string) === 'any');
-  if (card.isWildcard) {
-    if (isMultiColorWildcard) {
-      return (
-        <span 
-          className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20" 
-          style={{ background: 'linear-gradient(135deg, #ef4444 0%, #f97316 20%, #eab308 40%, #22c55e 60%, #3b82f6 80%, #a855f7 100%)' }}
-          title="Çok Renkli Joker 🌈"
-        />
-      );
-    } else {
-      const c1 = card.color || fallbackColor;
-      const c2 = card.secondaryColor || fallbackColor;
-      return (
-        <span 
-          className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20" 
-          style={{ background: `linear-gradient(135deg, ${COLOR_HEX[c1]} 50%, ${COLOR_HEX[c2]} 50%)` }}
-          title="Çift Renk Joker 🌓"
-        />
-      );
-    }
+const isCardMultiColorWildcard = (card: Card): boolean => {
+  if (!card) return false;
+  const isWild = card.isWildcard || card.type === 'wildcard';
+  if (!isWild) return false;
+  if (card.allowedColors && card.allowedColors.length > 2) return true;
+  if (!card.secondaryColor || (card.secondaryColor as string) === 'any') {
+    if (!card.allowedColors || card.allowedColors.length > 2) return true;
   }
-  // Normal single color
+  return false;
+};
+
+const isWildcardOrDualColorCard = (card: Card): boolean => {
+  if (!card) return false;
+  if (card.isWildcard || card.type === 'wildcard') return true;
+  if (card.secondaryColor && (card.secondaryColor as string) !== 'any') return true;
+  if (card.allowedColors && card.allowedColors.length > 1) return true;
+  return false;
+};
+
+const getCardDualColors = (card: Card, fallbackColor?: CardColor): [CardColor, CardColor] | null => {
+  if (!card) return null;
+  const isWild = card.isWildcard || card.type === 'wildcard';
+  if (card.allowedColors && card.allowedColors.length === 2) {
+    return [card.allowedColors[0], card.allowedColors[1]];
+  }
+  if (card.secondaryColor && (card.secondaryColor as string) !== 'any') {
+    const c1 = card.color || fallbackColor || 'brown';
+    const c2 = card.secondaryColor;
+    if (c1 !== c2) return [c1, c2];
+    if (card.allowedColors && card.allowedColors.length >= 2) {
+      const other = card.allowedColors.find(ac => ac !== c1);
+      if (other) return [c1, other];
+    }
+    return [c1, c2];
+  }
+  if (isWild && card.color && fallbackColor && card.color !== fallbackColor) {
+    return [card.color, fallbackColor];
+  }
+  return null;
+};
+
+const renderCardColorIndicator = (card: Card, fallbackColor: CardColor) => {
+  if (!card) {
+    return (
+      <span 
+        className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20 shadow-sm" 
+        style={{ backgroundColor: COLOR_HEX[fallbackColor || 'brown'] }} 
+      />
+    );
+  }
+  if (isCardMultiColorWildcard(card)) {
+    return (
+      <span 
+        className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20 shadow-sm" 
+        style={{ background: 'linear-gradient(135deg, #ef4444 0%, #f97316 20%, #eab308 40%, #22c55e 60%, #3b82f6 80%, #a855f7 100%)' }}
+        title="Çok Renkli Joker 🌈"
+      />
+    );
+  }
+  const dual = getCardDualColors(card, fallbackColor);
+  if (dual) {
+    const [c1, c2] = dual;
+    return (
+      <span 
+        className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20 shadow-sm" 
+        style={{ background: `linear-gradient(135deg, ${COLOR_HEX[c1]} 50%, ${COLOR_HEX[c2]} 50%)` }}
+        title="Çift Renk Joker 🌓"
+      />
+    );
+  }
   return (
     <span 
-      className="w-2.5 h-2.5 rounded-full shrink-0" 
-      style={{ backgroundColor: COLOR_HEX[card.color || fallbackColor] }} 
+      className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20 shadow-sm" 
+      style={{ backgroundColor: COLOR_HEX[card.color || fallbackColor || 'brown'] }} 
     />
   );
+};
+
+const getCardHeaderStyle = (card: Card, fallbackColor: CardColor): React.CSSProperties => {
+  if (!card) {
+    return { backgroundColor: COLOR_HEX[fallbackColor || 'brown'] };
+  }
+  if (isCardMultiColorWildcard(card)) {
+    return {
+      background: 'linear-gradient(135deg, #ef4444 0%, #f97316 20%, #eab308 40%, #22c55e 60%, #3b82f6 80%, #a855f7 100%)'
+    };
+  }
+  const dual = getCardDualColors(card, fallbackColor);
+  if (dual) {
+    const [c1, c2] = dual;
+    return {
+      background: `linear-gradient(135deg, ${COLOR_HEX[c1]} 50%, ${COLOR_HEX[c2]} 50%)`
+    };
+  }
+  return {
+    backgroundColor: COLOR_HEX[card.color || fallbackColor || 'brown']
+  };
 };
 
 const getCardSetExtraBadges = (card: Card, owner: GamePlayer) => {
@@ -534,7 +604,7 @@ const StolenCardTapticFeedback: React.FC<StolenCardFeedbackProps> = ({ x, y }) =
 const CanvasBackground: React.FC<{ theme: string }> = ({ theme }) => {
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const themeItem = findShopItem(theme);
-  const isVideo = themeItem?.mediaUrl && (themeItem.mediaType === 'video' || themeItem.mediaUrl.endsWith('.mp4') || themeItem.mediaUrl.endsWith('.webm') || themeItem.mediaUrl.includes('video') || themeItem.mediaUrl.startsWith('data:video'));
+  const isVideo = themeItem?.mediaUrl && isVideoUrl(themeItem.mediaUrl, themeItem.mediaType);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -805,12 +875,8 @@ const CanvasBackground: React.FC<{ theme: string }> = ({ theme }) => {
     <div className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-slate-950">
       {themeItem?.mediaUrl && (
         isVideo ? (
-          <video
+          <HlsVideoPlayer
             src={themeItem.mediaUrl}
-            autoPlay
-            loop
-            muted
-            playsInline
             style={{
               opacity: overlayOpacity,
               mixBlendMode: overlayMode as any
@@ -1103,11 +1169,17 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     prevDeckCountRef.current = match.deckCount;
   }, [match?.deckCount]);
 
+  const propertyGlowTimeoutsRef = React.useRef<Record<string, NodeJS.Timeout>>({});
+
   const triggerPropertyGlow = React.useCallback((color: CardColor, playerId: string) => {
     const key = `${color}-${playerId}`;
+    if (propertyGlowTimeoutsRef.current[key]) {
+      clearTimeout(propertyGlowTimeoutsRef.current[key]);
+    }
     setGlowingProperties((prev) => ({ ...prev, [key]: true }));
-    setTimeout(() => {
+    propertyGlowTimeoutsRef.current[key] = setTimeout(() => {
       setGlowingProperties((prev) => ({ ...prev, [key]: false }));
+      delete propertyGlowTimeoutsRef.current[key];
     }, 2200);
   }, []);
 
@@ -1790,14 +1862,74 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   const [selectedStolenColor, setSelectedStolenColor] = React.useState<CardColor | null>(null);
   const [selectedMyCardId, setSelectedMyCardId] = React.useState<string | null>(null);
 
+  // Tracking target selection stage for action cards
+  const [actionSelectionState, setActionSelectionState] = React.useState<'idle' | 'selecting_opponent' | 'selecting_asset' | 'completed'>('idle');
+
   React.useEffect(() => {
     if (!activeActionCard) {
       setSelectedOpponentId(null);
       setSelectedStolenCardId(null);
       setSelectedStolenColor(null);
       setSelectedMyCardId(null);
+      setActionSelectionState('idle');
+    } else {
+      if (!selectedOpponentId) {
+        setActionSelectionState('selecting_opponent');
+      } else {
+        const type = activeActionCard.actionType;
+        const needsAsset = ['sly-deal', 'deal-breaker', 'forced-deal'].includes(type || '');
+        if (needsAsset) {
+          if (type === 'forced-deal') {
+            if (!selectedStolenCardId || !selectedMyCardId) {
+              setActionSelectionState('selecting_asset');
+            } else {
+              setActionSelectionState('completed');
+            }
+          } else if (type === 'sly-deal') {
+            if (!selectedStolenCardId) {
+              setActionSelectionState('selecting_asset');
+            } else {
+              setActionSelectionState('completed');
+            }
+          } else if (type === 'deal-breaker') {
+            if (!selectedStolenColor) {
+              setActionSelectionState('selecting_asset');
+            } else {
+              setActionSelectionState('completed');
+            }
+          } else {
+            setActionSelectionState('selecting_asset');
+          }
+        } else {
+          setActionSelectionState('completed');
+        }
+      }
     }
-  }, [activeActionCard]);
+  }, [activeActionCard, selectedOpponentId, selectedStolenCardId, selectedStolenColor, selectedMyCardId]);
+
+  // Helper to check if selection is complete for a given card and payload
+  const isActionSelectionComplete = (card: Card, payload?: any): boolean => {
+    if (!card) return false;
+    const type = card.actionType;
+    if (!type) return true;
+
+    if (type === 'debt-collector') {
+      return !!payload?.targetPlayerId;
+    }
+    if (type === 'sly-deal') {
+      return !!payload?.targetPlayerId && !!payload?.targetCardId;
+    }
+    if (type === 'deal-breaker') {
+      return !!payload?.targetPlayerId && !!payload?.targetColor;
+    }
+    if (type === 'forced-deal') {
+      return !!payload?.targetPlayerId && !!payload?.targetCardId && !!payload?.myCardId;
+    }
+    return true;
+  };
+
+  const hasActiveRequest = !!match?.activeActionRequest || (!!match?.activeActionRequests && match.activeActionRequests.length > 0);
+  const isActionLocked = hasActiveRequest || !!activeActionCard;
   const [hoveredCard, setHoveredCard] = React.useState<Card | null>(null);
   const [mousePos, setMousePos] = React.useState({ x: 0, y: 0 });
   const [useDoubleRent, setUseDoubleRent] = React.useState(false);
@@ -1867,26 +1999,17 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   };
 
   // Layout & Adaptive Mobile States
+  const handScrollRef = React.useRef<HTMLDivElement>(null);
   const [isHandExpanded, setIsHandExpanded] = React.useState(true);
   const [showChatPanel, setShowChatPanel] = React.useState(true);
   const [showChatOverlay, setShowChatOverlay] = React.useState(false);
-  const [isCompactLayout, setIsCompactLayout] = React.useState(() => {
-    if (typeof window === 'undefined') return true;
-    return window.innerWidth < 768 || window.innerHeight < 750;
-  });
-
-  React.useEffect(() => {
-    const handleResize = () => {
-      setIsCompactLayout(window.innerWidth < 768 || window.innerHeight < 750);
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  const { isCompactLayout, setIsCompactLayout, toggleCompactLayout, getDynamicSetDimensions } = useCompactLayout();
   const [timeLeft, setTimeLeft] = React.useState(30);
   const [actionTimeLeft, setActionTimeLeft] = React.useState<number | null>(null);
   const [managedSetColor, setManagedSetColor] = React.useState<CardColor | null>(null);
   const [expandedPropertyColor, setExpandedPropertyColor] = React.useState<CardColor | null>(null);
   const [isOpponentsGrid, setIsOpponentsGrid] = React.useState(false);
+  const [hideOwnBoard, setHideOwnBoard] = React.useState(false);
   const [showDiscardModal, setShowDiscardModal] = React.useState(false);
 
   React.useEffect(() => {
@@ -1979,6 +2102,9 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   };
 
   // Mobile Touch Drag and Drop states
+  const wasTouchMovedRef = React.useRef(false);
+  const touchAnimFrameRef = React.useRef<number | null>(null);
+  const touchPosRef = React.useRef<{ x: number; y: number } | null>(null);
   const [touchDragCard, setTouchDragCard] = React.useState<Card | null>(null);
   const [touchPosition, setTouchPosition] = React.useState<{ x: number; y: number } | null>(null);
   const [touchStartPos, setTouchStartPos] = React.useState<{ x: number; y: number } | null>(null);
@@ -1986,27 +2112,47 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
   const handleTouchStart = (e: React.TouchEvent, card: Card) => {
     if (!isMyTurn) return;
-    e.stopPropagation();
+    wasTouchMovedRef.current = false;
     const touch = e.touches[0];
-    setTouchStartPos({ x: touch.clientX, y: touch.clientY });
+    const initialPos = { x: touch.clientX, y: touch.clientY };
+    touchPosRef.current = initialPos;
+    setTouchStartPos(initialPos);
     setTouchDragCard(card);
-    setTouchPosition({ x: touch.clientX, y: touch.clientY });
+    setTouchPosition(initialPos);
     setIsTouchDragging(false);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (!touchDragCard || !touchStartPos) return;
     const touch = e.touches[0];
-    const deltaX = touch.clientX - touchStartPos.x;
-    const deltaY = touch.clientY - touchStartPos.y;
+    const clientX = touch.clientX;
+    const clientY = touch.clientY;
+    const deltaX = clientX - touchStartPos.x;
+    const deltaY = clientY - touchStartPos.y;
     const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-    if (distance > 10) {
+    if (distance > 8) {
+      wasTouchMovedRef.current = true;
+
+      // Allow native container scrolling if gesture is predominantly horizontal
+      if (!isTouchDragging && Math.abs(deltaX) > Math.abs(deltaY) * 1.1) {
+        return;
+      }
+
       if (!isTouchDragging) {
         setIsTouchDragging(true);
         setDraggingCard(touchDragCard); // Sync with desktop draggingCard so drop zones highlight
       }
-      setTouchPosition({ x: touch.clientX, y: touch.clientY });
+
+      touchPosRef.current = { x: clientX, y: clientY };
+      if (!touchAnimFrameRef.current) {
+        touchAnimFrameRef.current = requestAnimationFrame(() => {
+          touchAnimFrameRef.current = null;
+          if (touchPosRef.current) {
+            setTouchPosition(touchPosRef.current);
+          }
+        });
+      }
 
       // Highlight drop zones in real-time when dragging on mobile!
       const bankEl = document.getElementById('bank-drop-zone');
@@ -2015,38 +2161,51 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
       if (bankEl) {
         const rect = bankEl.getBoundingClientRect();
-        if (
-          touch.clientX >= rect.left - padding &&
-          touch.clientX <= rect.right + padding &&
-          touch.clientY >= rect.top - padding &&
-          touch.clientY <= rect.bottom + padding
-        ) {
-          setIsDragOverBank(true);
-        } else {
-          setIsDragOverBank(false);
-        }
+        const overBank = (
+          clientX >= rect.left - padding &&
+          clientX <= rect.right + padding &&
+          clientY >= rect.top - padding &&
+          clientY <= rect.bottom + padding
+        );
+        setIsDragOverBank((prev) => (prev !== overBank ? overBank : prev));
       }
 
       if (propertiesEl) {
         const rect = propertiesEl.getBoundingClientRect();
-        if (
-          touch.clientX >= rect.left - padding &&
-          touch.clientX <= rect.right + padding &&
-          touch.clientY >= rect.top - padding &&
-          touch.clientY <= rect.bottom + padding
-        ) {
-          setIsDragOverProperties(true);
-        } else {
-          setIsDragOverProperties(false);
-        }
+        const overProperties = (
+          clientX >= rect.left - padding &&
+          clientX <= rect.right + padding &&
+          clientY >= rect.top - padding &&
+          clientY <= rect.bottom + padding
+        );
+        setIsDragOverProperties((prev) => (prev !== overProperties ? overProperties : prev));
       }
     }
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchAnimFrameRef.current) {
+      cancelAnimationFrame(touchAnimFrameRef.current);
+      touchAnimFrameRef.current = null;
+    }
+
     if (!touchDragCard) return;
 
-    if (isTouchDragging && touchPosition) {
+    if (isActionLocked) {
+      playAlertSound();
+      alert("Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!");
+      setTouchDragCard(null);
+      setTouchPosition(null);
+      setTouchStartPos(null);
+      setIsTouchDragging(false);
+      setDraggingCard(null);
+      touchPosRef.current = null;
+      return;
+    }
+
+    const finalTouchPos = touchPosRef.current || touchPosition;
+
+    if (isTouchDragging && finalTouchPos) {
       const bankEl = document.getElementById('bank-drop-zone');
       const propertiesEl = document.getElementById('properties-drop-zone');
 
@@ -2057,10 +2216,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       if (bankEl) {
         const rect = bankEl.getBoundingClientRect();
         if (
-          touchPosition.x >= rect.left - padding &&
-          touchPosition.x <= rect.right + padding &&
-          touchPosition.y >= rect.top - padding &&
-          touchPosition.y <= rect.bottom + padding
+          finalTouchPos.x >= rect.left - padding &&
+          finalTouchPos.x <= rect.right + padding &&
+          finalTouchPos.y >= rect.top - padding &&
+          finalTouchPos.y <= rect.bottom + padding
         ) {
           droppedOnBank = true;
         }
@@ -2069,10 +2228,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       if (propertiesEl) {
         const rect = propertiesEl.getBoundingClientRect();
         if (
-          touchPosition.x >= rect.left - padding &&
-          touchPosition.x <= rect.right + padding &&
-          touchPosition.y >= rect.top - padding &&
-          touchPosition.y <= rect.bottom + padding
+          finalTouchPos.x >= rect.left - padding &&
+          finalTouchPos.x <= rect.right + padding &&
+          finalTouchPos.y >= rect.top - padding &&
+          finalTouchPos.y <= rect.bottom + padding
         ) {
           droppedOnProperties = true;
         }
@@ -2136,16 +2295,19 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         }
       }
     } else {
-      // Treat as click / selection
-      setSelectedCard(touchDragCard);
-      setShowCardMenu(true);
-      playPlaySound();
+      // Treat as click / selection only if finger was not moved/swiped
+      if (!wasTouchMovedRef.current) {
+        setSelectedCard(touchDragCard);
+        setShowCardMenu(true);
+        playPlaySound();
+      }
     }
 
     // Clear touch drag states
     setTouchDragCard(null);
     setTouchPosition(null);
     setTouchStartPos(null);
+    touchPosRef.current = null;
     setIsTouchDragging(false);
     setDraggingCard(null);
     setIsDragOverBank(false);
@@ -3011,12 +3173,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     });
   }, [match?.logs?.length, match?.players]);
 
-  // Clear payment selection when active action request changes
-  React.useEffect(() => {
-    setPaymentSelection([]);
-  }, [match?.activeActionRequest?.id]);
-
   const socketRef = React.useRef<WebSocket | null>(null);
+  const [wsConnected, setWsConnected] = React.useState<boolean>(true);
+  const [isReconnecting, setIsReconnecting] = React.useState<boolean>(false);
+  const [reconnectCount, setReconnectCount] = React.useState<number>(0);
+  const [reconnectTrigger, setReconnectTrigger] = React.useState<number>(0);
+  const reconnectTimerRef = React.useRef<any>(null);
+  const isIntentionallyClosedRef = React.useRef<boolean>(false);
 
   // --- AUDIO SYNTHESIS INTEGRATION ---
   const lastPlaySoundTimeRef = React.useRef<number>(0);
@@ -3151,9 +3314,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     try {
       const audio = new Audio(`/assets/sounds/voices/${lang}/${filename}`);
       audio.volume = (profile.settings.soundVolume || 50) / 100;
-      audio.play().catch((err) => console.log('Voiceover play deferred or blocked:', err));
+      audio.onerror = () => {};
+      audio.play().catch(() => {});
     } catch (e) {
-      console.error('Error playing voiceover:', e);
+      // Ignore audio load errors
     }
   };
 
@@ -3165,9 +3329,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     try {
       const audio = new Audio(`/assets/sounds/voices/${lang}/${filename}`);
       audio.volume = (profile.settings.soundVolume || 50) / 100;
-      audio.play().catch((err) => console.log('Custom voiceover play deferred or blocked:', err));
+      audio.onerror = () => {};
+      audio.play().catch(() => {});
     } catch (e) {
-      console.error('Error playing custom voiceover:', e);
+      // Ignore audio load errors
     }
   };
   const playActionSound = (card?: Card) => {
@@ -3216,12 +3381,16 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     return () => {
       sounds.stopMusic();
     };
-  }, [isMusicPlaying, profile.settings.soundVolume]);
+  }, [isMusicPlaying, profile.settings.soundVolume, profile.settings.gameMusic, profile.settings.customBgmUrl]);
 
   // Initialize Offline Practice Match or Connect WebSocket
   React.useEffect(() => {
     loadShopItems();
     if (isOffline) {
+      const isTournament = roomId.startsWith('tournament:');
+      const tParts = isTournament ? roomId.split(':') : [];
+      const tOpponent = tParts[3] || 'Bot Can';
+
       // Setup Offline State
       const initialMatch: MatchState = {
         roomId,
@@ -3244,7 +3413,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           },
           {
             id: 'bot-1',
-            username: 'Bot Can (Yapay Zeka)',
+            username: isTournament ? `${tOpponent}` : 'Bot Can (Yapay Zeka)',
             avatarId: 'avatar_skater',
             profileFrame: 'frame_neon',
             playerBoard: 'board_cyber',
@@ -3262,22 +3431,53 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         turnIndex: 0,
         actionsPlayedThisTurn: 0,
         logs: [
-          { id: 'log-1', message: 'Çevrimdışı Pratik Odası Kuruldu. Bot Can maça hazır!', timestamp: Date.now() },
+          {
+            id: 'log-1',
+            message: isTournament
+              ? `🏆 TURNUVA MAÇI BAŞLADI: ${tOpponent}'a karşı mücadele ediyorsunuz!`
+              : 'Çevrimdışı Pratik Odası Kuruldu. Bot Can maça hazır!',
+            timestamp: Date.now(),
+          },
         ],
         isOffline: true,
       };
       setMatch(initialMatch);
     } else {
       // Connect WebSocket
+      isIntentionallyClosedRef.current = false;
       const wsUrl = WS_BASE_URL;
       const ws = new WebSocket(wsUrl);
       socketRef.current = ws;
 
       ws.onopen = () => {
+        setWsConnected(true);
+        setIsReconnecting(false);
+        setReconnectCount(0);
         // Register client
         ws.send(JSON.stringify({ type: 'register', userId: profile.id }));
         // Join room
         ws.send(JSON.stringify({ type: 'join_room', userId: profile.id, roomId, password: roomPassword }));
+      };
+
+      ws.onclose = (event) => {
+        if (isIntentionallyClosedRef.current) return;
+        setWsConnected(false);
+        setIsReconnecting(true);
+
+        const delay = Math.min(1000 * Math.pow(1.5, reconnectCount), 8000);
+        setReconnectCount((c) => c + 1);
+
+        console.log(`[Smart-Reconnect] Connection lost. Reconnecting in ${Math.round(delay)}ms... (Attempt ${reconnectCount + 1})`);
+
+        if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = setTimeout(() => {
+          setReconnectTrigger((p) => p + 1);
+        }, delay);
+      };
+
+      ws.onerror = (err) => {
+        console.error('[Smart-Reconnect] WebSocket error:', err);
+        setWsConnected(false);
       };
 
       ws.onmessage = (event) => {
@@ -3375,9 +3575,11 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             setSpeakingList(speaking);
           } else if (data.type === 'kicked') {
             alert('Lobiden Atıldınız!');
+            isIntentionallyClosedRef.current = true;
             onLeaveRoom();
           } else if (data.type === 'join_failed') {
             alert(data.error || 'Odaya katılım başarısız oldu!');
+            isIntentionallyClosedRef.current = true;
             onLeaveRoom();
           } else if (data.type === 'alert') {
             alert(data.message);
@@ -3388,10 +3590,48 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       };
 
       return () => {
+        ws.onopen = null;
+        ws.onclose = null;
+        ws.onerror = null;
+        ws.onmessage = null;
         ws.close();
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+        }
       };
     }
-  }, [roomId, isOffline]);
+  }, [roomId, isOffline, reconnectTrigger]);
+
+  // Listen for online status and tab visibility to trigger instant reconnect
+  React.useEffect(() => {
+    if (isOffline) return;
+
+    const handleInstantReconnect = () => {
+      if (socketRef.current?.readyState !== WebSocket.OPEN && !isIntentionallyClosedRef.current) {
+        console.log('[Smart-Reconnect] Triggering instant reconnection due to network change or page focus.');
+        setWsConnected(false);
+        setIsReconnecting(true);
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+        }
+        setReconnectTrigger((p) => p + 1);
+      }
+    };
+
+    window.addEventListener('online', handleInstantReconnect);
+    
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleInstantReconnect();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('online', handleInstantReconnect);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [isOffline]);
 
   // Simulated speaking wave generator for Voice Chat
   React.useEffect(() => {
@@ -3422,6 +3662,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   }, [voiceMuted]);
 
   const handleLeaveLobby = () => {
+    isIntentionallyClosedRef.current = true;
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+    }
     if (!isOffline) {
       socketRef.current?.send(JSON.stringify({ type: 'leave_room', userId: profile.id, roomId }));
     }
@@ -3702,6 +3946,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     if (!match) return;
     triggerTapticFeedback();
 
+    if (isActionLocked && cardId !== activeActionCard?.id) {
+      playAlertSound();
+      alert("Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!");
+      return;
+    }
+
     let actionsCost = 1;
     if (zone === 'action' && payload?.isDoubleRent) {
       actionsCost = 2;
@@ -3718,6 +3968,18 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     if (cardIdx === -1) return;
 
     const card = activePlayer.hand[cardIdx];
+
+    if (zone === 'action' && ['sly-deal', 'deal-breaker', 'forced-deal', 'debt-collector'].includes(card.actionType || '')) {
+      if (!isActionSelectionComplete(card, payload)) {
+        setActiveActionCard(card);
+        if (payload?.targetPlayerId) setSelectedOpponentId(payload.targetPlayerId);
+        if (payload?.targetCardId) setSelectedStolenCardId(payload.targetCardId);
+        if (payload?.targetColor) setSelectedStolenColor(payload.targetColor);
+        if (payload?.myCardId) setSelectedMyCardId(payload.myCardId);
+        return;
+      }
+    }
+
     const updatedPlayers = [...match.players];
     const updatedPlayer = { ...activePlayer };
     updatedPlayers[match.turnIndex] = updatedPlayer;
@@ -4190,13 +4452,19 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       const allowPracticeRewards = isOffline ? (adminSettings?.botPracticeRewardsEnabled === true) : true;
 
       if (allowPracticeRewards) {
+        const totalOfflinePlayers = updatedPlayers.length || 4;
+        const playerCountScale = totalOfflinePlayers >= 4 ? 1.0 : (totalOfflinePlayers === 3 ? 0.75 : 0.50);
+
         // Award XP/Coins to the profile if the local player won
         if (offlineWinnerId === profile.id) {
           sounds.playCelebration(profile.settings.celebrationSound, profile.settings);
+          const coinsEarned = Math.round(150 * (adminSettings?.goldMultiplier || 1.0) * playerCountScale);
+          const xpEarned = Math.round(100 * playerCountScale);
+
           const updatedProfile = {
             ...profile,
-            coins: profile.coins + Math.round(150 * (adminSettings?.goldMultiplier || 1.0)),
-            xp: profile.xp + 100,
+            coins: profile.coins + coinsEarned,
+            xp: profile.xp + xpEarned,
           };
           updatedProfile.stats.gamesPlayed++;
           updatedProfile.stats.gamesWon++;
@@ -4216,18 +4484,22 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             date: dateStr,
             opponent: updatedPlayers.filter((p) => p.id !== profile.id).map((p) => p.username).join(', '),
             result: 'won',
-            xpEarned: 100,
-            coinsEarned: Math.round(150 * (adminSettings?.goldMultiplier || 1.0))
+            xpEarned,
+            coinsEarned
           });
 
           onUpdateProfile(updatedProfile);
         } else {
           // Local player lost
           sounds.playDefeat(profile.settings);
+          // In 2-player mode, loser gets 0 coins
+          const coinsEarned = totalOfflinePlayers <= 2 ? 0 : Math.round(30 * (adminSettings?.goldMultiplier || 1.0) * playerCountScale);
+          const xpEarned = Math.round(20 * playerCountScale);
+
           const updatedProfile = {
             ...profile,
-            coins: profile.coins + Math.round(30 * (adminSettings?.goldMultiplier || 1.0)),
-            xp: profile.xp + 30,
+            coins: profile.coins + coinsEarned,
+            xp: profile.xp + xpEarned,
           };
           updatedProfile.stats.gamesPlayed++;
           updatedProfile.stats.gamesLost++;
@@ -4239,8 +4511,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             date: dateStr,
             opponent: updatedPlayers.filter((p) => p.id !== profile.id).map((p) => p.username).join(', '),
             result: 'lost',
-            xpEarned: 30,
-            coinsEarned: Math.round(30 * (adminSettings?.goldMultiplier || 1.0))
+            xpEarned,
+            coinsEarned
           });
           onUpdateProfile(updatedProfile);
         }
@@ -4383,6 +4655,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
   const handleOfflineEndTurn = () => {
     if (!match) return;
+
+    if (isActionLocked) {
+      playAlertSound();
+      alert("Aktif bir ödeme veya hamle talebi varken turunuzu sonlandıramazsınız!");
+      return;
+    }
 
     const player = match.players[match.turnIndex];
     if (player.hand.length > 7) {
@@ -5007,6 +5285,27 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       ],
     });
 
+    // Check if this is a tournament match
+    if (roomId.startsWith('tournament:')) {
+      const parts = roomId.split(':');
+      const tId = parts[1];
+      const mId = parts[2];
+      const oppName = parts[3] || 'Bot Can';
+      const winnerName = winnerId === profile.id ? profile.username : oppName;
+
+      fetch(`${API_BASE_URL}/api/tournaments/match/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tournamentId: tId,
+          matchId: mId,
+          winnerName,
+          score1: winnerId === profile.id ? 3 : 1,
+          score2: winnerId === profile.id ? 1 : 3,
+        }),
+      }).catch(console.error);
+    }
+
     const allowPracticeRewards = isOffline ? (adminSettings?.botPracticeRewardsEnabled === true) : true;
 
     if (allowPracticeRewards) {
@@ -5166,7 +5465,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     if (!match) return;
     triggerTapticFeedback();
 
-    if (match.activeActionRequest) {
+    if (isActionLocked && cardId !== activeActionCard?.id) {
       playAlertSound();
       alert("Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!");
       return;
@@ -5183,6 +5482,22 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       return;
     }
 
+    const activePlayer = match.players.find(p => p.id === profile.id);
+    if (!activePlayer) return;
+    const card = activePlayer.hand.find((c) => c.id === cardId);
+    if (!card) return;
+
+    if (zone === 'action' && ['sly-deal', 'deal-breaker', 'forced-deal', 'debt-collector'].includes(card.actionType || '')) {
+      if (!isActionSelectionComplete(card, payload)) {
+        setActiveActionCard(card);
+        if (payload?.targetPlayerId) setSelectedOpponentId(payload.targetPlayerId);
+        if (payload?.targetCardId) setSelectedStolenCardId(payload.targetCardId);
+        if (payload?.targetColor) setSelectedStolenColor(payload.targetColor);
+        if (payload?.myCardId) setSelectedMyCardId(payload.myCardId);
+        return;
+      }
+    }
+
     socketRef.current?.send(
       JSON.stringify({ type: 'play_card', userId: profile.id, roomId, cardId, targetZone: zone, extraColor, ...payload })
     );
@@ -5197,7 +5512,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   };
 
   const handleEndTurnMultiplayer = () => {
-    if (match?.activeActionRequest) {
+    if (isActionLocked) {
       playAlertSound();
       alert("Aktif bir ödeme veya hamle talebi varken turunuzu sonlandıramazsınız!");
       return;
@@ -5562,7 +5877,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           delete updatedMatch.activeActionRequest;
           updateMatchState(updatedMatch);
         } else {
-          if (activeReq.originalAction) {
+          if (activeReq.amountDue > 0) {
+            // Payment request: change back to normal payment so target player pays
+            activeReq.jsnCount = 0;
+            activeReq.type = 'make-payment';
+            updateMatchState({ ...activeMatch });
+          } else if (activeReq.originalAction) {
             executeOriginalActionOffline(activeReq, paymentSelection);
 
             setRecoveryAlert({
@@ -5574,11 +5894,6 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             const updatedMatch = { ...activeMatch };
             delete updatedMatch.activeActionRequest;
             updateMatchState(updatedMatch);
-          } else if (activeReq.amountDue > 0) {
-            // Payment request: change back to normal payment so target player pays
-            activeReq.jsnCount = 0;
-            activeReq.type = 'make-payment';
-            updateMatchState({ ...activeMatch });
           } else {
             const updatedMatch = { ...activeMatch };
             delete updatedMatch.activeActionRequest;
@@ -5632,6 +5947,128 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     return null;
   }, [match?.activeActionRequests, match?.activeActionRequest, profile.id]);
 
+  const calculateOptimalPaymentSelection = (due: number) => {
+    if (!match) return [];
+    const localPlayer = match.players.find((p) => p.id === profile.id) || match.players[0];
+    if (!localPlayer) return [];
+    const bankCards = localPlayer.bank.map((c) => ({ id: c.id, value: c.value, isProperty: false, isCompletedSet: false }));
+    const propertyCards: { id: string; value: number; isProperty: boolean; isCompletedSet: boolean }[] = [];
+    Object.keys(localPlayer.properties).forEach((colorKey) => {
+      const col = colorKey as CardColor;
+      const set = localPlayer.properties[col];
+      if (set) {
+        const isCompleted = set.cards.length >= MAX_IN_SET[col];
+        set.cards.forEach((c) => {
+          propertyCards.push({ id: c.id, value: c.value, isProperty: true, isCompletedSet: isCompleted });
+        });
+      }
+    });
+
+    const cards = [...bankCards, ...propertyCards];
+    const totalValue = cards.reduce((sum, c) => sum + c.value, 0);
+    if (totalValue <= due) {
+      return cards.map((c) => c.id);
+    }
+
+    // Solve for best subset
+    let bestSubset: typeof cards | null = null;
+    let bestValue = Infinity;
+    let bestCompletedSetCount = Infinity;
+    let bestPropCount = Infinity;
+    let bestCardCount = Infinity;
+
+    const n = cards.length;
+
+    if (n > 14) {
+      // Simple greedy fallback to prevent performance lag
+      const sorted = [...cards].sort((a, b) => {
+        if (a.isCompletedSet !== b.isCompletedSet) return a.isCompletedSet ? 1 : -1;
+        if (a.isProperty !== b.isProperty) return a.isProperty ? 1 : -1;
+        return a.value - b.value;
+      });
+      const selection: string[] = [];
+      let sum = 0;
+      for (const card of sorted) {
+        if (sum < due) {
+          selection.push(card.id);
+          sum += card.value;
+        }
+      }
+      return selection;
+    }
+
+    const search = (index: number, current: typeof cards, currentSum: number, currentPropCount: number, currentCompletedSetCount: number) => {
+      if (currentSum >= due) {
+        let update = false;
+        if (currentSum < bestValue) {
+          update = true;
+        } else if (currentSum === bestValue) {
+          if (currentCompletedSetCount < bestCompletedSetCount) {
+            update = true;
+          } else if (currentCompletedSetCount === bestCompletedSetCount) {
+            if (currentPropCount < bestPropCount) {
+              update = true;
+            } else if (currentPropCount === bestPropCount) {
+              if (current.length < bestCardCount) {
+                update = true;
+              }
+            }
+          }
+        }
+
+        if (update) {
+          bestSubset = [...current];
+          bestValue = currentSum;
+          bestCompletedSetCount = currentCompletedSetCount;
+          bestPropCount = currentPropCount;
+          bestCardCount = current.length;
+        }
+        return;
+      }
+
+      if (index >= n) return;
+
+      // Option 1: Include cards[index]
+      const card = cards[index];
+      current.push(card);
+      search(
+        index + 1,
+        current,
+        currentSum + card.value,
+        currentPropCount + (card.isProperty ? 1 : 0),
+        currentCompletedSetCount + (card.isCompletedSet ? 1 : 0)
+      );
+      current.pop();
+
+      // Option 2: Exclude cards[index]
+      search(index + 1, current, currentSum, currentPropCount, currentCompletedSetCount);
+    };
+
+    // Sort to optimize search (completed sets last, properties last, cash first, cheaper first)
+    const sortedCards = [...cards].sort((a, b) => {
+      if (a.isCompletedSet !== b.isCompletedSet) {
+        return a.isCompletedSet ? 1 : -1; // Completed sets last
+      }
+      if (a.isProperty !== b.isProperty) {
+        return a.isProperty ? 1 : -1; // Cash first, properties last
+      }
+      return a.value - b.value; // Cheaper first
+    });
+
+    search(0, [], 0, 0, 0);
+
+    return bestSubset ? (bestSubset as typeof cards).map((c) => c.id) : [];
+  };
+
+  React.useEffect(() => {
+    if (myActiveRequest && myActiveRequest.amountDue > 0) {
+      const selection = calculateOptimalPaymentSelection(myActiveRequest.amountDue);
+      setPaymentSelection(selection);
+    } else {
+      setPaymentSelection([]);
+    }
+  }, [myActiveRequest?.id, myActiveRequest?.amountDue]);
+
   // Chat message send
   const [chatText, setChatText] = React.useState('');
   const handleSendChat = (e: React.FormEvent) => {
@@ -5661,9 +6098,45 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   const otherPlayers = match.players.filter((p) => p.id !== localPlayer.id);
   const isMyTurn = match.players[match.turnIndex]?.id === localPlayer.id;
 
-  const hasActiveRequest = !!match.activeActionRequest || (!!match.activeActionRequests && match.activeActionRequests.length > 0);
+  const handleQuickFlipWildcard = (card: Card) => {
+    if (!isMyTurn || isActionLocked) return;
+    if (!card.isWildcard && card.type !== 'wildcard') return;
+
+    // Determine the candidate colors
+    const possibleColors: CardColor[] = [];
+    if (card.allowedColors && card.allowedColors.length > 0) {
+      possibleColors.push(...card.allowedColors);
+    } else if (card.secondaryColor && (card.secondaryColor as string) !== 'any') {
+      possibleColors.push(card.secondaryColor);
+    } else {
+      possibleColors.push('brown', 'lightblue', 'pink', 'orange', 'red', 'yellow', 'green', 'darkblue', 'railroad', 'utility');
+    }
+
+    if (possibleColors.length === 0) return;
+
+    // Find the next color
+    let nextColor: CardColor = possibleColors[0];
+    const currentIdx = possibleColors.indexOf(card.color as CardColor);
+    if (currentIdx !== -1) {
+      nextColor = possibleColors[(currentIdx + 1) % possibleColors.length];
+    } else {
+      nextColor = possibleColors[0];
+    }
+
+    triggerHaptic('medium');
+    playPlaySound();
+
+    if (isOffline) {
+      handleOfflineChangeWildcardColor(card.id, nextColor);
+    } else {
+      handleChangeWildcardColorMultiplayer(card.id, nextColor);
+    }
+  };
 
   const checkActionPlayability = (card: Card): { playable: boolean; reason?: string } => {
+    if (isActionLocked) {
+      return { playable: false, reason: 'Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!' };
+    }
     if (card.actionType === 'just-say-no') {
       return { playable: false, reason: 'Hayır Teşekkürler kartı sadece rakibin size karşı oynadığı hamlelerde savunma olarak kullanılabilir.' };
     }
@@ -5672,27 +6145,31 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     }
 
     if (card.type === 'rent') {
-      const isMultiRent = card.name.includes('Her Renk') || !card.color;
+      const applicable: CardColor[] = [];
+      if (card.color) applicable.push(card.color as CardColor);
+      if (card.secondaryColor) applicable.push(card.secondaryColor as CardColor);
+      if (card.allowedColors) {
+        card.allowedColors.forEach((c) => applicable.push(c as CardColor));
+      }
+      if ((card as any).colors) {
+        ((card as any).colors as CardColor[]).forEach((c) => applicable.push(c as CardColor));
+      }
+      const uniqueColors = Array.from(new Set(applicable));
+      const isMultiRent = card.name?.includes('Her Renk') || uniqueColors.length === 0;
+
       if (isMultiRent) {
-        const ownsAny = Object.values(localPlayer.properties).some((set: any) => set && set.cards.length > 0);
+        const ownsAny = Object.values(localPlayer.properties).some((set: any) => set && set.cards && set.cards.length > 0);
         if (!ownsAny) {
           return { playable: false, reason: 'Kira talep edebilmek için önünüzde en az bir mülk bulunmalıdır!' };
         }
       } else {
-        const allowed: CardColor[] = [];
-        if (card.color) allowed.push(card.color);
-        if (card.secondaryColor) allowed.push(card.secondaryColor);
-        if (card.allowedColors) {
-          card.allowedColors.forEach((col) => allowed.push(col as CardColor));
-        }
-
-        const ownsAnyAllowed = allowed.some((col) => {
+        const ownsAnyAllowed = uniqueColors.some((col) => {
           const set = localPlayer.properties[col];
-          return set && set.cards.length > 0;
+          return set && set.cards && set.cards.length > 0;
         });
 
         if (!ownsAnyAllowed) {
-          const colorNames = allowed.map((col) => COLOR_LABELS[col]).join(' veya ');
+          const colorNames = uniqueColors.map((col) => COLOR_LABELS[col] || col).join(' veya ');
           return { playable: false, reason: `Bu kira kartını oynamak için ${colorNames} renklerinden en az bir mülke sahip olmalısınız!` };
         }
       }
@@ -5879,6 +6356,64 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     >
       {/* 1. Dynamic Canvas Particle Background */}
       <CanvasBackground theme={profile.settings.boardTheme || 'theme_classic'} />
+
+      {/* Smart-Reconnect Notification Banner */}
+      <AnimatePresence>
+        {!isOffline && (!wsConnected || isReconnecting) && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="absolute top-4 left-1/2 -translate-x-1/2 z-[9999] w-[calc(100%-2rem)] max-w-md px-4"
+          >
+            <div className="bg-slate-900/95 border-2 border-red-500/50 backdrop-blur-md rounded-xl p-4 shadow-2xl flex flex-col gap-3 relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-red-500 via-amber-500 to-red-500 animate-pulse" />
+              
+              <div className="flex items-start gap-3">
+                <span className="text-2xl animate-bounce mt-1">🔌</span>
+                <div className="flex-1">
+                  <h4 className="text-sm font-black text-red-400 tracking-wider uppercase">
+                    {profile.settings.language === 'en' ? 'CONNECTION LOST' : 'BAĞLANTI KOPTI'}
+                  </h4>
+                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
+                    {profile.settings.language === 'en' 
+                      ? 'Network connection was interrupted. Smart-Reconnect is automatically reconnecting you...' 
+                      : 'İnternet bağlantısı kesildi veya sunucuyla iletişim kurulamıyor. Smart-Reconnect otomatik olarak tekrar bağlanıyor...'}
+                  </p>
+                  <div className="flex items-center gap-2 mt-2 text-[10px] text-amber-400 font-bold">
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                    <span>
+                      {profile.settings.language === 'en' 
+                        ? `Reconnection Attempt: #${reconnectCount}` 
+                        : `Yeniden Bağlanma Denemesi: #${reconnectCount}`}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-1">
+                <button
+                  onClick={() => {
+                    if (reconnectTimerRef.current) {
+                      clearTimeout(reconnectTimerRef.current);
+                    }
+                    setReconnectTrigger(p => p + 1);
+                  }}
+                  className="flex-1 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold py-2 px-3 rounded-lg border border-emerald-400/20 active:scale-95 transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer"
+                >
+                  <span>⚡ {profile.settings.language === 'en' ? 'Connect Now' : 'Şimdi Bağlan'}</span>
+                </button>
+                <button
+                  onClick={handleLeaveLobby}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold py-2 px-3 rounded-lg border border-slate-700 active:scale-95 transition-all cursor-pointer"
+                >
+                  {profile.settings.language === 'en' ? 'Leave Lobby' : 'Odadan Ayrıl'}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* 📳 Taptic Edge Glow Pulse Confirmation Overlay */}
       <AnimatePresence>
@@ -6399,21 +6934,18 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 <span className="hidden md:inline">{showChatPanel ? t('chat', profile) : (profile.settings.language === 'en' ? 'Open' : 'Aç')}</span>
               </button>
 
-              {/* Sıkışık Düzen (Compact Layout) Toggle next to Chat button */}
+              {/* İpucu (Hint) Button in Top Toolbar */}
               <button
-                id="toolbar-compact-btn"
+                id="toolbar-hint-btn"
                 onClick={() => {
                   playPlaySound();
-                  setIsCompactLayout(!isCompactLayout);
+                  setShowHint(true);
                 }}
-                className={`p-1 px-1.5 sm:px-2.5 sm:py-1 rounded-lg text-[10px] font-bold transition-all flex items-center gap-1 cursor-pointer select-none ${isCompactLayout
-                  ? 'bg-amber-500/20 border border-amber-500/40 text-amber-300 shadow-[0_0_10px_rgba(245,158,11,0.15)]'
-                  : 'bg-white/[0.01] border border-white/5 hover:bg-white/[0.05] text-slate-400 hover:text-white'
-                  }`}
-                title={profile.settings.language === 'en' ? "Compact Layout" : "Sıkışık Düzen"}
+                className="p-1 px-1.5 sm:px-2.5 sm:py-1 rounded-lg text-[10px] font-bold bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 transition-all flex items-center gap-1 cursor-pointer select-none shadow-[0_0_10px_rgba(245,158,11,0.15)]"
+                title={profile.settings.language === 'en' ? "Game Rules & Hints" : "Oyun Kuralları ve İpuçları"}
               >
-                <span>🎴</span>
-                <span className="hidden md:inline">{profile.settings.language === 'en' ? 'Compact' : 'Sıkışık Düzen'}</span>
+                <span>💡</span>
+                <span className="hidden md:inline">{t('btn_hint', profile)}</span>
               </button>
 
               {/* Unified Settings Gear Button */}
@@ -6607,6 +7139,9 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           />
                           <div className="flex flex-col">
                             <div className="flex items-center gap-1.5">
+                              <span className="text-sm select-none shrink-0" title={profile.settings.language === 'en' ? getCountryByCode(p.country).nameEn : getCountryByCode(p.country).nameTr}>
+                                {getCountryByCode(p.country).flag}
+                              </span>
                               <span className="font-bold text-xs text-slate-200">{p.username}</span>
                               {p.id === profile.id && (
                                 <span className="text-[8px] font-extrabold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-1 py-0.2 rounded uppercase">
@@ -6859,32 +7394,100 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           <div className="px-3 pt-2.5 flex-shrink-0">
             <div className="flex justify-between items-center mb-1 text-[8.5px] font-bold text-slate-400">
               <span className="uppercase tracking-wide">{profile.settings.language === 'en' ? 'Players & Boards' : 'Oyuncular & Masalar'}</span>
-              <button
-                onClick={() => {
-                  playPlaySound();
-                  setIsOpponentsGrid(!isOpponentsGrid);
-                }}
-                className="px-2 py-0.5 rounded bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 text-[8px] cursor-pointer transition-all flex items-center gap-1 active:scale-95"
-              >
-                {isOpponentsGrid
-                  ? (profile.settings.language === 'en' ? '↔️ Scroll View' : '↔️ Yatay Kaydır')
-                  : (profile.settings.language === 'en' ? '🔢 Grid View' : '🔢 Izgara Görünümü')
-                }
-              </button>
+              <div className="flex gap-1.5 items-center">
+                <button
+                  onClick={() => {
+                    playPlaySound();
+                    setHideOwnBoard(!hideOwnBoard);
+                  }}
+                  className={`px-2 py-0.5 rounded border text-[8px] cursor-pointer transition-all flex items-center gap-1 active:scale-95 ${
+                    hideOwnBoard 
+                      ? 'bg-amber-500/20 border-amber-500/30 text-amber-300' 
+                      : 'bg-white/5 border-white/10 hover:bg-white/10 text-slate-300'
+                  }`}
+                >
+                  {hideOwnBoard 
+                    ? `👁️ ${t('show_own_board_btn', profile)}` 
+                    : `🙈 ${t('hide_own_board_btn', profile)}`
+                  }
+                </button>
+                <button
+                  onClick={() => {
+                    playPlaySound();
+                    setIsOpponentsGrid(!isOpponentsGrid);
+                  }}
+                  className="px-2 py-0.5 rounded bg-white/5 border border-white/10 hover:bg-white/10 text-slate-300 text-[8px] cursor-pointer transition-all flex items-center gap-1 active:scale-95"
+                >
+                  {isOpponentsGrid
+                    ? (profile.settings.language === 'en' ? '↔️ Scroll View' : '↔️ Yatay Kaydır')
+                    : (profile.settings.language === 'en' ? '🔢 Grid View' : '🔢 Izgara Görünümü')
+                  }
+                </button>
+              </div>
             </div>
+
+            {activeActionCard && (
+              <div className="mb-2 bg-gradient-to-r from-amber-600/30 via-orange-600/30 to-amber-600/30 border border-amber-500/40 p-2.5 rounded-xl text-[10px] text-amber-300 font-extrabold flex items-center justify-between shadow-lg animate-pulse z-30 relative">
+                <span className="flex items-center gap-1.5 leading-tight">
+                  🎯 {profile.settings.language === 'en' 
+                    ? `TARGET SELECTION: Choose an eligible opponent above for ${activeActionCard.name}!` 
+                    : `HEDEF SEÇİMİ: ${activeActionCard.name} için yukarıdan uygun bir rakip seçin!`}
+                </span>
+                <button
+                  onClick={() => setActiveActionCard(null)}
+                  className="bg-red-500 hover:bg-red-400 text-white px-2.5 py-1 rounded-lg font-black text-[9px] active:scale-95 transition-all cursor-pointer shadow-md border border-red-400/40 shrink-0"
+                >
+                  {profile.settings.language === 'en' ? 'Cancel' : 'İptal Et'}
+                </button>
+              </div>
+            )}
 
             <div className={isOpponentsGrid
               ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2 pb-1"
               : "flex gap-2 overflow-x-auto pb-1 scrollbar-thin"
             }>
-              {match.players.map((p) => {
+              {match.players.filter((p) => !(hideOwnBoard && p.id === profile.id)).map((p) => {
                 const isMe = p.id === profile.id;
                 const isCurrentTurn = match.players[match.turnIndex].id === p.id;
                 const bankTotal = p.bank.reduce((sum, c) => sum + c.value, 0);
 
                 const bStyle = PLAYER_BOARD_STYLES[p.playerBoard || 'board_classic'] || PLAYER_BOARD_STYLES.board_classic;
                 const pBoardItem = findShopItem(p.playerBoard);
-                const isBoardVideo = pBoardItem?.mediaUrl && (pBoardItem.mediaType === 'video' || pBoardItem.mediaUrl.endsWith('.mp4') || pBoardItem.mediaUrl.endsWith('.webm') || pBoardItem.mediaUrl.includes('video') || pBoardItem.mediaUrl.startsWith('data:video'));
+                const isBoardVideo = pBoardItem?.mediaUrl && isVideoUrl(pBoardItem.mediaUrl, pBoardItem.mediaType);
+
+                const isOpponentEligible = (() => {
+                  if (!activeActionCard) return true;
+                  if (p.id === profile.id) return false;
+                  
+                  if (activeActionCard.actionType === 'sly-deal') {
+                    return Object.keys(p.properties).some((colKey) => {
+                      const col = colKey as CardColor;
+                      const set = p.properties[col];
+                      return set && set.cards.length > 0 && set.cards.length < MAX_IN_SET[col];
+                    });
+                  }
+                  if (activeActionCard.actionType === 'deal-breaker') {
+                    return Object.keys(p.properties).some((colKey) => {
+                      const col = colKey as CardColor;
+                      const set = p.properties[col];
+                      return set && set.cards.length >= MAX_IN_SET[col];
+                    });
+                  }
+                  if (activeActionCard.actionType === 'forced-deal') {
+                    const opHasStealable = Object.keys(p.properties).some((colKey) => {
+                      const col = colKey as CardColor;
+                      const set = p.properties[col];
+                      return set && set.cards.length > 0 && set.cards.length < MAX_IN_SET[col];
+                    });
+                    const myHasToGive = Object.keys(localPlayer.properties).some((colKey) => {
+                      const col = colKey as CardColor;
+                      const set = localPlayer.properties[col];
+                      return set && set.cards.length > 0 && set.cards.length < MAX_IN_SET[col];
+                    });
+                    return opHasStealable && myHasToGive;
+                  }
+                  return true;
+                })();
 
                 return (
                   <motion.div
@@ -6894,6 +7497,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     animate={playerVisualStates[p.id]?.type || 'idle'}
                     onClick={() => {
                       playPlaySound();
+                      if (activeActionCard) {
+                        if (p.id === profile.id) return;
+                        if (isOpponentEligible) {
+                          setSelectedOpponentId(p.id);
+                        }
+                        return;
+                      }
                       if (isMe) {
                         setShowBankVaultModal(true);
                       } else {
@@ -6912,6 +7522,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         ? 'border-fuchsia-500 ring-4 ring-fuchsia-600 shadow-[0_0_35px_rgba(217,70,239,0.9)] scale-[1.03] z-20'
                         : activeHighImpactCard?.actorId === p.id
                         ? 'border-indigo-400 ring-4 ring-indigo-500 shadow-[0_0_35px_rgba(99,102,241,0.85)] scale-[1.04] z-20 animate-pulse'
+                        : activeActionCard && !selectedOpponentId
+                        ? (isOpponentEligible 
+                            ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-[0_0_20px_rgba(245,158,11,0.5)] scale-[1.03] z-20 animate-pulse border-dashed' 
+                            : 'opacity-25 grayscale pointer-events-none scale-95 border-slate-900')
+                        : activeActionCard && selectedOpponentId
+                        ? (p.id === selectedOpponentId 
+                            ? 'border-emerald-500 ring-2 ring-emerald-500/50 shadow-[0_0_20px_rgba(16,185,129,0.4)] scale-[1.02] z-20' 
+                            : 'opacity-25 grayscale pointer-events-none scale-95 border-slate-900')
                         : isCurrentTurn
                         ? 'border-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.7)] ring-2 ring-amber-400/50 scale-[1.03] z-20'
                         : `${bStyle.borderClass} ${bStyle.glowClass} hover:border-slate-500`
@@ -6978,12 +7596,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     <div className="absolute inset-0 pointer-events-none opacity-50 overflow-hidden rounded-2xl z-0">
                       {pBoardItem?.mediaUrl && (
                         isBoardVideo ? (
-                          <video
+                          <HlsVideoPlayer
                             src={pBoardItem.mediaUrl}
-                            autoPlay
-                            loop
-                            muted
-                            playsInline
                             className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-50 rounded-2xl"
                           />
                         ) : (
@@ -7071,7 +7685,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         </div>
                         <div className="truncate leading-none">
                           <span className="font-extrabold text-[10px] text-slate-100 truncate block flex items-center gap-1">
-                            {p.username.split(' ')[0]}
+                            <span className="text-[11px] shrink-0 select-none" title={profile.settings.language === 'en' ? getCountryByCode(p.country).nameEn : getCountryByCode(p.country).nameTr}>
+                              {getCountryByCode(p.country).flag}
+                            </span>
+                            <span className="truncate">{p.username.split(' ')[0]}</span>
                             {(p as any).isDisconnected && <span className="text-[7px] bg-red-500/20 text-red-400 px-1 py-0.2 rounded font-black uppercase animate-pulse">AFK</span>}
                           </span>
                           {isCurrentTurn ? (
@@ -7146,6 +7763,24 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           if (!set || set.cards.length === 0) return null;
                           const isCompleted = set.cards.length >= MAX_IN_SET[col];
                           const opponentNeon = COLOR_HEX[col] || '#34d399';
+
+                          // Check if this property set is eligible for active action card
+                          const isMiniEligible = (() => {
+                            if (!activeActionCard) return true;
+                            if (p.id === profile.id) return false;
+                            const type = activeActionCard.actionType;
+                            if (type === 'sly-deal') {
+                              return !isCompleted;
+                            }
+                            if (type === 'deal-breaker') {
+                              return isCompleted;
+                            }
+                            if (type === 'forced-deal') {
+                              return !isCompleted;
+                            }
+                            return true;
+                          })();
+
                           return (
                             <motion.div
                               key={col}
@@ -7166,14 +7801,26 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                 ],
                                 scale: [1, 1.45, 1.55, 1.45, 1],
                                 zIndex: [10, 50, 50, 50, 10]
-                              } : undefined}
+                              } : {
+                                boxShadow: '0 0 0px rgba(0, 0, 0, 0)',
+                                borderColor: 'rgba(255, 255, 255, 0.1)',
+                                scale: 1,
+                                zIndex: 10
+                              }}
                               transition={{
                                 duration: 1.8,
                                 times: [0, 0.25, 0.5, 0.75, 1],
                                 ease: "easeInOut"
                               }}
-                              className={`flex-shrink-0 w-[24px] h-[34px] bg-white rounded flex flex-col justify-between p-0.5 relative overflow-hidden shadow-sm border ${isCompleted ? 'border-amber-400 ring-1 ring-amber-400/30 shadow-[0_0_4px_rgba(251,191,36,0.5)]' : 'border-slate-300'
-                                }`}
+                              className={`flex-shrink-0 w-[24px] h-[34px] bg-white rounded flex flex-col justify-between p-0.5 relative overflow-hidden shadow-sm border transition-all duration-300 ${
+                                activeActionCard
+                                  ? (isMiniEligible
+                                      ? 'border-amber-400 ring-2 ring-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] scale-110 animate-pulse'
+                                      : 'opacity-15 grayscale scale-90 border-slate-300')
+                                  : isCompleted
+                                  ? 'border-amber-400 ring-1 ring-amber-400/30 shadow-[0_0_4px_rgba(251,191,36,0.5)]'
+                                  : 'border-slate-300'
+                              }`}
                               title={`${COLOR_LABELS[col]}: ${set.cards.length}/${MAX_IN_SET[col]}`}
                             >
                               <div className="h-1.5 w-full rounded-t-sm flex-shrink-0" style={{ backgroundColor: COLOR_HEX[col] }} />
@@ -7235,7 +7882,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 {(() => {
                   const desteShopDetail = findShopItem(profile.settings.cardBack);
                   const desteMediaUrl = desteShopDetail?.mediaUrl;
-                  const isDesteVideo = desteMediaUrl && (desteShopDetail?.mediaType === 'video' || desteMediaUrl.endsWith('.mp4') || desteMediaUrl.endsWith('.webm') || desteMediaUrl.includes('video') || desteMediaUrl.startsWith('data:video'));
+                  const isDesteVideo = desteMediaUrl && isVideoUrl(desteMediaUrl, desteShopDetail?.mediaType);
 
                   return (
                     <div className="relative w-10 h-14 mx-auto group cursor-pointer" onClick={() => playPlaySound()}>
@@ -7265,12 +7912,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         {desteMediaUrl ? (
                           <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
                             {isDesteVideo ? (
-                              <video
+                              <HlsVideoPlayer
                                 src={desteMediaUrl}
-                                autoPlay
-                                loop
-                                muted
-                                playsInline
                                 style={{
                                   opacity: desteShopDetail?.overlayOpacity ?? 1,
                                   mixBlendMode: (desteShopDetail?.overlayMode as any) || 'normal'
@@ -7565,6 +8208,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         e.preventDefault();
                         setIsDragOverBank(false);
                         if (isMyTurn && draggingCard) {
+                          if (isActionLocked) {
+                            playAlertSound();
+                            alert("Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!");
+                            setDraggingCard(null);
+                            return;
+                          }
                           if (draggingCard.type === 'property' || draggingCard.type === 'wildcard') {
                             playAlertSound();
                             alert(profile.settings.language === 'en' ? "Property cards cannot be deposited to the bank! Only money and action cards are allowed." : "Arsa mülk kartları bankaya koyulamaz! Sadece aksiyon ve para kartları bankaya konabilir.");
@@ -7627,6 +8276,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     e.preventDefault();
                     setIsDragOverProperties(false);
                     if (isMyTurn && draggingCard) {
+                      if (isActionLocked) {
+                        playAlertSound();
+                        alert("Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!");
+                        setDraggingCard(null);
+                        return;
+                      }
                       // 1. If it's a money card: Send directly to the bank.
                       if (draggingCard.type === 'money') {
                         playPlaySound();
@@ -7718,10 +8373,9 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       return s && s.cards.length >= (MAX_IN_SET[c as CardColor] || 0);
                     });
 
-                    // Calculate accordion minimum heights
-                    const cardsWrapperHeight = isExpanded
-                      ? (isCompactLayout ? 'min-h-[65px] sm:min-h-[80px]' : 'min-h-[140px] sm:min-h-[180px]')
-                      : (isCompactLayout ? 'min-h-[28px] sm:min-h-[36px]' : 'min-h-[50px] sm:min-h-[68px]');
+                    // Dynamic dimensions calculation from useCompactLayout hook
+                    const dims = getDynamicSetDimensions(set.cards.length, isExpanded, Boolean(set.hasHouse || set.hasHotel));
+                    const cardsWrapperHeight = dims.minAccordionHeightClass;
 
                     const rentVal = calculateSetRent(set.cards, col, set.hasHouse, set.hasHotel);
 
@@ -7755,7 +8409,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           ],
                           scale: [1, 1.18, 1.25, 1.18, 1],
                           zIndex: [10, 50, 50, 50, 10]
-                        } : undefined}
+                        } : {
+                          boxShadow: '0 0 0px rgba(0, 0, 0, 0)',
+                          borderColor: 'rgba(255, 255, 255, 0.1)',
+                          scale: 1,
+                          zIndex: 10
+                        }}
                         transition={{
                           duration: 1.8,
                           times: [0, 0.25, 0.5, 0.75, 1],
@@ -7765,6 +8424,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         onClick={() => {
                           playPlaySound();
                           setExpandedPropertyColor(isExpanded ? null : col);
+                          setAnalyzedProperty(null);
                         }}
                         onMouseDown={(e) => {
                           e.stopPropagation();
@@ -7779,18 +8439,24 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           e.stopPropagation();
                           handleStartPress(col, localPlayer.username, set);
                         }}
-                        onTouchEnd={handleEndPress}
-                        onMouseEnter={() => setAnalyzedProperty({
-                          color: col,
-                          ownerName: localPlayer.username,
-                          cardsCount: set.cards.length,
-                          hasHouse: set.hasHouse,
-                          hasHotel: set.hasHotel,
-                          currentRent: rentVal
-                        })}
-                        className={`flex flex-col items-center rounded-xl transition-all duration-300 shrink-0 relative cursor-pointer select-none property-set-card-trigger ${
-                          isCompactLayout ? 'w-[34px] sm:w-[42px] md:w-[48px] p-0.5' : 'w-[48px] sm:w-[60px] md:w-[72px] p-1.5'
-                        } ${isExpanded
+                        onTouchEnd={() => {
+                          handleEndPress();
+                          // Clear analyzed property on touch release to prevent sticky modal on mobile
+                          setTimeout(() => setAnalyzedProperty(null), 1200);
+                        }}
+                        onMouseEnter={(e: any) => {
+                          if (e?.pointerType === 'mouse' || (typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches)) {
+                            setAnalyzedProperty({
+                              color: col,
+                              ownerName: localPlayer.username,
+                              cardsCount: set.cards.length,
+                              hasHouse: set.hasHouse,
+                              hasHotel: set.hasHotel,
+                              currentRent: rentVal
+                            });
+                          }
+                        }}
+                        className={`flex flex-col items-center rounded-xl transition-all duration-300 shrink-0 relative cursor-pointer select-none property-set-card-trigger ${dims.containerWidthClass} ${isExpanded
                           ? 'ring-2 ring-amber-400 bg-slate-950/80 shadow-[0_0_15px_rgba(245,158,11,0.35)]'
                           : isCompleted
                             ? 'border border-amber-400 bg-amber-500/10 shadow-[0_0_12px_rgba(251,191,36,0.4)]'
@@ -7799,9 +8465,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       >
                         {/* Completed Set Crown Badge Seal */}
                         {isCompleted && (
-                          <div className={`absolute -top-2 -right-1.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-black rounded-full border border-yellow-200 shadow-[0_0_10px_rgba(245,158,11,0.9)] animate-bounce z-40 flex items-center gap-0.5 pointer-events-none ${
-                            isCompactLayout ? 'text-[5.5px] px-1 py-0' : 'text-[6.5px] px-1.5 py-0.5'
-                          }`}>
+                          <div className={`absolute -top-2 -right-1.5 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-black rounded-full border border-yellow-200 shadow-[0_0_10px_rgba(245,158,11,0.9)] animate-bounce z-40 flex items-center gap-0.5 pointer-events-none ${dims.badgeSizeClass}`}>
                             <span>👑</span>
                             <span>TAMAM</span>
                           </div>
@@ -7814,13 +8478,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             const cardSpacingClass = idx > 0
                               ? (isExpanded
                                 ? ''
-                                : (isCompactLayout ? '-mt-[135%]' : '-mt-[162%]').trim()
+                                : dims.stackOverlapClass
                               )
                               : '';
 
                             // Fan out accordion style (yelpaze)
                             const fanStyle = isExpanded ? {
-                              transform: `translateY(${idx * (isCompactLayout ? 12 : 16)}px) rotate(${(idx - (set.cards.length - 1) / 2) * 6}deg) translateX(${(idx - (set.cards.length - 1) / 2) * 6}px)`,
+                              transform: `translateY(${idx * dims.fanOffsetY}px) rotate(${(idx - (set.cards.length - 1) / 2) * 6}deg) translateX(${(idx - (set.cards.length - 1) / 2) * 6}px)`,
                               zIndex: 10 + idx,
                             } : {};
 
@@ -7837,9 +8501,9 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                 }}
                                 onMouseEnter={() => setHoveredCard(card)}
                                 onMouseLeave={() => setHoveredCard(null)}
-                                className={`${cardSpacingClass} w-full transition-all duration-300 hover:z-30 relative cursor-pointer hover:scale-105 animate-play-card ${isCardAnimating(card.id) ? 'opacity-0 pointer-events-none' : ''}`}
+                                className={`${cardSpacingClass} w-full transition-all duration-300 hover:z-30 relative cursor-pointer hover:scale-105 ${isCardAnimating(card.id) ? 'opacity-0 pointer-events-none' : ''}`}
                                 style={fanStyle}
-                                title="Kartı Odakla / Genişlet"
+                                onDoubleClick={(e) => { e.stopPropagation(); if (isWild && isMyTurn) { handleQuickFlipWildcard(card); } }} title={isWild && isMyTurn ? (profile.settings.language === 'en' ? "Double-click to flip color instantly!" : "Renk değiştirmek için çift tıklayın!") : "Kartı Odakla / Genişlet"}
                               >
                                 <GameCard card={card} size={isCompactLayout ? "mini" : "medium"} activeEffect={cardEffects[card.id] || null} disable3D={disable3D} cardBack={profile.settings.cardBack} cardSkin={profile.settings.cardSkin || 'skin_none'} />
                                 {isWild && isMyTurn && (
@@ -7856,13 +8520,11 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
                         {/* Unified Neon Glowing Rent Badge */}
                         <div
-                          className={`mt-1 w-full rounded-full flex items-center justify-between font-black border transition-all duration-300 select-none ${
-                            isCompactLayout ? 'text-[7px] px-1 py-0' : 'text-[8px] px-2 py-0.5'
-                          } ${isCompleted
+                          className={`mt-1 w-full rounded-full flex items-center justify-between font-black border transition-all duration-300 select-none ${dims.rentBadgeClass} ${isCompleted
                             ? 'bg-slate-950/95 border-emerald-400/50 text-white animate-pulse'
                             : 'bg-slate-950/80 border-white/5 text-emerald-400'
                             }`}
-                          style={{ height: isCompactLayout ? '14px' : '18px', ...badgePulseStyle }}
+                          style={{ height: isCompactLayout ? '16px' : '18px', ...badgePulseStyle }}
                         >
                           <span className="shrink-0 font-extrabold">{isCompleted ? '👑' : `${set.cards.length}/${MAX_IN_SET[col]}`}</span>
                           <div className="h-1.5 w-[1px] bg-white/20 shrink-0" />
@@ -8166,7 +8828,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   playPlaySound();
                   setIsHandExpanded(!isHandExpanded);
                 }}
-                className="flex items-center gap-1 text-[10px] font-extrabold text-slate-300 hover:text-white"
+                className="flex items-center gap-1 text-[10px] font-extrabold text-slate-300 hover:text-white cursor-pointer select-none"
               >
                 <span>🎴 {t('cards_count', profile)} ({localPlayer.hand.length})</span>
                 <span className="text-[8px]">{isHandExpanded ? '▼' : '▲'}</span>
@@ -8174,15 +8836,22 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
               {/* Active Action Controls */}
               <div className="flex items-center gap-1.5">
-                {/* İpucu Lightbulb Button */}
+                {/* Sıkışık Düzen (Compact Layout) Button */}
                 <button
+                  id="drawer-compact-btn"
                   onClick={() => {
                     playPlaySound();
-                    setShowHint(true);
+                    toggleCompactLayout();
                   }}
-                  className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-black px-2 py-1 rounded-lg text-[9px] flex items-center gap-0.5 shadow-sm"
+                  className={`px-2 py-1 rounded-lg text-[9px] font-black flex items-center gap-1 shadow-sm transition-all cursor-pointer select-none ${
+                    isCompactLayout
+                      ? 'bg-amber-500 text-slate-950 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10'
+                  }`}
+                  title={profile.settings.language === 'en' ? "Compact Layout Toggle" : "Sıkışık Düzen Aç/Kapat"}
                 >
-                  💡 {t('btn_hint', profile)}
+                  <span>🎴</span>
+                  <span>{profile.settings.language === 'en' ? 'Compact' : 'Sıkışık Düzen'}</span>
                 </button>
 
                 {match.players[match.turnIndex].id === localPlayer.id ? (
@@ -8209,8 +8878,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     </div>
                     <button
                       onClick={isOffline ? handleOfflineEndTurn : handleEndTurnMultiplayer}
-                      disabled={!!match.activeActionRequest}
-                      className={`font-black px-3 py-1 rounded-lg text-[9px] shadow-lg flex items-center gap-0.5 ${match.activeActionRequest
+                      disabled={isActionLocked}
+                      className={`font-black px-3 py-1 rounded-lg text-[9px] shadow-lg flex items-center gap-0.5 ${isActionLocked
                         ? 'bg-purple-900/50 text-purple-300 border border-purple-800/30 cursor-not-allowed opacity-50'
                         : 'bg-purple-600 hover:bg-purple-500 text-white'
                         }`}
@@ -8252,7 +8921,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   </button>
                 )}
 
-                <div className={`flex overflow-x-auto pb-1.5 justify-start scrollbar-thin transition-all touch-none select-none ${isCompactLayout ? 'gap-1' : 'gap-2'}`}>
+                <div ref={handScrollRef} className={`flex overflow-x-auto pb-1.5 justify-start scrollbar-thin transition-all touch-pan-x select-none ${isCompactLayout ? 'gap-1' : 'gap-2'}`}>
                   {(() => {
                     const sortedHand = [...localPlayer.hand].sort((a, b) => {
                       const getSortOrder = (card: Card) => {
@@ -8281,14 +8950,27 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       // Rent card glow check: glows if localPlayer owns matching land/property
                       const isRentGlowable = (() => {
                         if (card.type !== 'rent') return false;
-                        const isWildRent = !card.colors || card.colors.length === 0 || card.colors.length > 2;
+                        
+                        const applicable: CardColor[] = [];
+                        if (card.color) applicable.push(card.color as CardColor);
+                        if (card.secondaryColor) applicable.push(card.secondaryColor as CardColor);
+                        if (card.allowedColors) {
+                          card.allowedColors.forEach((c) => applicable.push(c as CardColor));
+                        }
+                        if (card.colors) {
+                          card.colors.forEach((c) => applicable.push(c as CardColor));
+                        }
+                        const uniqueColors = Array.from(new Set(applicable));
+                        const isWildRent = card.name?.includes('Her Renk') || uniqueColors.length === 0;
+
                         if (isWildRent) {
                           return Object.values(localPlayer.properties || {}).some(
                             (set: any) => set && set.cards && set.cards.length > 0
                           );
                         }
-                        return card.colors.some((color) => {
-                          const set = localPlayer.properties[color as CardColor];
+
+                        return uniqueColors.some((color) => {
+                          const set = localPlayer.properties?.[color];
                           return set && set.cards && set.cards.length > 0;
                         });
                       })();
@@ -8305,9 +8987,9 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           style={{
                             zIndex: draggingCard?.id === card.id ? 100 : hoveredCard?.id === card.id ? 50 : isSelected ? 40 : 1
                           }}
-                          draggable={isMyTurn && !match.activeActionRequest}
+                          draggable={isMyTurn && !isActionLocked}
                           onDragStart={() => {
-                            if (match.activeActionRequest) return;
+                            if (isActionLocked) return;
                             triggerHaptic('medium');
                             setDraggingCard(card);
                             playPlaySound();
@@ -8316,16 +8998,16 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             setDraggingCard(null);
                           }}
                           onTouchStart={(e) => {
-                            if (match.activeActionRequest) return;
+                            if (isActionLocked) return;
                             triggerHaptic('light');
                             handleTouchStart(e, card);
                           }}
                           onTouchMove={(e) => {
-                            if (match.activeActionRequest) return;
+                            if (isActionLocked) return;
                             handleTouchMove(e);
                           }}
                           onTouchEnd={(e) => {
-                            if (match.activeActionRequest) return;
+                            if (isActionLocked) return;
                             handleTouchEnd(e);
                           }}
                           onMouseEnter={() => {
@@ -8333,7 +9015,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             setHoveredCard(card);
                           }}
                           onMouseLeave={() => setHoveredCard(null)}
-                          className={`cursor-grab active:cursor-grabbing select-none flex-shrink-0 touch-none transition-all duration-300 ${
+                          className={`cursor-grab active:cursor-grabbing select-none flex-shrink-0 touch-pan-x transition-all duration-300 ${
                             draggingCard?.id === card.id ? 'opacity-40 scale-95' : ''
                           } ${isCardAnimating(card.id) ? 'opacity-0 pointer-events-none' : ''}`}
                         >
@@ -8346,7 +9028,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             disable3D={disable3D}
                             cardBack={profile.settings.cardBack} cardSkin={profile.settings.cardSkin || 'skin_none'}
                             onClick={() => {
-                              if (match.activeActionRequest) return;
+                              if (isActionLocked) return;
+                              if (wasTouchMovedRef.current) return;
                               triggerHaptic('medium');
                               setSelectedCard(card);
                               setShowCardMenu(true);
@@ -8709,57 +9392,82 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 </span>
                 
                 <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5 scrollbar-thin">
-                  {rankedPlayers.map((p, idx) => {
+                  {(match.finalRankings && match.finalRankings.length > 0 ? match.finalRankings : rankedPlayers.map((p, idx) => {
                     const isChampion = p.id === match.winnerId;
-                    const isLocal = p.id === profile.id;
-                    const rankMedal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🏅';
-                    const bankTotal = p.bank.reduce((sum, c) => sum + c.value, 0);
-                    const completedSets = Object.keys(p.properties).filter(col => (p.properties[col as CardColor]?.cards.length || 0) >= (MAX_IN_SET[col as CardColor] || 99)).length;
+                    const bankTotal: number = p.bank.reduce((sum: number, c: any) => sum + (Number(c.value) || 0), 0);
+                    const completedSets: number = Object.keys(p.properties).filter(col => (p.properties[col as CardColor]?.cards.length || 0) >= (MAX_IN_SET[col as CardColor] || 99)).length;
+                    const totalPropCards: number = (Object.values(p.properties) as any[]).reduce((sum: number, set: any) => sum + Number(set?.cards?.length || 0), 0);
+                    const calculatedScore: number = Number(completedSets * 500) + Number(totalPropCards * 20) + Number(bankTotal * 10);
+                    
+                    return {
+                      playerId: p.id,
+                      username: p.username,
+                      avatarId: p.avatarId,
+                      avatarUrl: p.avatarUrl,
+                      profileFrame: p.profileFrame,
+                      rank: idx + 1,
+                      matchScore: calculatedScore,
+                      score: `${calculatedScore.toLocaleString('tr-TR')} Maç Puanı`,
+                      completeSets: completedSets,
+                      bankTotal: bankTotal,
+                      rpChange: isChampion ? 25 : idx === 1 ? 10 : idx === 2 ? -5 : -15,
+                      isWinner: isChampion,
+                      isBot: p.isBot
+                    };
+                  })).map((item: any, idx: number) => {
+                    const isChampion = item.isWinner || item.rank === 1;
+                    const isLocal = item.playerId === profile.id;
+                    const rankMedal = idx === 0 ? '🥇 1. Sıra' : idx === 1 ? '🥈 2. Sıra' : idx === 2 ? '🥉 3. Sıra' : '🏅 4. Sıra';
 
                     return (
                       <div
-                        key={p.id}
+                        key={item.playerId || idx}
                         className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 transition-all ${
                           isChampion
                             ? 'bg-amber-500/10 border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
                             : isLocal
-                            ? 'bg-slate-800/80 border-indigo-500/40'
+                            ? 'bg-indigo-950/40 border-indigo-500/40 shadow-[0_0_10px_rgba(99,102,241,0.15)]'
                             : 'bg-slate-950/50 border-white/5'
                         }`}
                       >
                         {/* Rank & User Info */}
                         <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                          <span className="text-base shrink-0 font-black">{rankMedal}</span>
+                          <span className="text-xs shrink-0 font-black text-amber-300 font-mono">{rankMedal}</span>
                           <AvatarWithFrame
-                            avatarId={p.avatarId || 'avatar_classic'}
-                            avatarUrl={p.avatarUrl}
-                            frameId={p.profileFrame || 'frame_none'}
+                            avatarId={item.avatarId || 'avatar_classic'}
+                            avatarUrl={item.avatarUrl}
+                            frameId={item.profileFrame || 'frame_none'}
                             sizeClassName="w-8 h-8 text-[10px] shrink-0"
                           />
                           <div className="min-w-0 flex flex-col">
                             <span className="text-xs font-black text-white truncate flex items-center gap-1">
-                              {p.username}
+                              {item.username}
                               {isLocal && (
                                 <span className="text-[8px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1 py-0.2 rounded font-black uppercase">
                                   {profile.settings.language === 'en' ? 'YOU' : 'SEN'}
                                 </span>
                               )}
                             </span>
-                            <span className="text-[9px] text-slate-400 font-bold">
-                              {p.isBot ? (profile.settings.language === 'en' ? 'Bot' : 'Yapay Zeka') : (profile.settings.language === 'en' ? 'Player' : 'Oyuncu')}
+                            <span className="text-[9px] text-slate-300 font-bold flex items-center gap-1.5 font-mono">
+                              <span className="text-amber-400 font-black">{item.score || `${item.matchScore || 0} Puan`}</span>
+                              {item.rpChange !== undefined && (
+                                <span className={`font-black px-1 rounded text-[8px] ${item.rpChange >= 0 ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' : 'text-rose-400 bg-rose-500/10 border border-rose-500/20'}`}>
+                                  {item.rpChange >= 0 ? `+${item.rpChange}` : item.rpChange} RP
+                                </span>
+                              )}
                             </span>
                           </div>
                         </div>
 
                         {/* Stats Badges */}
-                        <div className="flex items-center gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5 shrink-0">
                           <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg border ${
-                            completedSets > 0 ? 'bg-amber-500/15 text-amber-300 border-amber-500/20' : 'bg-slate-850 text-slate-500 border-white/5'
+                            item.completeSets > 0 ? 'bg-amber-500/15 text-amber-300 border-amber-500/20' : 'bg-slate-850 text-slate-500 border-white/5'
                           }`}>
-                            🏆 {completedSets} Set
+                            🏆 {item.completeSets} Set
                           </span>
                           <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
-                            💰 {bankTotal}M
+                            💰 {item.bankTotal}M
                           </span>
                         </div>
                       </div>
@@ -8936,15 +9644,15 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               setSelectedCard(null);
               setShowCardMenu(false);
             }}
-            className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in"
+            className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50 animate-fade-in"
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900 border border-slate-800/80 rounded-3xl p-6 w-full max-w-xl shadow-2xl flex flex-col md:flex-row gap-6 items-center relative overflow-hidden"
+              className="bg-slate-900 border border-slate-750/80 rounded-3xl p-6 w-full max-w-xl shadow-2xl flex flex-col md:flex-row gap-6 items-center relative overflow-hidden"
             >
               {/* Decorative top accent glow */}
               <div
-                className="absolute top-0 inset-x-0 h-[2px] transition-colors"
+                className="absolute top-0 inset-x-0 h-[3px] transition-colors"
                 style={{ backgroundColor: cardColorHex, boxShadow: `0 0 15px 3px ${cardColorHex}` }}
               />
 
@@ -8990,37 +9698,42 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   />
                 </motion.div>
 
-                <span className="text-[8.5px] font-black text-slate-500 uppercase tracking-widest group-hover:text-slate-300 transition-colors">
+                <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest group-hover:text-slate-200 transition-colors">
                   🔍 Büyütmek İçin Karta Dokun
                 </span>
               </div>
 
               {/* Sağ Sütun: Aksiyon Menüsü */}
               <div className="flex-1 w-full space-y-4">
-                <div className="text-center md:text-left border-b border-white/5 pb-3">
-                  <span className="text-[8px] font-black text-slate-500 block uppercase tracking-widest">{t('KART SEÇENEKLERİ', profile)}</span>
-                  <h3 className="text-md font-black text-slate-100 uppercase tracking-tight mt-0.5" style={{ color: cardColorHex }}>
+                <div className="text-center md:text-left border-b border-white/10 pb-3">
+                  <span className="text-[10px] font-black text-amber-400 block uppercase tracking-widest mb-0.5">{t('KART SEÇENEKLERİ', profile)}</span>
+                  <h3 className="text-lg font-black text-slate-100 uppercase tracking-tight mt-0.5" style={{ color: cardColorHex }}>
                     {getTranslatedCardName(selectedCard, profile)}
                   </h3>
-                  <p className="text-[10px] text-slate-400 leading-relaxed mt-1 font-medium">
+                  <p className="text-xs text-slate-300 leading-relaxed mt-1.5 font-medium">
                     {renderColorizedText(getTranslatedCardDesc(selectedCard, profile), profile.settings.language)}
                   </p>
                 </div>
 
-                <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1 scrollbar-thin">
+                <div className="space-y-2.5 max-h-[260px] overflow-y-auto pr-1 scrollbar-thin">
                   {/* Option 1: Add to Bank */}
                   {(selectedCard.type !== 'property' && selectedCard.type !== 'wildcard') && (
                     <button
                       onClick={() => {
+                        if (isActionLocked) {
+                          playAlertSound();
+                          alert("Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!");
+                          return;
+                        }
                         if (isOffline) handleOfflinePlayCard(selectedCard.id, 'bank');
                         else handlePlayCardMultiplayer(selectedCard.id, 'bank');
                       }}
-                      className="w-full p-2.5 rounded-2xl border border-emerald-500/25 bg-gradient-to-r from-emerald-950/20 to-slate-900 hover:from-emerald-950/40 hover:to-slate-850 hover:border-emerald-500/50 text-white transition-all text-left active:scale-[0.98] cursor-pointer group flex flex-col"
+                      className="w-full p-3.5 rounded-2xl border border-emerald-500/30 bg-gradient-to-r from-emerald-950/30 to-slate-900 hover:from-emerald-950/50 hover:to-slate-850 hover:border-emerald-500/60 text-white transition-all text-left active:scale-[0.98] cursor-pointer group flex flex-col gap-0.5 shadow-md"
                     >
-                      <div className="flex items-center gap-1.5 font-black text-[10.5px] text-emerald-400 group-hover:text-emerald-300 transition-colors">
+                      <div className="flex items-center gap-2 font-black text-xs text-emerald-400 group-hover:text-emerald-300 transition-colors">
                         🪙 Bankaya Koy (+{selectedCard.value}M)
                       </div>
-                      <div className="text-[8.5px] text-slate-400/90 font-medium mt-0.5">
+                      <div className="text-[10px] text-slate-300 font-medium">
                         Kasa değerini artırır, ödemelerde kullanılır ve rakipler tarafından çalınamaz.
                       </div>
                     </button>
@@ -9030,6 +9743,11 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   {(selectedCard.type === 'property' || selectedCard.type === 'wildcard' || selectedCard.type === 'house-hotel') && (
                     <button
                       onClick={() => {
+                        if (isActionLocked) {
+                          playAlertSound();
+                          alert("Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!");
+                          return;
+                        }
                         if (selectedCard.type === 'house-hotel') {
                           const res = checkHouseHotelPlayability(selectedCard);
                           if (!res.playable) {
@@ -9046,24 +9764,24 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           else handlePlayCardMultiplayer(selectedCard.id, 'property');
                         }
                       }}
-                      className="w-full p-2.5 rounded-2xl border text-white transition-all text-left active:scale-[0.98] cursor-pointer group flex flex-col"
+                      className="w-full p-3.5 rounded-2xl border text-white transition-all text-left active:scale-[0.98] cursor-pointer group flex flex-col gap-0.5 shadow-md"
                       style={{
-                        borderColor: `${cardColorHex}40`,
-                        background: `linear-gradient(135deg, ${cardColorHex}0a, rgba(15, 23, 42, 0.4))`
+                        borderColor: `${cardColorHex}50`,
+                        background: `linear-gradient(135deg, ${cardColorHex}15, rgba(15, 23, 42, 0.6))`
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.borderColor = cardColorHex;
-                        e.currentTarget.style.background = `linear-gradient(135deg, ${cardColorHex}20, rgba(15, 23, 42, 0.6))`;
+                        e.currentTarget.style.background = `linear-gradient(135deg, ${cardColorHex}25, rgba(15, 23, 42, 0.8))`;
                       }}
                       onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = `${cardColorHex}40`;
-                        e.currentTarget.style.background = `linear-gradient(135deg, ${cardColorHex}0a, rgba(15, 23, 42, 0.4))`;
+                        e.currentTarget.style.borderColor = `${cardColorHex}50`;
+                        e.currentTarget.style.background = `linear-gradient(135deg, ${cardColorHex}15, rgba(15, 23, 42, 0.6))`;
                       }}
                     >
-                      <div className="flex items-center gap-1.5 font-black text-[10.5px] group-hover:brightness-110 transition-all" style={{ color: cardColorHex }}>
+                      <div className="flex items-center gap-2 font-black text-xs group-hover:brightness-110 transition-all" style={{ color: cardColorHex }}>
                         🏠 Sahaya Sür (Mülk Olarak)
                       </div>
-                      <div className="text-[8.5px] text-slate-400/90 font-medium mt-0.5">
+                      <div className="text-[10px] text-slate-300 font-medium">
                         Kazanmak için mülk setlerine yerleştirir ve kira toplama zeminini hazırlar.
                       </div>
                     </button>
@@ -9094,12 +9812,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           else handlePlayCardMultiplayer(selectedCard.id, 'action');
                         }
                       }}
-                      className="w-full p-2.5 rounded-2xl border border-amber-500/25 bg-gradient-to-r from-amber-950/20 to-slate-900 hover:from-amber-950/40 hover:to-slate-850 hover:border-amber-500/50 text-white transition-all text-left active:scale-[0.98] cursor-pointer group flex flex-col"
+                      className="w-full p-3.5 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-950/30 to-slate-900 hover:from-amber-950/50 hover:to-slate-850 hover:border-amber-500/60 text-white transition-all text-left active:scale-[0.98] cursor-pointer group flex flex-col gap-0.5 shadow-md"
                     >
-                      <div className="flex items-center gap-1.5 font-black text-[10.5px] text-amber-400 group-hover:text-amber-300 transition-colors">
+                      <div className="flex items-center gap-2 font-black text-xs text-amber-400 group-hover:text-amber-300 transition-colors">
                         ⚡ Aksiyonu Tetikle
                       </div>
-                      <div className="text-[8.5px] text-slate-400/90 font-medium mt-0.5">
+                      <div className="text-[10px] text-slate-300 font-medium">
                         Kartın özel aksiyon etkisini başlatır ve rakiplerinize karşı üstünlük kurar.
                       </div>
                     </button>
@@ -9114,12 +9832,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         setSelectedCard(null);
                         setShowCardMenu(false);
                       }}
-                      className="w-full p-2.5 rounded-2xl border border-red-500/25 bg-gradient-to-r from-red-950/20 to-slate-900 hover:from-red-950/40 hover:to-slate-850 hover:border-red-500/50 text-white transition-all text-left active:scale-[0.98] cursor-pointer group flex flex-col"
+                      className="w-full p-3.5 rounded-2xl border border-red-500/30 bg-gradient-to-r from-red-950/30 to-slate-900 hover:from-red-950/50 hover:to-slate-850 hover:border-red-500/60 text-white transition-all text-left active:scale-[0.98] cursor-pointer group flex flex-col gap-0.5 shadow-md"
                     >
-                      <div className="flex items-center gap-1.5 font-black text-[10.5px] text-red-400 group-hover:text-red-300 transition-colors">
+                      <div className="flex items-center gap-2 font-black text-xs text-red-400 group-hover:text-red-300 transition-colors">
                         🗑️ Elinden Çöpe At
                       </div>
-                      <div className="text-[8.5px] text-slate-400/90 font-medium mt-0.5">
+                      <div className="text-[10px] text-slate-300 font-medium">
                         Elinizdeki kart limiti olan 7'yi aşmamak için bu kartı feda edin.
                       </div>
                     </button>
@@ -9131,7 +9849,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     setSelectedCard(null);
                     setShowCardMenu(false);
                   }}
-                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold rounded-xl text-[10px] transition-all cursor-pointer mt-1"
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50 mt-1"
                 >
                   {t('cancel', profile)}
                 </button>
@@ -9141,7 +9859,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         );
       })()}
 
-      {/* 2. Wildcard Color selector prompt (matches Image 5) */}
+      {/* 2. Wildcard Color selector prompt */}
       <AnimatePresence>
         {isMyTurn && wildcardColorPick && (
           <motion.div
@@ -9151,7 +9869,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setWildcardColorPick(null)}
-            className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50"
           >
             <motion.div
               initial={{ scale: 0.92, y: 15, opacity: 0 }}
@@ -9159,37 +9877,37 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.92, y: 15, opacity: 0 }}
               transition={{ type: "spring", duration: 0.5, bounce: 0.2 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900/95 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl relative overflow-hidden"
             >
               {/* Radial gradient background accent */}
               <div className="absolute -top-16 -left-16 w-36 h-36 bg-amber-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-              <div className="text-center pb-2 border-b border-white/5 relative">
-                <span className="text-[10px] font-black text-amber-400 tracking-widest uppercase block mb-1">
+              <div className="text-center pb-2 border-b border-white/10 relative">
+                <span className="text-xs font-black text-amber-400 tracking-widest uppercase block mb-1">
                   ✨ {t('color_select', profile)}
                 </span>
-                <h3 className="text-xs font-black text-slate-100">
+                <h3 className="text-sm font-black text-slate-100">
                   {profile.settings.language === 'en' ? 'Choose Wildcard Placement' : 'Joker Kartı Rengini Seçin'}
                 </h3>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-xs text-slate-300 font-medium mt-1">
                   {profile.settings.language === 'en' 
-                    ? 'Deploy this wildcard card to one of your property slots:' 
-                    : 'Joker kartınızı mülk alanlarınızdan birine yerleştirin:'}
+                    ? 'Deploy this wildcard to one of your property sets:' 
+                    : 'Joker kartınızı mülk setlerinizden birine yerleştirin:'}
                 </p>
               </div>
 
               {match?.settings?.turnLimit !== 'unlimited' && (
-                <div className="text-center bg-amber-500/10 border border-amber-500/20 py-2 px-3 rounded-xl text-[10px] text-amber-400 font-extrabold flex items-center justify-center gap-2">
-                  <span className="relative flex h-2 w-2">
+                <div className="text-center bg-amber-500/10 border border-amber-500/20 py-2 px-3 rounded-xl text-xs text-amber-400 font-black flex items-center justify-center gap-2">
+                  <span className="relative flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
                   </span>
-                  ⏱️ {profile.settings.language === 'en' ? 'Decision Time Left:' : 'Kalan Seçim Süresi:'} <span className="text-xs font-black text-amber-300">{timeLeft}s</span>
+                  ⏱️ {profile.settings.language === 'en' ? 'Decision Time Left:' : 'Kalan Seçim Süresi:'} <span className="text-sm font-black text-amber-300">{timeLeft}s</span>
                 </div>
               )}
 
-              {/* Dynamic Property Color Options list with custom interactive bento box styling */}
-              <div className="grid grid-cols-2 gap-2.5 max-h-[280px] overflow-y-auto pr-1 scrollbar-thin">
+              {/* Dynamic Property Color Options rendered as Mini Land Cards */}
+              <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
                 {(() => {
                   const possibleColors: CardColor[] = [];
                   if (wildcardColorPick.allowedColors && wildcardColorPick.allowedColors.length > 0) {
@@ -9240,39 +9958,39 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           }
                           setWildcardColorPick(null);
                         }}
-                        className="p-3.5 rounded-2xl border text-[10px] font-black flex flex-col items-center gap-2 transition-all bg-slate-950/40 hover:bg-slate-950/80 cursor-pointer relative overflow-hidden group shadow-lg"
-                        style={{ borderColor: `${colorHex}25` }}
+                        className="rounded-2xl border flex flex-col items-stretch transition-all bg-slate-950/60 hover:bg-slate-950 cursor-pointer relative overflow-hidden group shadow-lg text-left"
+                        style={{ borderColor: `${colorHex}40` }}
                         onMouseEnter={(e) => {
                           e.currentTarget.style.borderColor = colorHex;
-                          e.currentTarget.style.boxShadow = `0 4px 15px -2px ${colorHex}25`;
+                          e.currentTarget.style.boxShadow = `0 4px 18px -2px ${colorHex}40`;
                         }}
                         onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = `${colorHex}25`;
+                          e.currentTarget.style.borderColor = `${colorHex}40`;
                           e.currentTarget.style.boxShadow = 'none';
                         }}
                       >
-                        {/* Dominant Color indicator top bar with micro glow */}
-                        <div className="absolute top-0 inset-x-0 h-1.5 transition-all duration-300 group-hover:h-2" style={{ backgroundColor: colorHex }} />
-
-                        <div className="relative mt-1">
-                          <span className="w-5 h-5 rounded-full shadow-md shrink-0 border border-white/10 flex items-center justify-center" style={{ backgroundColor: colorHex }}>
-                            {isComplete && <span className="text-[10px]">🏆</span>}
-                          </span>
+                        {/* Mini Land Card Color Header */}
+                        <div className="py-2 px-3 flex items-center justify-between text-slate-950 font-black text-xs uppercase" style={{ backgroundColor: colorHex }}>
+                          <span className="truncate filter drop-shadow">{getTranslatedColorLabel(col, profile)}</span>
+                          {isComplete && <span className="text-xs">🏆</span>}
                         </div>
 
-                        <span className="text-slate-200 font-extrabold group-hover:text-white transition-colors tracking-tight text-center">
-                          {getTranslatedColorLabel(col, profile)}
-                        </span>
+                        <div className="p-3 space-y-2 flex-1 flex flex-col justify-between">
+                          <div className="flex items-center justify-between gap-1 text-[11px] font-extrabold text-slate-200">
+                            <span>{getTranslatedColorLabel(col, profile)} Seti</span>
+                            <span className="text-amber-400 font-black">{wildcardColorPick.value}M</span>
+                          </div>
 
-                        <div className="flex items-center gap-1 mt-0.5">
-                          <span className={`text-[8.5px] px-2 py-0.5 rounded-lg font-black transition-colors ${isComplete
-                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
-                            : count > 0
-                              ? 'bg-amber-500/15 text-amber-400 border border-amber-500/20'
-                              : 'bg-slate-800/80 text-slate-500'
-                            }`}>
-                            {isComplete ? (profile.settings.language === 'en' ? 'Complete' : 'Tamamlandı') : count > 0 ? `${count}/${max} 🏠` : `0/${max} 🏠`}
-                          </span>
+                          <div className="flex items-center justify-between pt-1 border-t border-white/5">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-lg font-black ${isComplete
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : count > 0
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                                : 'bg-slate-800 text-slate-400'
+                              }`}>
+                              {isComplete ? (profile.settings.language === 'en' ? 'Complete' : 'Tamamlandı') : count > 0 ? `${count}/${max} Mülk` : `Boş (${max})`}
+                            </span>
+                          </div>
                         </div>
                       </motion.button>
                     );
@@ -9287,7 +10005,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   triggerHaptic('light');
                   setWildcardColorPick(null);
                 }}
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
+                className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
               >
                 {t('cancel', profile)}
               </motion.button>
@@ -9306,7 +10024,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setRentColorPick(null)}
-            className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50"
           >
             <motion.div
               initial={{ scale: 0.92, y: 15, opacity: 0 }}
@@ -9314,19 +10032,19 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.92, y: 15, opacity: 0 }}
               transition={{ type: "spring", duration: 0.45 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900/95 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl relative overflow-hidden"
             >
               {/* Radial gradient background accent */}
               <div className="absolute -top-16 -right-16 w-36 h-36 bg-emerald-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-              <div className="text-center pb-2 border-b border-white/5">
-                <span className="text-[10px] font-black text-emerald-400 block uppercase tracking-widest mb-1">
+              <div className="text-center pb-2 border-b border-white/10">
+                <span className="text-xs font-black text-emerald-400 block uppercase tracking-widest mb-1">
                   💰 {profile.settings.language === 'en' ? 'Collect Rent' : 'Kira Topla'}
                 </span>
-                <h3 className="text-xs font-black text-slate-100">
+                <h3 className="text-sm font-black text-slate-100">
                   {profile.settings.language === 'en' ? 'Select Property Set' : 'Kira Toplanacak Grubu Seçin'}
                 </h3>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-xs text-slate-300 font-medium mt-1">
                   {profile.settings.language === 'en' 
                     ? 'Only completed or owned properties can collect rent:' 
                     : 'Kira toplamak için sahip olduğunuz bir renk grubunu seçin:'}
@@ -9344,32 +10062,32 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     playCoinSound();
                     setUseDoubleRent(!useDoubleRent);
                   }}
-                  className={`w-full flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer select-none text-left ${useDoubleRent
-                    ? 'bg-amber-500/10 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.15)]'
-                    : 'bg-slate-950/60 border-slate-800 hover:border-amber-500/30'
+                  className={`w-full flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer select-none text-left ${useDoubleRent
+                    ? 'bg-amber-500/15 border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                    : 'bg-slate-950/60 border-slate-800 hover:border-amber-500/40'
                     }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm transition-all duration-300 ${useDoubleRent ? 'bg-amber-500 text-slate-950 scale-110 shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'bg-slate-800 text-slate-400'
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base transition-all duration-300 ${useDoubleRent ? 'bg-amber-500 text-slate-950 scale-110 shadow-[0_0_10px_rgba(245,158,11,0.5)] font-black' : 'bg-slate-800 text-slate-400'
                       }`}>
                       ⚡
                     </div>
                     <div className="flex flex-col">
-                      <span className={`text-[10px] font-black tracking-wide uppercase ${useDoubleRent ? 'text-amber-400' : 'text-slate-200'}`}>
+                      <span className={`text-xs font-black tracking-wide uppercase ${useDoubleRent ? 'text-amber-400' : 'text-slate-200'}`}>
                         {profile.settings.language === 'en' ? 'Double Rent' : 'Çift Kat Kira'} {useDoubleRent ? '(AKTİF)' : '(PASİF)'}
                       </span>
-                      <span className="text-[8px] text-slate-400">
+                      <span className="text-[10px] text-slate-300 font-medium">
                         {profile.settings.language === 'en' ? 'Multiplies all rent by 2 (+1 action)' : 'Kira gelirini 2 ile çarpar (+1 hamle)'}
                       </span>
                     </div>
                   </div>
-                  <div className={`w-9 h-5 rounded-full p-0.5 transition-colors duration-300 flex items-center ${useDoubleRent ? 'bg-amber-500' : 'bg-slate-850'}`}>
-                    <div className={`bg-white w-4 h-4 rounded-full shadow-md transform transition-transform duration-300 ${useDoubleRent ? 'translate-x-4' : 'translate-x-0'}`} />
+                  <div className={`w-10 h-6 rounded-full p-0.5 transition-colors duration-300 flex items-center ${useDoubleRent ? 'bg-amber-500' : 'bg-slate-800'}`}>
+                    <div className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-300 ${useDoubleRent ? 'translate-x-4' : 'translate-x-0'}`} />
                   </div>
                 </motion.button>
               )}
 
-              <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin">
+              <div className="grid grid-cols-2 gap-3 max-h-[260px] overflow-y-auto pr-1 scrollbar-thin">
                 {(() => {
                   const possibleColors: CardColor[] = [];
                   if (rentColorPick.color) {
@@ -9418,40 +10136,43 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           setRentColorPick(null);
                           setUseDoubleRent(false);
                         }}
-                        className={`p-3 rounded-2xl border text-[10px] font-black flex flex-col items-center gap-2 transition-all text-center relative overflow-hidden ${hasProp
-                          ? 'bg-slate-950/40 hover:bg-slate-950/80 text-white cursor-pointer shadow-md'
-                          : 'bg-slate-950/10 text-slate-650 cursor-not-allowed opacity-30 border-transparent'
+                        className={`rounded-2xl border flex flex-col items-stretch transition-all text-left relative overflow-hidden ${hasProp
+                          ? 'bg-slate-950/60 hover:bg-slate-950 text-white cursor-pointer shadow-lg'
+                          : 'bg-slate-950/20 text-slate-600 cursor-not-allowed opacity-30 border-transparent'
                           }`}
-                        style={hasProp ? { borderColor: `${colorHex}30` } : {}}
+                        style={hasProp ? { borderColor: `${colorHex}40` } : {}}
                         onMouseEnter={(e) => {
                           if (hasProp) {
                             e.currentTarget.style.borderColor = colorHex;
-                            e.currentTarget.style.boxShadow = `0 4px 12px -2px ${colorHex}20`;
+                            e.currentTarget.style.boxShadow = `0 4px 18px -2px ${colorHex}30`;
                           }
                         }}
                         onMouseLeave={(e) => {
                           if (hasProp) {
-                            e.currentTarget.style.borderColor = `${colorHex}30`;
+                            e.currentTarget.style.borderColor = `${colorHex}40`;
                             e.currentTarget.style.boxShadow = 'none';
                           }
                         }}
                       >
-                        {hasProp && (
-                          <div className="absolute top-0 inset-x-0 h-1" style={{ backgroundColor: colorHex }} />
-                        )}
+                        {/* Mini Land Card Header */}
+                        <div className="py-2 px-3 font-black text-xs uppercase flex items-center justify-between text-slate-950" style={{ backgroundColor: colorHex }}>
+                          <span className="truncate filter drop-shadow">{getTranslatedColorLabel(col, profile)}</span>
+                          {hasProp && <span className="text-[10px] bg-slate-950/20 px-1.5 py-0.2 rounded text-white font-black">{set.cards.length} Mülk</span>}
+                        </div>
 
-                        <span className="w-4 h-4 rounded-full shadow-sm shrink-0 mt-1" style={{ backgroundColor: colorHex, filter: hasProp ? 'none' : 'grayscale(1)' }} />
-                        
-                        <div className="flex flex-col items-center mt-0.5 min-w-0 w-full">
-                          <span className="text-slate-200 font-extrabold truncate w-full text-center">{getTranslatedColorLabel(col, profile)}</span>
+                        <div className="p-3 flex flex-col justify-between space-y-2 flex-1">
+                          <span className="text-xs font-bold text-slate-200">
+                            {getTranslatedColorLabel(col, profile)} Seti
+                          </span>
                           {hasProp ? (
-                            <div className="mt-1 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/10">
-                              <span className="text-[9px] font-black text-emerald-400">
+                            <div className="bg-emerald-500/15 border border-emerald-500/20 px-2.5 py-1 rounded-xl flex items-center justify-between">
+                              <span className="text-[10px] text-slate-400 font-bold">Kira:</span>
+                              <span className="text-xs font-black text-emerald-400">
                                 {useDoubleRent ? doubledRent : currentRent}M
                               </span>
                             </div>
                           ) : (
-                            <span className="text-[8px] text-slate-500 mt-1">{profile.settings.language === 'en' ? 'No assets' : 'Mülk Yok'}</span>
+                            <span className="text-[10px] text-slate-500 font-medium italic">{profile.settings.language === 'en' ? 'No assets' : 'Mülk Yok'}</span>
                           )}
                         </div>
                       </motion.button>
@@ -9467,7 +10188,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   triggerHaptic('light');
                   setRentColorPick(null);
                 }}
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
+                className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
               >
                 {t('cancel', profile)}
               </motion.button>
@@ -9486,7 +10207,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setRentTargetSelect(null)}
-            className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50"
           >
             <motion.div
               initial={{ scale: 0.92, y: 15, opacity: 0 }}
@@ -9494,29 +10215,28 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.92, y: 15, opacity: 0 }}
               transition={{ type: "spring", duration: 0.45 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900/95 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl relative overflow-hidden"
             >
               {/* Radial gradient background accent */}
               <div className="absolute -top-16 -left-16 w-36 h-36 bg-amber-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-              <div className="text-center pb-2 border-b border-white/5">
-                <span className="text-[10px] font-black text-amber-500 block uppercase tracking-widest mb-1">
+              <div className="text-center pb-2 border-b border-white/10">
+                <span className="text-xs font-black text-amber-500 block uppercase tracking-widest mb-1">
                   🎯 {profile.settings.language === 'en' ? 'Target Rent Selection' : 'Kira Hedefi Seç'}
                 </span>
-                <h3 className="text-xs font-black text-slate-100">
+                <h3 className="text-sm font-black text-slate-100">
                   {profile.settings.language === 'en' ? 'Select Target Player' : 'Kira Alınacak Rakibi Seçin'}
                 </h3>
-                <p className="text-[10px] text-slate-400 mt-1">
+                <p className="text-xs text-slate-300 font-medium mt-1">
                   {profile.settings.language === 'en' 
                     ? 'Wild rent cards can only collect from 1 chosen opponent:' 
                     : 'Her Renk Kira Kartı sadece seçeceğiniz tek bir rakipten tahsilat yapar:'}
                 </p>
               </div>
 
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+              <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1 scrollbar-thin">
                 {otherPlayers.map((op) => {
                   const bankTotal = op.bank.reduce((sum, c) => sum + c.value, 0);
-                  const totalProperties = Object.values(op.properties).reduce((acc: number, set: any) => acc + (set?.cards?.length || 0), 0);
                   const completedSets = countCompletedSets(op.properties);
 
                   return (
@@ -9532,27 +10252,27 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         else handlePlayCardMultiplayer(rentTargetSelect.card.id, 'action', rentTargetSelect.color, finalPayload);
                         setRentTargetSelect(null);
                       }}
-                      className="w-full p-3.5 rounded-2xl border border-white/5 hover:border-amber-500/50 bg-slate-950/40 hover:bg-slate-950/80 text-white transition-all text-left flex items-center justify-between shadow-lg cursor-pointer"
+                      className="w-full p-4 rounded-2xl border border-white/10 hover:border-amber-500/60 bg-slate-950/60 hover:bg-slate-950 text-white transition-all text-left flex items-center justify-between shadow-lg cursor-pointer gap-3"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-2xl bg-slate-800 border border-white/10 flex items-center justify-center text-sm shadow">
+                      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                        <div className="w-10 h-10 rounded-2xl bg-slate-800 border border-white/10 flex items-center justify-center text-lg shadow shrink-0">
                           {op.isBot ? '🤖' : '👤'}
                         </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-xs font-extrabold tracking-tight truncate">{op.username}</span>
-                          <span className="text-[8.5px] text-slate-400 font-bold uppercase tracking-wider">
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="text-sm font-black tracking-tight truncate text-slate-100">{op.username}</span>
+                          <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider mt-0.5">
                             {op.isBot ? (profile.settings.language === 'en' ? 'AI Bot' : 'Yapay Zeka') : (profile.settings.language === 'en' ? 'Player' : 'Oyuncu')}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 shrink-0">
                         {completedSets > 0 && (
-                          <div className="text-[9px] bg-amber-500/15 text-amber-400 font-black px-2 py-0.5 rounded-lg border border-amber-500/10">
+                          <div className="text-xs bg-amber-500/20 text-amber-400 font-black px-2.5 py-1 rounded-xl border border-amber-500/20">
                             🏆 {completedSets}
                           </div>
                         )}
-                        <div className="flex items-center gap-1 text-[9.5px] font-mono text-emerald-400 font-black bg-emerald-500/15 px-2.5 py-0.5 rounded-lg border border-emerald-500/10">
+                        <div className="flex items-center gap-1 text-xs font-mono text-emerald-400 font-black bg-emerald-500/20 px-3 py-1 rounded-xl border border-emerald-500/20">
                           💵 {bankTotal}M
                         </div>
                       </div>
@@ -9568,7 +10288,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   triggerHaptic('light');
                   setRentTargetSelect(null);
                 }}
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
+                className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
               >
                 {t('cancel', profile)}
               </motion.button>
@@ -9579,16 +10299,16 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
       {/* House/Hotel Color selector prompt */}
       {isMyTurn && houseHotelColorPick && (
-        <div id="context-aware-interaction-panel" className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
-          <div className="bg-slate-900 border border-slate-800/85 rounded-2xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative">
-            <div className="text-center border-b border-white/5 pb-2">
-              <span className="text-[10px] font-bold text-emerald-400 block uppercase tracking-wider">Mülk Geliştir</span>
-              <h3 className="text-xs text-slate-400 mt-1">
-                {houseHotelColorPick.actionType === 'house' ? 'Evi hangi sete yerleştirmek istersiniz?' : 'Oteli hangi sete yerleştirmek istersiniz?'}
+        <div id="context-aware-interaction-panel" className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-slate-900 border border-slate-750/70 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl relative">
+            <div className="text-center border-b border-white/10 pb-3">
+              <span className="text-xs font-black text-emerald-400 block uppercase tracking-widest mb-1">🏠 MÜLK GELİŞTİR</span>
+              <h3 className="text-sm font-black text-slate-100">
+                {houseHotelColorPick.actionType === 'house' ? 'Evi Hangi Sete Yerleştirmek İstersiniz?' : 'Oteli Hangi Sete Yerleştirmek İstersiniz?'}
               </h3>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5 max-h-[280px] overflow-y-auto pr-1 scrollbar-thin">
               {(() => {
                 const eligibleColors: CardColor[] = [];
                 Object.keys(localPlayer.properties).forEach((colorKey) => {
@@ -9609,6 +10329,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 });
 
                 return eligibleColors.map((col) => {
+                  const colorHex = COLOR_HEX[col];
                   return (
                     <button
                       key={col}
@@ -9617,13 +10338,19 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         else handlePlayCardMultiplayer(houseHotelColorPick.id, 'property', col);
                         setHouseHotelColorPick(null);
                       }}
-                      className="w-full p-3 rounded-xl border border-white/10 hover:border-emerald-500 bg-slate-950 text-white font-bold flex items-center justify-between transition-all hover:bg-slate-900"
+                      className="w-full rounded-2xl border bg-slate-950/60 hover:bg-slate-950 text-white font-bold flex flex-col transition-all overflow-hidden cursor-pointer"
+                      style={{ borderColor: `${colorHex}40` }}
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="w-4 h-4 rounded-full" style={{ backgroundColor: COLOR_HEX[col] }} />
-                        <span className="text-xs">{COLOR_LABELS[col]} Seti</span>
+                      <div className="py-2 px-3 font-black text-xs uppercase text-slate-950 flex items-center justify-between" style={{ backgroundColor: colorHex }}>
+                        <span>{getTranslatedColorLabel(col, profile)} Seti</span>
+                        <span className="text-[10px] bg-slate-950/30 px-2 py-0.5 rounded text-white font-black">Set Tamamlandı</span>
                       </div>
-                      <span className="text-[10px] text-slate-400 bg-white/5 px-2 py-1 rounded">Set Tamamlandı</span>
+                      <div className="p-3 flex items-center justify-between">
+                        <span className="text-xs font-black text-slate-200">
+                          {houseHotelColorPick.actionType === 'house' ? '🏠 Ev Ekle' : '🏨 Otel Ekle'}
+                        </span>
+                        <span className="text-xs font-black text-emerald-400 bg-emerald-500/15 px-3 py-1 rounded-xl border border-emerald-500/20">Yerleştir</span>
+                      </div>
                     </button>
                   );
                 });
@@ -9632,7 +10359,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
             <button
               onClick={() => setHouseHotelColorPick(null)}
-              className="w-full py-1.5 bg-transparent hover:bg-white/5 text-slate-500 font-bold rounded-xl text-[10px] transition-all"
+              className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
             >
               İptal Et
             </button>
@@ -9650,7 +10377,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setActiveActionCard(null)}
-            className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50"
           >
             <motion.div
               initial={{ scale: 0.92, y: 15, opacity: 0 }}
@@ -9658,17 +10385,17 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.92, y: 15, opacity: 0 }}
               transition={{ type: "spring", duration: 0.45 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900/95 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-6 w-full max-w-md space-y-4 shadow-2xl relative overflow-hidden"
             >
               {/* Top ambient glow bar based on card color */}
               <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500" />
               <div className="absolute -top-16 -left-16 w-36 h-36 bg-amber-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-              <div className="text-center pb-2 border-b border-white/5 relative">
-                <span className="text-[10px] font-black text-amber-400 tracking-widest uppercase block mb-1">
+              <div className="text-center pb-2 border-b border-white/10 relative">
+                <span className="text-xs font-black text-amber-400 tracking-widest uppercase block mb-1">
                   ⚡ {getTranslatedCardName(activeActionCard, profile)}
                 </span>
-                <h3 className="text-xs font-black text-slate-100">
+                <h3 className="text-sm font-black text-slate-100">
                   {!selectedOpponentId 
                     ? (profile.settings.language === 'en' ? 'Choose Target Opponent' : 'Hedef Oyuncu Seçin') 
                     : (profile.settings.language === 'en' ? 'Select Target Asset' : 'Hedeflenecek Varlığı Seçin')}
@@ -9676,18 +10403,18 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               </div>
 
               {match?.settings?.turnLimit !== 'unlimited' && (
-                <div className="text-center bg-amber-500/10 border border-amber-500/20 py-1.5 px-3 rounded-xl text-[10px] text-amber-400 font-extrabold flex items-center justify-center gap-1.5">
-                  ⏱️ {profile.settings.language === 'en' ? 'Decision Time Left:' : 'Kalan Seçim Süresi:'} <span className="text-xs font-black text-amber-300">{timeLeft}s</span>
+                <div className="text-center bg-amber-500/10 border border-amber-500/20 py-2 px-3 rounded-xl text-xs text-amber-400 font-black flex items-center justify-center gap-1.5">
+                  ⏱️ {profile.settings.language === 'en' ? 'Decision Time Left:' : 'Kalan Seçim Süresi:'} <span className="text-sm font-black text-amber-300">{timeLeft}s</span>
                 </div>
               )}
 
               {/* STEP 1: Select Opponent */}
               {!selectedOpponentId && (
                 <div className="space-y-3">
-                  <p className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider text-center">
+                  <p className="text-xs text-slate-300 font-extrabold uppercase tracking-wider text-center">
                     {profile.settings.language === 'en' ? 'Choose opponent to target:' : 'Hedeflenecek rakibi seçin:'}
                   </p>
-                  <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+                  <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1 scrollbar-thin">
                     {(() => {
                       // Find max completed sets among all other players to flag the top threat
                       const opStats = otherPlayers.map((op) => {
@@ -9695,13 +10422,25 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           const set = op.properties[col as CardColor];
                           return set && set.cards.length >= MAX_IN_SET[col as CardColor];
                         }).length;
-                        return { id: op.id, completedCount };
+                        const wildcardCount = Object.values(op.properties).flatMap(s => (s as any)?.cards || []).filter(c => isWildcardOrDualColorCard(c)).length;
+                        return { id: op.id, completedCount, wildcardCount };
                       });
                       const maxCompleted = Math.max(...opStats.map(o => o.completedCount), 0);
 
-                      return otherPlayers.map((op) => {
+                      // Sort players so top threats and players holding Jokers / Dual-color cards appear first
+                      const sortedPlayers = [...otherPlayers].sort((a, b) => {
+                        const aStat = opStats.find(o => o.id === a.id);
+                        const bStat = opStats.find(o => o.id === b.id);
+                        if ((bStat?.completedCount || 0) !== (aStat?.completedCount || 0)) {
+                          return (bStat?.completedCount || 0) - (aStat?.completedCount || 0);
+                        }
+                        return (bStat?.wildcardCount || 0) - (aStat?.wildcardCount || 0);
+                      });
+
+                      return sortedPlayers.map((op) => {
                         const bankTotal = op.bank.reduce((sum, c) => sum + c.value, 0);
                         const completedCount = opStats.find(o => o.id === op.id)?.completedCount || 0;
+                        const wildcardCount = opStats.find(o => o.id === op.id)?.wildcardCount || 0;
                         const isThreat = completedCount > 0 && completedCount === maxCompleted;
 
                         return (
@@ -9713,49 +10452,58 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                               triggerHaptic('medium');
                               setSelectedOpponentId(op.id);
                             }}
-                            className={`w-full p-3 rounded-2xl border transition-all text-left flex justify-between items-center relative overflow-hidden group shadow-lg cursor-pointer ${isThreat
-                              ? 'border-red-500/40 bg-gradient-to-r from-red-950/20 to-slate-950/40 hover:from-red-950/35 hover:border-red-500/70'
-                              : 'border-slate-800 bg-slate-950/30 hover:bg-slate-950/80 hover:border-slate-700'
+                            className={`w-full p-4 rounded-2xl border transition-all text-left flex justify-between items-center relative overflow-hidden group shadow-lg cursor-pointer ${isThreat
+                              ? 'border-red-500/50 bg-gradient-to-r from-red-950/30 to-slate-950/50 hover:from-red-950/50 hover:border-red-500/80'
+                              : 'border-slate-800 bg-slate-950/40 hover:bg-slate-950/80 hover:border-slate-700'
                               }`}
                           >
                             {isThreat && (
-                              <span className="absolute top-0 right-0 bg-red-600/90 text-[7px] text-white font-black px-2 py-0.5 rounded-bl-lg tracking-wider uppercase">
+                              <span className="absolute top-0 right-0 bg-red-600 text-[8px] text-white font-black px-2 py-0.5 rounded-bl-lg tracking-wider uppercase">
                                 ⚠️ {profile.settings.language === 'en' ? 'Top Threat' : 'Lider Rakip'}
                               </span>
                             )}
 
-                            <div className="flex items-center gap-3 min-w-0 flex-1 pr-2">
-                              <span className="text-xl shrink-0 p-1.5 rounded-xl bg-slate-900 border border-white/5">{op.isBot ? '🤖' : '👤'}</span>
+                            <div className="flex items-center gap-3.5 min-w-0 flex-1 pr-2">
+                              <span className="text-2xl shrink-0 p-2 rounded-xl bg-slate-900 border border-white/10">{op.isBot ? '🤖' : '👤'}</span>
                               <div className="flex flex-col space-y-1 min-w-0 flex-1">
-                                <span className="font-extrabold text-xs text-slate-200 group-hover:text-white transition-colors truncate">{op.username}</span>
+                                <span className="font-black text-sm text-slate-100 group-hover:text-white transition-colors truncate">{op.username}</span>
 
-                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[8.5px] text-slate-400 font-bold">
+                                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-300 font-extrabold">
                                   <span className="text-emerald-400">💰 {bankTotal}M</span>
                                   <span>🎴 {op.handCount || op.hand?.length || 0} Kart</span>
-                                  <span className={completedCount > 0 ? 'text-amber-400' : 'text-slate-500'}>🏆 {completedCount} Set</span>
+                                  <span className={completedCount > 0 ? 'text-amber-400' : 'text-slate-400'}>🏆 {completedCount} Set</span>
+                                  {wildcardCount > 0 && (
+                                    <span className="text-purple-300 bg-purple-500/20 px-1.5 py-0.5 rounded text-[10px]">🌈 {wildcardCount} Joker</span>
+                                  )}
                                 </div>
 
-                                {/* Property colors list */}
-                                <div className="flex flex-wrap gap-1 mt-0.5">
-                                  {Object.keys(op.properties).map((colorKey) => {
-                                    const col = colorKey as CardColor;
-                                    const count = op.properties[col]?.cards.length || 0;
-                                    if (count === 0) return null;
-                                    return (
-                                      <span key={col} className="inline-flex items-center gap-0.5 text-[7px] font-black text-slate-300 bg-slate-900/60 border border-white/5 px-1 py-0.2 rounded">
-                                        <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[col] }} />
+                                {/* Property colors list - Joker and Dual color sets listed first */}
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {Object.keys(op.properties)
+                                    .map((colorKey) => {
+                                      const col = colorKey as CardColor;
+                                      const set = op.properties[col];
+                                      const count = set?.cards.length || 0;
+                                      const hasWildcard = set?.cards.some(c => isWildcardOrDualColorCard(c)) || false;
+                                      return { col, count, hasWildcard };
+                                    })
+                                    .filter(item => item.count > 0)
+                                    .sort((a, b) => (b.hasWildcard ? 1 : 0) - (a.hasWildcard ? 1 : 0))
+                                    .map(({ col, count, hasWildcard }) => (
+                                      <span key={col} className="inline-flex items-center gap-1 text-[9px] font-black text-slate-200 bg-slate-900 border border-white/10 px-1.5 py-0.5 rounded">
+                                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[col] }} />
                                         {count}
+                                        {hasWildcard && <span className="text-[8px]">🃏</span>}
                                       </span>
-                                    );
-                                  })}
+                                    ))}
                                 </div>
                               </div>
                             </div>
 
                             <div className="shrink-0 pl-1">
-                              <span className={`text-[8.5px] font-black px-2.5 py-1 rounded-xl border transition-colors ${isThreat
-                                ? 'text-red-400 bg-red-500/10 border-red-500/20 group-hover:bg-red-500/20'
-                                : 'text-amber-400 bg-amber-500/10 border-amber-500/20 group-hover:bg-amber-500/20'
+                              <span className={`text-xs font-black px-3 py-1.5 rounded-xl border transition-colors ${isThreat
+                                ? 'text-red-400 bg-red-500/20 border-red-500/30 group-hover:bg-red-500/30'
+                                : 'text-amber-400 bg-amber-500/20 border-amber-500/30 group-hover:bg-amber-500/30'
                                 }`}>
                                 {profile.settings.language === 'en' ? 'Target' : 'Seç'}
                               </span>
@@ -9779,17 +10527,17 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 return (
                   <div className="space-y-4">
                     {/* Comparative Stats Board */}
-                    <div className="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3 grid grid-cols-2 gap-3 text-[9px] select-none shadow-inner relative">
+                    <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 grid grid-cols-2 gap-3 text-xs select-none shadow-inner relative">
                       {/* Sizin Varlıklarınız */}
-                      <div className="space-y-1.5 border-r border-slate-800/80 pr-2">
-                        <span className="text-[7.5px] text-slate-500 uppercase font-black block">{profile.settings.language === 'en' ? 'Your Assets' : 'Kendi Varlıklarınız'}</span>
-                        <span className="text-emerald-400 font-extrabold block">💰 {myBankTotal}M Kasa</span>
+                      <div className="space-y-1.5 border-r border-slate-800 pr-2">
+                        <span className="text-[9px] text-slate-400 uppercase font-black block">{profile.settings.language === 'en' ? 'Your Assets' : 'Kendi Varlıklarınız'}</span>
+                        <span className="text-emerald-400 font-black block">💰 {myBankTotal}M Kasa</span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {Object.keys(localPlayer.properties).map((col) => {
                             const count = localPlayer.properties[col as CardColor]!.cards.length;
                             if (count === 0) return null;
                             return (
-                              <span key={col} className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-slate-900 border border-white/5 text-[7px] font-bold">
+                              <span key={col} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 border border-white/10 text-[8px] font-black">
                                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[col as CardColor] }} />
                                 {count}
                               </span>
@@ -9799,14 +10547,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       </div>
                       {/* Rakip Varlıkları */}
                       <div className="space-y-1.5 pl-1 min-w-0">
-                        <span className="text-[7.5px] text-slate-500 uppercase font-black block truncate">{op.username}</span>
-                        <span className="text-emerald-400 font-extrabold block">💰 {opBankTotal}M Kasa</span>
+                        <span className="text-[9px] text-slate-400 uppercase font-black block truncate">{op.username}</span>
+                        <span className="text-emerald-400 font-black block">💰 {opBankTotal}M Kasa</span>
                         <div className="flex flex-wrap gap-1 mt-1">
                           {Object.keys(op.properties).map((col) => {
                             const count = op.properties[col as CardColor]!.cards.length;
                             if (count === 0) return null;
                             return (
-                              <span key={col} className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded bg-slate-900 border border-white/5 text-[7px] font-bold">
+                              <span key={col} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-900 border border-white/10 text-[8px] font-black">
                                 <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[col as CardColor] }} />
                                 {count}
                               </span>
@@ -9821,19 +10569,37 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       // Sly Deal (Sinsi Anlaşma)
                       if (activeActionCard.actionType === 'sly-deal') {
                         return (
-                          <div className="space-y-2">
-                            <p className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider text-center">
+                          <div className="space-y-2.5">
+                            <p className="text-xs text-slate-300 font-extrabold uppercase tracking-wider text-center">
                               {profile.settings.language === 'en' ? 'Select Property to Steal:' : 'Çalınacak Mülkü Seçin:'}
                             </p>
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
-                              {Object.keys(op.properties).flatMap((colorKey) => {
-                                const col = colorKey as CardColor;
-                                const set = op.properties[col];
-                                if (!set || set.cards.length === 0 || set.cards.length >= MAX_IN_SET[col]) return [];
+                            <div className="space-y-2 max-h-52 overflow-y-auto pr-1 scrollbar-thin">
+                              {(() => {
+                                const allStealableCards = Object.keys(op.properties).flatMap((colorKey) => {
+                                  const col = colorKey as CardColor;
+                                  const set = op.properties[col];
+                                  if (!set || set.cards.length === 0 || set.cards.length >= MAX_IN_SET[col]) return [];
+                                  return set.cards.map((c) => ({ c, col }));
+                                });
 
-                                return set.cards.map((c) => {
+                                // Sort so Joker and Dual-color cards appear FIRST at the top
+                                allStealableCards.sort((a, b) => {
+                                  const aWild = isWildcardOrDualColorCard(a.c) ? 1 : 0;
+                                  const bWild = isWildcardOrDualColorCard(b.c) ? 1 : 0;
+                                  return bWild - aWild;
+                                });
+
+                                if (allStealableCards.length === 0) {
+                                  return (
+                                    <p className="text-xs text-slate-400 italic text-center py-4">{profile.settings.language === 'en' ? 'No half-set property available to steal.' : 'Çalınabilecek yarım set mülk bulunmuyor.'}</p>
+                                  );
+                                }
+
+                                return allStealableCards.map(({ c, col }) => {
                                   const mySet = localPlayer.properties[col];
                                   const myCount = mySet?.cards?.length || 0;
+                                  const colorHex = COLOR_HEX[col];
+                                  const headerStyle = getCardHeaderStyle(c, col);
 
                                   return (
                                     <motion.button
@@ -9847,32 +10613,41 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                         else handlePlayCardMultiplayer(activeActionCard.id, 'action', undefined, payload);
                                         setActiveActionCard(null);
                                       }}
-                                      className="w-full p-2.5 rounded-xl border border-slate-850 bg-slate-950/40 hover:bg-slate-950 text-white transition-all text-left flex justify-between items-center gap-2 cursor-pointer"
+                                      className="w-full rounded-2xl border bg-slate-950/60 hover:bg-slate-950 text-white transition-all text-left flex flex-col overflow-hidden cursor-pointer shadow-md"
+                                      style={{ borderColor: `${colorHex}40` }}
                                     >
-                                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                                        {renderCardColorIndicator(c, col)}
-                                        <span className="text-[10px] font-bold text-slate-200 truncate">
-                                          {getTranslatedCardName(c, profile)}
-                                          {c.isWildcard && (c.secondaryColor && c.secondaryColor !== 'any' ? ' 🌓' : ' 🌈')}
+                                      {/* Mini Property Card Header */}
+                                      <div className="py-1.5 px-3 font-black text-xs uppercase text-slate-950 flex items-center justify-between" style={headerStyle}>
+                                        <span className="flex items-center gap-1.5 filter drop-shadow">
+                                          {(c.isWildcard || c.type === 'wildcard') && (
+                                            <span className="text-xs">{isCardMultiColorWildcard(c) ? '🌈' : '🌓'}</span>
+                                          )}
+                                          {getTranslatedColorLabel(col, profile)}
                                         </span>
-                                        {getCardSetExtraBadges(c, op)}
+                                        <span className="text-[10px] text-slate-950 font-black">{c.value}M</span>
                                       </div>
-
-                                      <div className="flex items-center gap-1.5 shrink-0">
+                                      <div className="p-3 flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                          {renderCardColorIndicator(c, col)}
+                                          <span className="text-xs font-black text-slate-100 truncate">
+                                            {getTranslatedCardName(c, profile)}
+                                          </span>
+                                          {(c.isWildcard || c.type === 'wildcard') && (
+                                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                              {isCardMultiColorWildcard(c) ? 'Joker 🌈' : 'Çift Renk 🌓'}
+                                            </span>
+                                          )}
+                                        </div>
                                         {myCount > 0 && (
-                                          <span className="text-[7.5px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">
-                                            {profile.settings.language === 'en' ? 'Fits Set' : 'Sete Uyar'}
+                                          <span className="text-[10px] font-black px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                                            Sete Uyar!
                                           </span>
                                         )}
-                                        <span className="text-[9.5px] font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/10">{c.value}M</span>
                                       </div>
                                     </motion.button>
                                   );
                                 });
-                              })}
-                              {Object.values(op.properties).every((s: any) => !s || s.cards.length === 0 || s.cards.length >= MAX_IN_SET[s.cards[0]?.color || 'brown']) && (
-                                <p className="text-[10px] text-slate-500 italic text-center py-4">{profile.settings.language === 'en' ? 'No half-set property available to steal.' : 'Çalınabilecek yarım set mülk bulunmuyor.'}</p>
-                              )}
+                              })()}
                             </div>
                           </div>
                         );
@@ -9881,53 +10656,78 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       // Deal Breaker (Anlaşma Bozan)
                       if (activeActionCard.actionType === 'deal-breaker') {
                         return (
-                          <div className="space-y-2">
-                            <p className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider text-center">
+                          <div className="space-y-2.5">
+                            <p className="text-xs text-slate-300 font-extrabold uppercase tracking-wider text-center">
                               {profile.settings.language === 'en' ? 'Select Complete Set to Steal:' : 'Çalınacak Tamamlanmış Seti Seçin:'}
                             </p>
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
-                              {Object.keys(op.properties).map((colorKey) => {
-                                const col = colorKey as CardColor;
-                                const set = op.properties[col];
-                                if (!set || set.cards.length === 0 || set.cards.length < MAX_IN_SET[col]) return null;
+                            <div className="space-y-2 max-h-52 overflow-y-auto pr-1 scrollbar-thin">
+                              {(() => {
+                                const completedSets = Object.keys(op.properties)
+                                  .map((colorKey) => {
+                                    const col = colorKey as CardColor;
+                                    const set = op.properties[col];
+                                    return { col, set };
+                                  })
+                                  .filter(({ col, set }) => set && set.cards.length >= MAX_IN_SET[col]);
 
-                                return (
-                                  <motion.button
-                                    key={col}
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
-                                    onClick={() => {
-                                      triggerHaptic('medium');
-                                      const payload = { targetPlayerId: op.id, targetColor: col };
-                                      if (isOffline) handleOfflinePlayCard(activeActionCard.id, 'action', undefined, payload);
-                                      else handlePlayCardMultiplayer(activeActionCard.id, 'action', undefined, payload);
-                                      setActiveActionCard(null);
-                                    }}
-                                    className="w-full p-3 rounded-2xl border border-amber-500/20 bg-slate-950/40 hover:bg-slate-950 text-white transition-all text-left flex justify-between items-center gap-2 cursor-pointer relative overflow-hidden"
-                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = COLOR_HEX[col]}
-                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = 'rgba(245,158,11,0.2)'}
-                                  >
-                                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                      <span className="w-2.5 h-2.5 rounded-full shrink-0 animate-pulse shadow-md" style={{ backgroundColor: COLOR_HEX[col] }} />
-                                      <span className="text-[10px] font-extrabold text-slate-200 truncate">
-                                        {getTranslatedColorLabel(col, profile)} Seti
-                                      </span>
-                                      {set.hasHouse && (
-                                        <span className="text-[7.5px] font-black px-1.5 py-0.2 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">🏠 EV</span>
-                                      )}
-                                      {set.hasHotel && (
-                                        <span className="text-[7.5px] font-black px-1.5 py-0.2 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">🏨 OTEL</span>
-                                      )}
-                                    </div>
-                                    <span className="text-[8.5px] font-black px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/20 shrink-0 uppercase tracking-wider">
-                                      🏆 {set.cards.length} {profile.settings.language === 'en' ? 'Props' : 'Mülk'}
-                                    </span>
-                                  </motion.button>
-                                );
-                              })}
-                              {Object.keys(op.properties).every(c => !op.properties[c as CardColor] || op.properties[c as CardColor]!.cards.length < MAX_IN_SET[c as CardColor]) && (
-                                <p className="text-[10px] text-slate-500 italic text-center py-4">{profile.settings.language === 'en' ? 'No completed sets available to steal.' : 'Rakibin tamamlanmış seti bulunmuyor.'}</p>
-                              )}
+                                // Sort so sets containing Jokers / Dual-color cards appear FIRST at the top
+                                completedSets.sort((a, b) => {
+                                  const aHasWild = a.set!.cards.some(c => isWildcardOrDualColorCard(c)) ? 1 : 0;
+                                  const bHasWild = b.set!.cards.some(c => isWildcardOrDualColorCard(c)) ? 1 : 0;
+                                  return bHasWild - aHasWild;
+                                });
+
+                                if (completedSets.length === 0) {
+                                  return (
+                                    <p className="text-xs text-slate-400 italic text-center py-4">{profile.settings.language === 'en' ? 'No completed sets available to steal.' : 'Rakibin tamamlanmış seti bulunmuyor.'}</p>
+                                  );
+                                }
+
+                                return completedSets.map(({ col, set }) => {
+                                  if (!set) return null;
+                                  const colorHex = COLOR_HEX[col];
+
+                                  return (
+                                    <motion.button
+                                      key={col}
+                                      whileHover={{ scale: 1.02 }}
+                                      whileTap={{ scale: 0.98 }}
+                                      onClick={() => {
+                                        triggerHaptic('medium');
+                                        const payload = { targetPlayerId: op.id, targetColor: col };
+                                        if (isOffline) handleOfflinePlayCard(activeActionCard.id, 'action', undefined, payload);
+                                        else handlePlayCardMultiplayer(activeActionCard.id, 'action', undefined, payload);
+                                        setActiveActionCard(null);
+                                      }}
+                                      className="w-full rounded-2xl border bg-slate-950/60 hover:bg-slate-950 text-white transition-all text-left flex flex-col overflow-hidden cursor-pointer shadow-lg"
+                                      style={{ borderColor: `${colorHex}50` }}
+                                    >
+                                      <div className="py-2 px-3 font-black text-xs uppercase text-slate-950 flex items-center justify-between" style={{ backgroundColor: colorHex }}>
+                                        <span>{getTranslatedColorLabel(col, profile)} Seti</span>
+                                        <span className="text-[10px] bg-slate-950/30 px-2 py-0.5 rounded text-white font-black">🏆 Tam Set ({set.cards.length})</span>
+                                      </div>
+                                      <div className="p-3 flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5 flex-wrap min-w-0 flex-1">
+                                          {set.cards.map((c) => (
+                                            <span key={c.id} className="text-[10px] font-bold text-slate-200 bg-slate-900/80 px-1.5 py-0.5 rounded border border-white/10 flex items-center gap-1">
+                                              {renderCardColorIndicator(c, col)}
+                                              <span className="truncate max-w-[70px]">{getTranslatedCardName(c, profile)}</span>
+                                              {(c.isWildcard || c.type === 'wildcard') && (
+                                                <span className="text-[8px] shrink-0">{isCardMultiColorWildcard(c) ? '🌈' : '🌓'}</span>
+                                              )}
+                                            </span>
+                                          ))}
+                                          {set.hasHouse && <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 shrink-0">🏠 EV</span>}
+                                          {set.hasHotel && <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 shrink-0">🏨 OTEL</span>}
+                                        </div>
+                                        <span className="text-xs font-black text-amber-400 bg-amber-500/20 px-3 py-1 rounded-xl border border-amber-500/30 shrink-0">
+                                          Seti Çal!
+                                        </span>
+                                      </div>
+                                    </motion.button>
+                                  );
+                                });
+                              })()}
                             </div>
                           </div>
                         );
@@ -9937,20 +10737,35 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       if (activeActionCard.actionType === 'forced-deal') {
                         if (!selectedStolenCardId) {
                           return (
-                            <div className="space-y-2">
-                              <p className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider text-center">
+                            <div className="space-y-2.5">
+                              <p className="text-xs text-slate-300 font-extrabold uppercase tracking-wider text-center">
                                 ➕ {profile.settings.language === 'en' ? 'Step 1: Choose Property to Steal:' : 'Adım 1: Rakipten Alınacak Mülk:'}
                               </p>
-                              <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
-                                {Object.keys(op.properties).flatMap((colorKey) => {
-                                  const col = colorKey as CardColor;
-                                  const set = op.properties[col];
-                                  if (!set || set.cards.length === 0 || set.cards.length >= MAX_IN_SET[col]) return [];
+                              <div className="space-y-2 max-h-52 overflow-y-auto pr-1 scrollbar-thin">
+                                {(() => {
+                                  const stealableCards = Object.keys(op.properties).flatMap((colorKey) => {
+                                    const col = colorKey as CardColor;
+                                    const set = op.properties[col];
+                                    if (!set || set.cards.length === 0 || set.cards.length >= MAX_IN_SET[col]) return [];
+                                    return set.cards.map((c) => ({ c, col }));
+                                  });
 
-                                  return set.cards.map((c) => {
-                                    const mySet = localPlayer.properties[col];
-                                    const myCount = mySet?.cards?.length || 0;
+                                  // Sort so Joker and Dual-color cards appear FIRST at the top
+                                  stealableCards.sort((a, b) => {
+                                    const aWild = isWildcardOrDualColorCard(a.c) ? 1 : 0;
+                                    const bWild = isWildcardOrDualColorCard(b.c) ? 1 : 0;
+                                    return bWild - aWild;
+                                  });
 
+                                  if (stealableCards.length === 0) {
+                                    return (
+                                      <p className="text-xs text-slate-400 italic text-center py-4">{profile.settings.language === 'en' ? 'No half-set property available to steal.' : 'Çalınabilecek yarım set mülk bulunmuyor.'}</p>
+                                    );
+                                  }
+
+                                  return stealableCards.map(({ c, col }) => {
+                                    const colorHex = COLOR_HEX[col];
+                                    const headerStyle = getCardHeaderStyle(c, col);
                                     return (
                                       <motion.button
                                         key={c.id}
@@ -9960,42 +10775,72 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                           triggerHaptic('light');
                                           setSelectedStolenCardId(c.id);
                                         }}
-                                        className="w-full p-2.5 rounded-xl border border-slate-850 bg-slate-950/40 hover:bg-slate-950 text-white transition-all text-left flex justify-between items-center gap-2 cursor-pointer"
+                                        className="w-full rounded-2xl border bg-slate-950/60 hover:bg-slate-950 text-white transition-all text-left flex flex-col overflow-hidden cursor-pointer shadow-md"
+                                        style={{ borderColor: `${colorHex}40` }}
                                       >
-                                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                                          {renderCardColorIndicator(c, col)}
-                                          <span className="text-[10px] font-bold text-slate-200 truncate">
-                                            {getTranslatedCardName(c, profile)}
-                                            {c.isWildcard && (c.secondaryColor && c.secondaryColor !== 'any' ? ' 🌓' : ' 🌈')}
+                                        <div className="py-1.5 px-3 font-black text-xs uppercase text-slate-950 flex items-center justify-between" style={headerStyle}>
+                                          <span className="flex items-center gap-1.5 filter drop-shadow">
+                                            {(c.isWildcard || c.type === 'wildcard') && (
+                                              <span className="text-xs">{isCardMultiColorWildcard(c) ? '🌈' : '🌓'}</span>
+                                            )}
+                                            {getTranslatedColorLabel(col, profile)}
                                           </span>
-                                          {getCardSetExtraBadges(c, op)}
+                                          <span className="text-[10px] text-slate-950 font-black">{c.value}M</span>
                                         </div>
-                                        <div className="flex items-center gap-1.5 shrink-0">
-                                          {myCount > 0 && (
-                                            <span className="text-[7.5px] font-extrabold px-1.5 py-0.2 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/20">Sete Uyar</span>
-                                          )}
-                                          <span className="text-[9.5px] font-black text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-lg border border-amber-500/10">{c.value}M</span>
+                                        <div className="p-3 flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            {renderCardColorIndicator(c, col)}
+                                            <span className="text-xs font-black text-slate-100 truncate">
+                                              {getTranslatedCardName(c, profile)}
+                                            </span>
+                                            {(c.isWildcard || c.type === 'wildcard') && (
+                                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                                {isCardMultiColorWildcard(c) ? 'Joker 🌈' : 'Çift Renk 🌓'}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="text-xs font-black text-amber-400 bg-amber-500/20 px-2.5 py-1 rounded-xl border border-amber-500/30 shrink-0">
+                                            Seç
+                                          </span>
                                         </div>
                                       </motion.button>
                                     );
                                   });
-                                })}
+                                })()}
                               </div>
                             </div>
                           );
                         } else {
                           return (
-                            <div className="space-y-2">
-                              <p className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider text-center">
+                            <div className="space-y-2.5">
+                              <p className="text-xs text-slate-300 font-extrabold uppercase tracking-wider text-center">
                                 🔄 {profile.settings.language === 'en' ? 'Step 2: Choose Your Property to Give:' : 'Adım 2: Karşılığında Vereceğiniz Mülk:'}
                               </p>
-                              <div className="space-y-2 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
-                                {Object.keys(localPlayer.properties).flatMap((colorKey) => {
-                                  const col = colorKey as CardColor;
-                                  const set = localPlayer.properties[col];
-                                  if (!set || set.cards.length === 0 || set.cards.length >= MAX_IN_SET[col]) return [];
+                              <div className="space-y-2 max-h-52 overflow-y-auto pr-1 scrollbar-thin">
+                                {(() => {
+                                  const myCardsToGive = Object.keys(localPlayer.properties).flatMap((colorKey) => {
+                                    const col = colorKey as CardColor;
+                                    const set = localPlayer.properties[col];
+                                    if (!set || set.cards.length === 0 || set.cards.length >= MAX_IN_SET[col]) return [];
+                                    return set.cards.map((c) => ({ c, col }));
+                                  });
 
-                                  return set.cards.map((c) => {
+                                  // Sort so Joker and Dual-color cards appear FIRST at the top
+                                  myCardsToGive.sort((a, b) => {
+                                    const aWild = isWildcardOrDualColorCard(a.c) ? 1 : 0;
+                                    const bWild = isWildcardOrDualColorCard(b.c) ? 1 : 0;
+                                    return bWild - aWild;
+                                  });
+
+                                  if (myCardsToGive.length === 0) {
+                                    return (
+                                      <p className="text-xs text-slate-400 italic text-center py-4">{profile.settings.language === 'en' ? 'No property available to give.' : 'Karşılığında verebileceğiniz mülk bulunmuyor.'}</p>
+                                    );
+                                  }
+
+                                  return myCardsToGive.map(({ c, col }) => {
+                                    const colorHex = COLOR_HEX[col];
+                                    const headerStyle = getCardHeaderStyle(c, col);
                                     return (
                                       <motion.button
                                         key={c.id}
@@ -10009,21 +10854,38 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                           else handlePlayCardMultiplayer(activeActionCard.id, 'action', undefined, payload);
                                           setActiveActionCard(null);
                                         }}
-                                        className="w-full p-2.5 rounded-xl border border-slate-850 bg-slate-950/40 hover:bg-slate-950 text-white transition-all text-left flex justify-between items-center gap-2 cursor-pointer"
+                                        className="w-full rounded-2xl border bg-slate-950/60 hover:bg-slate-950 text-white transition-all text-left flex flex-col overflow-hidden cursor-pointer shadow-md"
+                                        style={{ borderColor: `${colorHex}40` }}
                                       >
-                                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                                          {renderCardColorIndicator(c, col)}
-                                          <span className="text-[10px] font-bold text-slate-200 truncate">
-                                            {getTranslatedCardName(c, profile)}
-                                            {c.isWildcard && (c.secondaryColor && c.secondaryColor !== 'any' ? ' 🌓' : ' 🌈')}
+                                        <div className="py-1.5 px-3 font-black text-xs uppercase text-slate-950 flex items-center justify-between" style={headerStyle}>
+                                          <span className="flex items-center gap-1.5 filter drop-shadow">
+                                            {(c.isWildcard || c.type === 'wildcard') && (
+                                              <span className="text-xs">{isCardMultiColorWildcard(c) ? '🌈' : '🌓'}</span>
+                                            )}
+                                            {getTranslatedColorLabel(col, profile)}
                                           </span>
-                                          {getCardSetExtraBadges(c, localPlayer)}
+                                          <span className="text-[10px] text-slate-950 font-black">{c.value}M</span>
                                         </div>
-                                        <span className="text-[8.5px] font-black px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700/50 shrink-0">{COLOR_LABELS[col]}</span>
+                                        <div className="p-3 flex items-center justify-between gap-2">
+                                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                                            {renderCardColorIndicator(c, col)}
+                                            <span className="text-xs font-black text-slate-100 truncate">
+                                              {getTranslatedCardName(c, profile)}
+                                            </span>
+                                            {(c.isWildcard || c.type === 'wildcard') && (
+                                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                                {isCardMultiColorWildcard(c) ? 'Joker 🌈' : 'Çift Renk 🌓'}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <span className="text-xs font-black text-emerald-400 bg-emerald-500/20 px-2.5 py-1 rounded-xl border border-emerald-500/30 shrink-0">
+                                            Takas Et
+                                          </span>
+                                        </div>
                                       </motion.button>
                                     );
                                   });
-                                })}
+                                })()}
                               </div>
                             </div>
                           );
@@ -10034,9 +10896,9 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       if (activeActionCard.actionType === 'debt-collector') {
                         return (
                           <div className="space-y-4 text-center">
-                            <div className="p-4 bg-slate-950/80 border border-slate-850 rounded-2xl select-none text-center">
-                              <span className="text-[8px] text-amber-500 font-bold tracking-widest uppercase block mb-1">TAHSİLAT TALEBİ</span>
-                              <p className="text-xs text-slate-300 leading-relaxed font-extrabold">
+                            <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl select-none text-center">
+                              <span className="text-xs text-amber-500 font-black tracking-widest uppercase block mb-1">TAHSİLAT TALEBİ</span>
+                              <p className="text-sm text-slate-200 leading-relaxed font-extrabold">
                                 <strong>{op.username}</strong> {profile.settings.language === 'en' ? 'will be billed 5M debt.' : 'oyuncusundan 5M borç tahsil edilecek.'}
                               </p>
                             </div>
@@ -10051,7 +10913,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                 else handlePlayCardMultiplayer(activeActionCard.id, 'action', undefined, payload);
                                 setActiveActionCard(null);
                               }}
-                              className="w-full py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-115 text-slate-950 font-black rounded-2xl text-xs transition-all shadow-lg cursor-pointer"
+                              className="w-full py-3.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:brightness-115 text-slate-950 font-black rounded-2xl text-xs transition-all shadow-lg cursor-pointer"
                             >
                               🚀 {profile.settings.language === 'en' ? 'Confirm & Collect' : 'Onayla ve Tahsil Et'}
                             </motion.button>
@@ -10072,7 +10934,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   triggerHaptic('light');
                   setActiveActionCard(null);
                 }}
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
+                className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
               >
                 {t('cancel', profile)}
               </motion.button>
@@ -10089,7 +10951,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50"
           >
             <motion.div
               initial={{ scale: 0.92, y: 15, opacity: 0 }}
@@ -10097,7 +10959,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.92, y: 15, opacity: 0 }}
               transition={{ type: "spring", duration: 0.45 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900/95 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden"
             >
               {myActiveRequest.type === 'just-say-no' || (myActiveRequest.jsnCount || 0) > 0 ? (
                 // JSN SAVUNMA EKRANI (Just Say No Defense Chain)
@@ -10105,201 +10967,285 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-red-500 via-rose-500 to-red-500" />
                   <div className="absolute -top-16 -left-16 w-36 h-36 bg-rose-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-                  <div className="border-b border-white/5 pb-3">
-                    <div className="w-14 h-14 rounded-full bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-500 text-2xl animate-pulse shadow-lg mb-2">
-                      🛡️
-                    </div>
-                    <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest block">
-                      {profile.settings.language === 'en' ? 'DEFENSE CHAIN (JSN)' : 'SAVUNMA ZİNCİRİ (HAYIR DEME)'}
-                    </span>
-                    <h3 className="text-xs font-black text-slate-200 mt-1">
-                      {profile.settings.language === 'en' ? 'An action was played against you!' : 'Sana karşı bir hamle yapıldı!'}
-                    </h3>
-                    <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
-                      {(() => {
-                        const req = myActiveRequest;
-                        const sPlayer = match.players.find((p: any) => p.id === req.sourcePlayerId);
-                        const actName = req.actionCard ? getTranslatedCardName(req.actionCard, profile) : "Aksiyon";
-                        return (
-                          <span>
-                            <strong>{sPlayer?.username}</strong> size karşı <strong>{actName}</strong> oynadı.
-                          </span>
-                        );
-                      })()}
-                    </p>
-                  </div>
-
-                  {/* Detailed Action Target Visualizer for Defense Chain */}
                   {(() => {
-                    const actionType = myActiveRequest.originalAction?.type || myActiveRequest.actionCard?.actionType || myActiveRequest.actionCard?.type;
-                    const sPlayer = match.players.find((p: any) => p.id === myActiveRequest.sourcePlayerId);
+                    const req = myActiveRequest;
+                    const jsnCount = req.jsnCount || 0;
+                    const isInitiatorView = (jsnCount % 2 === 1);
+                    
+                    const initiatorId = jsnCount % 2 === 0 ? req.sourcePlayerId : req.targetPlayerId;
+                    const defenderId = jsnCount % 2 === 0 ? req.targetPlayerId : req.sourcePlayerId;
+                    
+                    const initiatorPlayer = match.players.find((p: any) => p.id === initiatorId);
+                    const defenderPlayer = match.players.find((p: any) => p.id === defenderId);
+                    const sPlayer = match.players.find((p: any) => p.id === req.sourcePlayerId);
+                    
+                    const actName = req.actionCard ? getTranslatedCardName(req.actionCard, profile) : "Aksiyon";
+                    const isEn = profile.settings.language === 'en';
 
-                    // 1. Forced Deal (Zoraki Takas)
-                    if (actionType === 'forced-deal') {
-                      let targetCard: Card | null = null;
-                      let givenCard: Card | null = null;
-                      let targetColor: CardColor = 'brown';
-                      let givenColor: CardColor = 'brown';
+                    let displayTitle = '';
+                    let displaySubtitle = '';
+                    let displayDescription = null;
+                    let acceptButtonText = '';
 
-                      for (const col in localPlayer.properties) {
-                        const c = localPlayer.properties[col as CardColor]?.cards.find(c => c.id === myActiveRequest.targetCardId);
-                        if (c) { targetCard = c; targetColor = col as CardColor; break; }
-                      }
-                      if (sPlayer) {
-                        for (const col in sPlayer.properties) {
-                          const c = sPlayer.properties[col as CardColor]?.cards.find(c => c.id === myActiveRequest.myCardId);
-                          if (c) { givenCard = c; givenColor = col as CardColor; break; }
-                        }
-                      }
+                    if (jsnCount === 0) {
+                      // Initial defense phase: Defender's view
+                      displayTitle = isEn ? 'ACTION INCOMING!' : 'SANA KARŞI HAMLE YAPILDI!';
+                      displaySubtitle = isEn ? 'Choose your defense strategy' : 'Savunma stratejinizi seçin';
+                      displayDescription = (
+                        <span>
+                          <strong>{initiatorPlayer?.username || 'Rakip'}</strong> size karşı <strong>{actName}</strong> oynadı. Hamleyi engellemek için elinizdeki 'Hayır Deme Hakkı' (Reddet) kartını kullanabilirsiniz!
+                        </span>
+                      );
+                      acceptButtonText = isEn ? 'Accept and Resolve' : 'Hamleyi Kabul Et (Öde / Mülkü Ver)';
+                    } else if (isInitiatorView) {
+                      // Initiator's view: Opponent played JSN
+                      displayTitle = isEn ? 'ACTION BLOCKED!' : 'HAMLENİZ ENGELLENDİ!';
+                      displaySubtitle = isEn ? 'Counter with Just Say No' : 'Reddet\'e karşı Reddet oyna';
+                      displayDescription = (
+                        <div className="space-y-1.5 text-left">
+                          <p className="text-center">
+                            <strong>{sPlayer?.username || 'Rakip'}</strong> senin <strong>{actName}</strong> hamleni <strong>'Hayır Deme Hakkı' (Reddet)</strong> kartı ile engelledi!
+                          </p>
+                          <span className="block text-[10px] text-amber-400 font-bold bg-amber-500/10 py-1.5 px-3 rounded-lg mt-1 border border-amber-500/15 leading-normal">
+                            💡 {isEn ? "If you accept, your action card will be canceled and discarded. You won't pay or lose anything!" : "Engellemeyi kabul ederseniz hamleniz iptal edilip kartınız ıskartaya gider. Sizden hiçbir para veya mülk eksilmez!"}
+                          </span>
+                        </div>
+                      );
+                      acceptButtonText = isEn ? 'Accept Block (Cancel My Action)' : 'Engellemeyi Kabul Et (Hamlemi İptal Et)';
+                    } else {
+                      // Defender's view: Initiator played counter-JSN
+                      displayTitle = isEn ? 'DEFENSE COUNTERED!' : 'SAVUNMANIZ İPTAL EDİLDİ!';
+                      displaySubtitle = isEn ? 'They countered your Just Say No!' : 'Rakip Reddet\'e karşı Reddet kullandı!';
+                      displayDescription = (
+                        <span>
+                          <strong>{sPlayer?.username || 'Rakip'}</strong> senin 'Hayır' savunmanı iptal etti! Onların hamlesini hâlâ engellemek istiyorsan, elinden yeni bir 'Hayır Deme Hakkı' (Reddet) daha kullanmalısın!
+                        </span>
+                      );
+                      acceptButtonText = isEn ? 'Give Up and Resolve' : 'Kabullen ve Çözülmesine İzin Ver';
+                    }
 
-                      return (
-                        <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-3 w-full text-center space-y-2 select-none">
-                          <span className="text-[9px] text-amber-400 font-black uppercase tracking-wider block">🔄 TAKAS EDİLECEK KARTLAR</span>
-                          <div className="flex items-center justify-between gap-2 px-1 text-[10px] text-slate-300 font-bold">
-                            {/* Verilen Kart (Bizden Çalınacak) */}
-                            <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
-                              <span className="text-[7.5px] text-rose-400 uppercase font-black mb-1">Sizden Gidecek</span>
-                              <span className="truncate w-full text-center block text-[10px] font-black">{targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}</span>
-                              <span className="w-2.5 h-2.5 rounded-full mt-1.5 shadow-sm" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
+                    return (
+                      <>
+                        <div className="border-b border-white/5 pb-3">
+                          <div className={`w-14 h-14 rounded-full ${isInitiatorView ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-rose-500/10 border-rose-500/30 text-rose-500'} border flex items-center justify-center mx-auto text-2xl animate-pulse shadow-lg mb-2`}>
+                            {isInitiatorView ? '⚡' : '🛡️'}
+                          </div>
+                          <span className={`text-[10px] font-black ${isInitiatorView ? 'text-amber-400' : 'text-rose-500'} uppercase tracking-widest block`}>
+                            {isEn ? `DEFENSE CHAIN - STEP ${jsnCount + 1}` : `SAVUNMA ZİNCİRİ - ADIM ${jsnCount + 1}`}
+                          </span>
+                          <h3 className="text-sm font-black text-slate-100 mt-1 uppercase tracking-wide">
+                            {displayTitle}
+                          </h3>
+                          <p className="text-[9px] font-bold text-slate-400 mt-0.5">
+                            {displaySubtitle}
+                          </p>
+                          <div className="text-[10px] text-slate-300 mt-2 leading-relaxed bg-slate-950/40 p-2.5 rounded-xl border border-white/5">
+                            {displayDescription}
+                          </div>
+                        </div>
+
+                        {/* Detailed Action Target Visualizer for Defense Chain */}
+                        {(() => {
+                          const actionType = req.originalAction?.type || req.actionCard?.actionType || req.actionCard?.type;
+
+                          // 1. Forced Deal (Zoraki Takas)
+                          if (actionType === 'forced-deal') {
+                            let targetCard: Card | null = null;
+                            let givenCard: Card | null = null;
+                            let targetColor: CardColor = 'brown';
+                            let givenColor: CardColor = 'brown';
+
+                            if (defenderPlayer) {
+                              for (const col in defenderPlayer.properties) {
+                                const c = defenderPlayer.properties[col as CardColor]?.cards.find(c => c.id === req.targetCardId);
+                                if (c) { targetCard = c; targetColor = col as CardColor; break; }
+                              }
+                            }
+                            if (initiatorPlayer) {
+                              for (const col in initiatorPlayer.properties) {
+                                const c = initiatorPlayer.properties[col as CardColor]?.cards.find(c => c.id === req.myCardId);
+                                if (c) { givenCard = c; givenColor = col as CardColor; break; }
+                              }
+                            }
+
+                            const leftCard = isInitiatorView ? givenCard : targetCard;
+                            const leftColor = isInitiatorView ? givenColor : targetColor;
+                            const leftHeader = isInitiatorView ? (isEn ? 'Your Sent Card' : 'Sizden Gidecek') : (isEn ? 'To Be Taken From You' : 'Sizden Gidecek');
+
+                            const rightCard = isInitiatorView ? targetCard : givenCard;
+                            const rightColor = isInitiatorView ? targetColor : givenColor;
+                            const rightHeader = isInitiatorView ? (isEn ? 'To Be Received' : 'Karşılığında Gelecek') : (isEn ? 'To Be Given to You' : 'Bize Gelecek');
+
+                            return (
+                              <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-3 w-full text-center space-y-2 select-none">
+                                <span className="text-[9px] text-amber-400 font-black uppercase tracking-wider block">🔄 TAKAS EDİLECEK KARTLAR</span>
+                                <div className="flex items-center justify-between gap-2 px-1 text-[10px] text-slate-300 font-bold">
+                                  {/* Verilen Kart */}
+                                  <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
+                                    <span className="text-[7.5px] text-rose-400 uppercase font-black mb-1">{leftHeader}</span>
+                                    <span className="truncate w-full text-center block text-[10px] font-black">{leftCard ? getTranslatedCardName(leftCard, profile) : 'Mülk'}</span>
+                                    <div className="mt-1.5 flex items-center justify-center">
+                                      {leftCard ? renderCardColorIndicator(leftCard, leftColor) : <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: COLOR_HEX[leftColor] }} />}
+                                    </div>
+                                  </div>
+
+                                  <span className="text-xs text-amber-500 font-black shrink-0 animate-pulse">➔</span>
+
+                                  {/* Alınan Kart */}
+                                  <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
+                                    <span className="text-[7.5px] text-emerald-400 uppercase font-black mb-1">{rightHeader}</span>
+                                    <span className="truncate w-full text-center block text-[10px] font-black">{rightCard ? getTranslatedCardName(rightCard, profile) : 'Mülk'}</span>
+                                    <div className="mt-1.5 flex items-center justify-center">
+                                      {rightCard ? renderCardColorIndicator(rightCard, rightColor) : <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: COLOR_HEX[rightColor] }} />}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // 2. Sly Deal (Sinsi Anlaşma)
+                          if (actionType === 'sly-deal') {
+                            let targetCard: Card | null = null;
+                            let targetColor: CardColor = 'brown';
+                            if (defenderPlayer) {
+                              for (const col in defenderPlayer.properties) {
+                                const c = defenderPlayer.properties[col as CardColor]?.cards.find(c => c.id === req.targetCardId);
+                                if (c) { targetCard = c; targetColor = col as CardColor; break; }
+                              }
+                            }
+
+                            const cardLabel = isInitiatorView ? (isEn ? 'Targeting Property' : 'Çalmak İstediğiniz Mülk') : (isEn ? 'Your Targeted Property' : 'Hedeflenen Mülkünüz');
+
+                            return (
+                              <div className="bg-slate-950/80 border border-rose-500/30 rounded-2xl p-3.5 w-full text-center space-y-2 select-none shadow-lg relative overflow-hidden">
+                                <div className="absolute top-0 inset-x-0 h-1.5" style={targetCard ? getCardHeaderStyle(targetCard, targetColor) : { backgroundColor: COLOR_HEX[targetColor] }} />
+                                <span className="text-[10px] text-rose-400 font-black uppercase tracking-wider block">🎯 SİNSİ ANLAŞMA DETAYI</span>
+                                <div className="p-3 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center shadow-inner">
+                                  <span className="text-[9px] text-slate-400 uppercase font-black">{cardLabel}</span>
+                                  <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
+                                    {targetCard ? renderCardColorIndicator(targetCard, targetColor) : <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />}
+                                    <span className="text-slate-100 font-black text-xs">
+                                      {targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}
+                                    </span>
+                                    {targetCard && (targetCard.isWildcard || targetCard.type === 'wildcard') && (
+                                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                        {isCardMultiColorWildcard(targetCard) ? 'Joker 🌈' : 'Çift Renk 🌓'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // 3. Deal Breaker (Anlaşma Bozan)
+                          if (actionType === 'deal-breaker') {
+                            const targetColor = req.targetColor as CardColor;
+                            const setLabel = isInitiatorView ? (isEn ? 'Targeting Complete Set' : 'Çalmak İstediğiniz Set') : (isEn ? 'Your Targeted Complete Set' : 'Hedeflenen Tam Setiniz');
+
+                            return (
+                              <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3.5 w-full text-center space-y-2 select-none shadow-lg relative overflow-hidden">
+                                <div className="absolute top-0 inset-x-0 h-1" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
+                                <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block">⚡ ANLAŞMA BOZAN DETAYI</span>
+                                <div className="p-3 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center shadow-inner">
+                                  <span className="text-[9px] text-slate-400 uppercase font-black">{setLabel}</span>
+                                  <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
+                                    <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
+                                    <span className="text-slate-100 font-black text-xs">
+                                      {getTranslatedColorLabel(targetColor, profile)} Seti
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          // 4. Debt Collector / Rent / Birthday
+                          if (actionType === 'debt-collector' || req.amountDue > 0) {
+                            const amt = req.amountDue || 5;
+                            const amtLabel = isInitiatorView ? (isEn ? 'You Will Receive' : 'Alacağınız Tutar') : (isEn ? 'You Owe' : 'Ödemeniz Gereken Tutar');
+                            return (
+                              <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3.5 w-full text-center space-y-2 select-none shadow-lg">
+                                <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block">💸 PARASAL TALEP DETAYI</span>
+                                <div className="p-3 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center shadow-inner">
+                                  <span className="text-[9px] text-slate-400 uppercase font-black">{amtLabel}</span>
+                                  <span className="text-red-400 font-black mt-1 text-3xl tracking-tight">
+                                    {amt}M
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          return null;
+                        })()}
+
+                        {actionTimeLeft !== null && (
+                          <div className="text-xs bg-red-950/40 border border-red-500/30 py-2 px-3 rounded-xl text-red-400 font-black flex items-center justify-center gap-2 shadow-sm">
+                            ⏱️ {isEn ? 'Auto decision in:' : 'Otomatik karar süresi:'} <span className="text-sm font-black text-red-400">{actionTimeLeft}s</span>
+                          </div>
+                        )}
+
+                        <div className="flex flex-col gap-2.5 pt-1">
+                          {localPlayer.hand.some((c) => c.actionType === 'just-say-no') ? (
+                            <motion.button
+                              whileHover={{ scale: 1.02 }}
+                              whileTap={{ scale: 0.98 }}
+                              onClick={() => {
+                                triggerHaptic('heavy');
+                                playPlaySound();
+                                handleRespondActionRequest('just-say-no');
+                              }}
+                              className="w-full py-3.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black rounded-2xl text-xs uppercase tracking-wider transition-all shadow-lg cursor-pointer flex items-center justify-center gap-2 border border-red-400/40"
+                            >
+                              🛡️ {isInitiatorView 
+                                ? (isEn ? "COUNTERSIGN WITH 'JUST SAY NO'!" : "REDDET'E 'REDDET' OYNA! (Karşı Savunma)") 
+                                : (jsnCount > 0 
+                                  ? (isEn ? "PLAY ANOTHER 'JUST SAY NO'!" : "YENİDEN 'REDDET' OYNA! (Savunmayı Sürdür)")
+                                  : (isEn ? "USE 'JUST SAY NO' CARD!" : "'HAYIR TEŞEKKÜRLER' (REDDET) OYNA!"))
+                              }
+                            </motion.button>
+                          ) : (
+                            <div className="text-xs text-rose-300 bg-red-950/30 py-3 px-4 rounded-xl border border-red-500/20 text-center font-bold select-none">
+                              {isEn ? "No 'Just Say No' card in hand." : "Elinizde savunma kartı (JSN) bulunmuyor."}
                             </div>
+                          )}
 
-                            <span className="text-xs text-amber-500 font-black shrink-0 animate-pulse">➔</span>
+                          <motion.button
+                            whileHover={{ scale: 1.01 }}
+                            whileTap={{ scale: 0.99 }}
+                            onClick={() => {
+                              triggerHaptic('light');
+                              playCoinSound();
+                              handleRespondActionRequest('decline');
+                            }}
+                            className={`w-full py-3 ${isInitiatorView ? 'bg-amber-600 hover:bg-amber-500 text-white border-amber-400/40 font-black' : 'bg-slate-800 hover:bg-slate-700 text-slate-100 border-slate-600/50 font-black'} rounded-2xl text-xs uppercase tracking-wider transition-all cursor-pointer border shadow-md`}
+                          >
+                            {acceptButtonText}
+                          </motion.button>
 
-                            {/* Alınan Kart (Bize Gelecek) */}
-                            <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
-                              <span className="text-[7.5px] text-emerald-400 uppercase font-black mb-1">Karşılığında Gelecek</span>
-                              <span className="truncate w-full text-center block text-[10px] font-black">{givenCard ? getTranslatedCardName(givenCard, profile) : 'Mülk'}</span>
-                              <span className="w-2.5 h-2.5 rounded-full mt-1.5 shadow-sm" style={{ backgroundColor: COLOR_HEX[givenColor] }} />
-                            </div>
-                          </div>
+
                         </div>
-                      );
-                    }
-
-                    // 2. Sly Deal (Sinsi Anlaşma)
-                    if (actionType === 'sly-deal') {
-                      let targetCard: Card | null = null;
-                      let targetColor: CardColor = 'brown';
-                      for (const col in localPlayer.properties) {
-                        const c = localPlayer.properties[col as CardColor]?.cards.find(c => c.id === myActiveRequest.targetCardId);
-                        if (c) { targetCard = c; targetColor = col as CardColor; break; }
-                      }
-
-                      return (
-                        <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-3 w-full text-center space-y-2 select-none">
-                          <span className="text-[9px] text-rose-400 font-black uppercase tracking-wider block">🎯 ÇALINMAK İSTENEN MÜLKÜNÜZ</span>
-                          <div className="p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center">
-                            <span className="text-[8px] text-slate-500 uppercase font-bold">Hedeflenen Mülk</span>
-                            <span className="text-slate-200 font-extrabold mt-1 text-[11px] flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
-                              {targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    // 3. Deal Breaker (Anlaşma Bozan)
-                    if (actionType === 'deal-breaker') {
-                      const targetColor = myActiveRequest.targetColor as CardColor;
-
-                      return (
-                        <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-3 w-full text-center space-y-2 select-none">
-                          <span className="text-[9px] text-red-500 font-black uppercase tracking-wider block">⚡ ÇALINMAK İSTENEN TAM SETİNİZ</span>
-                          <div className="p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center">
-                            <span className="text-[8px] text-slate-500 uppercase font-bold">Hedeflenen Set</span>
-                            <span className="text-slate-200 font-extrabold mt-1 text-[11px] flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
-                              {getTranslatedColorLabel(targetColor, profile)} Seti
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    // 4. Debt Collector (Haciz / Borç Tahsilatı) veya Kira/Doğumgünü borç talebi
-                    if (actionType === 'debt-collector' || myActiveRequest.amountDue > 0) {
-                      const amt = myActiveRequest.amountDue || 5;
-                      return (
-                        <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-3 w-full text-center space-y-2 select-none">
-                          <span className="text-[9px] text-red-400 font-black uppercase tracking-wider block">💸 TALEP EDİLEN MİKTAR</span>
-                          <div className="p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center">
-                            <span className="text-[8px] text-slate-500 uppercase font-bold">Borç Tutarı</span>
-                            <span className="text-red-400 font-black mt-1 text-2xl">
-                              {amt}M
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    return null;
+                      </>
+                    );
                   })()}
-
-                  {actionTimeLeft !== null && (
-                    <div className="text-[10px] bg-red-950/20 border border-red-500/20 py-1.5 px-3 rounded-xl text-red-400 font-extrabold flex items-center justify-center gap-1.5">
-                      ⏱️ {profile.settings.language === 'en' ? 'Auto decision in:' : 'Otomatik karar süresi:'} <span className="text-xs font-black text-red-400">{actionTimeLeft}s</span>
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-2">
-                    {localPlayer.hand.some((c) => c.actionType === 'just-say-no') ? (
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => {
-                          triggerHaptic('heavy');
-                          playPlaySound();
-                          handleRespondActionRequest('just-say-no');
-                        }}
-                        className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-black rounded-2xl text-xs transition-all shadow-md cursor-pointer flex items-center justify-center gap-2 border border-red-500/30"
-                      >
-                        🛡️ {profile.settings.language === 'en' ? "USE 'JUST SAY NO' CARD!" : "'HAYIR TEŞEKKÜRLER' KARTINI KULLAN!"}
-                      </motion.button>
-                    ) : (
-                      <div className="text-[9px] text-rose-400 bg-red-950/20 py-2.5 px-4 rounded-xl border border-red-500/20 select-none">
-                        {profile.settings.language === 'en' ? "No 'Just Say No' card in hand." : "Elinizde savunma kartı (JSN) bulunmuyor."}
-                      </div>
-                    )}
-
-                    <motion.button
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
-                      onClick={() => {
-                        triggerHaptic('light');
-                        playCoinSound();
-                        handleRespondActionRequest('decline');
-                      }}
-                      className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
-                    >
-                      {profile.settings.language === 'en' ? 'Accept and Resolve' : 'Kabul Et ve Öde'}
-                    </motion.button>
-
-                    <motion.button
-                      whileHover={{ scale: 1 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => handleForceCancelActiveAction('Savunma zinciri sonlandırıldı.')}
-                      className="w-full py-2 bg-red-950/20 hover:bg-red-950/40 text-red-400 font-bold rounded-2xl text-[9px] transition-all border border-red-500/10 cursor-pointer"
-                    >
-                      ✕ {profile.settings.language === 'en' ? 'Force Cancel' : 'Hamleyi İptal Et (Takılma Giderici)'}
-                    </motion.button>
-                  </div>
                 </div>
               ) : (
                 // STANDART ÖDEME EKRANI (Kira, Borç / Checkout Terminal)
                 <>
-                  <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-500" />
+                  <div className="absolute top-0 inset-x-0 h-[4px] bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" />
                   <div className="absolute -top-16 -left-16 w-36 h-36 bg-emerald-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-                  <div className="text-center space-y-3 border-b border-white/5 pb-3">
+                  <div className="text-center space-y-3 border-b border-white/10 pb-3">
                     <div className="flex items-center justify-center gap-2">
-                      <span className="text-base">💸</span>
-                      <h3 className="text-xs font-extrabold text-slate-100 leading-tight">
+                      <span className="text-xl">💳</span>
+                      <h3 className="text-xs font-black text-slate-100 leading-snug">
                         {(() => {
                           const sPlayer = match.players.find(p => p.id === myActiveRequest.sourcePlayerId);
                           const cardName = myActiveRequest.actionCard ? getTranslatedCardName(myActiveRequest.actionCard, profile) : 'Aksiyon';
                           return (
-                            <span><strong>{sPlayer?.username}</strong> size karşı <strong>{cardName}</strong> oynadı!</span>
+                            <span><strong className="text-amber-400">{sPlayer?.username}</strong> size karşı <strong className="text-emerald-400">{cardName}</strong> oynadı!</span>
                           );
                         })()}
                       </h3>
@@ -10313,11 +11259,11 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       // 1. Borç / Kira Durumu
                       if (myActiveRequest.amountDue > 0) {
                         return (
-                          <div className="bg-red-950/20 border border-red-500/20 rounded-2xl p-3 inline-block w-full text-center shadow-inner">
-                            <span className="text-[9px] text-red-400 font-extrabold uppercase tracking-wider block mb-1">
+                          <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3.5 inline-block w-full text-center shadow-inner">
+                            <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block mb-1">
                               {profile.settings.language === 'en' ? 'Total Amount Due:' : 'Ödemeniz Gereken Toplam Borç:'}
                             </span>
-                            <span className="text-3xl font-black text-red-400">{myActiveRequest.amountDue}M</span>
+                            <span className="text-3xl font-black text-red-400 tracking-tight">{myActiveRequest.amountDue}M</span>
                           </div>
                         );
                       }
@@ -10341,24 +11287,28 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         }
 
                         return (
-                          <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-3 w-full text-center space-y-2">
-                            <span className="text-[9px] text-amber-400 font-black uppercase tracking-wider block">🔄 ZORUNLU TAKAS TEKLİFİ</span>
+                          <div className="bg-slate-950/80 border border-amber-500/30 rounded-2xl p-3 w-full text-center space-y-2 select-none shadow-md">
+                            <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider block">🔄 ZORUNLU TAKAS TEKLİFİ</span>
 
-                            <div className="flex items-center justify-between gap-2 px-1 text-[10px] text-slate-300 font-bold">
+                            <div className="flex items-center justify-between gap-2 text-xs text-slate-200 font-bold">
                               {/* Verilen Kart (Bizden Çalınacak) */}
-                              <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
-                                <span className="text-[7.5px] text-rose-400 uppercase font-black mb-1">Sizden Gidecek</span>
-                                <span className="truncate w-full text-center block text-[10px] font-black">{targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}</span>
-                                <span className="w-2.5 h-2.5 rounded-full mt-1.5 shadow-sm" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
+                              <div className="flex-1 p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center min-w-0">
+                                <span className="text-[8px] text-rose-400 uppercase font-black mb-1">Sizden Gidecek</span>
+                                <span className="truncate w-full text-center block text-xs font-black">{targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}</span>
+                                <div className="mt-1.5 flex items-center justify-center">
+                                  {targetCard ? renderCardColorIndicator(targetCard, targetColor) : <span className="w-3 h-3 rounded-full shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />}
+                                </div>
                               </div>
 
-                              <span className="text-xs text-amber-500 font-black shrink-0 animate-pulse">➔</span>
+                              <span className="text-sm text-amber-400 font-black shrink-0 animate-pulse">➔</span>
 
                               {/* Alınan Kart (Bize Gelecek) */}
-                              <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
-                                <span className="text-[7.5px] text-emerald-400 uppercase font-black mb-1">Bize Gelecek</span>
-                                <span className="truncate w-full text-center block text-[10px] font-black">{givenCard ? getTranslatedCardName(givenCard, profile) : 'Mülk'}</span>
-                                <span className="w-2.5 h-2.5 rounded-full mt-1.5 shadow-sm" style={{ backgroundColor: COLOR_HEX[givenColor] }} />
+                              <div className="flex-1 p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center min-w-0">
+                                <span className="text-[8px] text-emerald-400 uppercase font-black mb-1">Bize Gelecek</span>
+                                <span className="truncate w-full text-center block text-xs font-black">{givenCard ? getTranslatedCardName(givenCard, profile) : 'Mülk'}</span>
+                                <div className="mt-1.5 flex items-center justify-center">
+                                  {givenCard ? renderCardColorIndicator(givenCard, givenColor) : <span className="w-3 h-3 rounded-full shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[givenColor] }} />}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -10375,14 +11325,22 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         }
 
                         return (
-                          <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-3 w-full text-center space-y-2">
-                            <span className="text-[9px] text-rose-400 font-black uppercase tracking-wider block">🎯 TEK MÜLK ÇALMA TALEBİ</span>
-                            <div className="p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center">
-                              <span className="text-[8px] text-slate-500 uppercase font-bold">İstenen Mülkünüz</span>
-                              <span className="text-slate-200 font-extrabold mt-1 text-[11px] flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
-                                {targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}
-                              </span>
+                          <div className="bg-slate-950/80 border border-rose-500/30 rounded-2xl p-3 w-full text-center space-y-2 select-none shadow-md relative overflow-hidden">
+                            <div className="absolute top-0 inset-x-0 h-1.5" style={targetCard ? getCardHeaderStyle(targetCard, targetColor) : { backgroundColor: COLOR_HEX[targetColor] }} />
+                            <span className="text-[10px] text-rose-400 font-black uppercase tracking-wider block">🎯 TEK MÜLK ÇALMA TALEBİ</span>
+                            <div className="p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center">
+                              <span className="text-[9px] text-slate-400 uppercase font-black">İstenen Mülkünüz</span>
+                              <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
+                                {targetCard ? renderCardColorIndicator(targetCard, targetColor) : <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />}
+                                <span className="text-slate-100 font-black text-xs">
+                                  {targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}
+                                </span>
+                                {targetCard && (targetCard.isWildcard || targetCard.type === 'wildcard') && (
+                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                    {isCardMultiColorWildcard(targetCard) ? 'Joker 🌈' : 'Çift Renk 🌓'}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           </div>
                         );
@@ -10393,14 +11351,16 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         const targetColor = myActiveRequest.targetColor as CardColor;
 
                         return (
-                          <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-3 w-full text-center space-y-2">
-                            <span className="text-[9px] text-red-500 font-black uppercase tracking-wider block">⚡ TAM SET ÇALMA TALEBİ</span>
-                            <div className="p-2.5 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center">
-                              <span className="text-[8px] text-slate-500 uppercase font-bold">İstenen Tamamlanmış Setiniz</span>
-                              <span className="text-slate-200 font-extrabold mt-1 text-[11px] flex items-center gap-1.5">
-                                <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
-                                {getTranslatedColorLabel(targetColor, profile)} Seti
-                              </span>
+                          <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3 w-full text-center space-y-2 select-none shadow-md">
+                            <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block">⚡ TAM SET ÇALMA TALEBİ</span>
+                            <div className="p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center">
+                              <span className="text-[9px] text-slate-400 uppercase font-black">İstenen Tamamlanmış Setiniz</span>
+                              <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
+                                <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
+                                <span className="text-slate-100 font-black text-xs">
+                                  {getTranslatedColorLabel(targetColor, profile)} Seti
+                                </span>
+                              </div>
                             </div>
                           </div>
                         );
@@ -10411,7 +11371,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   </div>
 
                   {/* Payment Board Checkout */}
-                  <div className="space-y-4">
+                  <div className="space-y-3.5">
                     {/* Remaining Balance Bar */}
                     {(() => {
                       const totalSelectedVal = paymentSelection.reduce((acc, id) => {
@@ -10428,17 +11388,17 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       const progressPercent = Math.min(100, (totalSelectedVal / amountDue) * 100);
 
                       return (
-                        <div className="bg-slate-950/40 border border-slate-800 p-3 rounded-2xl space-y-2 select-none shadow-inner">
-                          <div className="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-white/5">
+                        <div className="bg-slate-950/80 border border-slate-750/70 p-3 rounded-2xl space-y-2 select-none shadow-inner">
+                          <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-white/10">
                             <div
-                              className="h-full bg-gradient-to-r from-red-500 to-emerald-500 transition-all duration-300"
+                              className="h-full bg-gradient-to-r from-red-500 to-emerald-400 transition-all duration-300"
                               style={{ width: `${progressPercent}%` }}
                             />
                           </div>
-                          <div className="flex justify-between items-center text-[9px] font-bold">
-                            <span className="text-slate-400">{profile.settings.language === 'en' ? 'Remaining Due:' : 'Kalan Borç:'} <strong className="text-red-400 text-xs font-black">{remainingDebt}M</strong></span>
+                          <div className="flex justify-between items-center text-xs font-black">
+                            <span className="text-slate-300">{profile.settings.language === 'en' ? 'Remaining Due:' : 'Kalan Borç:'} <strong className="text-red-400 text-sm">{remainingDebt}M</strong></span>
                             {remainingDebt === 0 ? (
-                              <span className="text-emerald-400 font-black animate-pulse flex items-center gap-1">
+                              <span className="text-emerald-400 font-black animate-pulse flex items-center gap-1 text-xs">
                                 ✓ {profile.settings.language === 'en' ? 'READY TO PAY!' : 'ÖDEME HAZIR!'}
                               </span>
                             ) : (
@@ -10456,124 +11416,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         whileTap={{ scale: 0.98 }}
                         onClick={() => {
                           const due = myActiveRequest?.amountDue || 0;
-                          const bankCards = localPlayer.bank.map((c) => ({ id: c.id, value: c.value, isProperty: false, isCompletedSet: false }));
-                          const propertyCards: { id: string; value: number; isProperty: boolean; isCompletedSet: boolean }[] = [];
-                          Object.keys(localPlayer.properties).forEach((colorKey) => {
-                            const col = colorKey as CardColor;
-                            const set = localPlayer.properties[col];
-                            if (set) {
-                              const isCompleted = set.cards.length >= MAX_IN_SET[col];
-                              set.cards.forEach((c) => {
-                                propertyCards.push({ id: c.id, value: c.value, isProperty: true, isCompletedSet: isCompleted });
-                              });
-                            }
-                          });
-
-                          const cards = [...bankCards, ...propertyCards];
-                          const totalValue = cards.reduce((sum, c) => sum + c.value, 0);
-                          if (totalValue <= due) {
-                            setPaymentSelection(cards.map((c) => c.id));
-                            triggerHaptic('medium');
-                            playCoinSound();
-                            return;
-                          }
-
-                          // Solve for best subset
-                          let bestSubset: typeof cards | null = null;
-                          let bestValue = Infinity;
-                          let bestCompletedSetCount = Infinity;
-                          let bestPropCount = Infinity;
-                          let bestCardCount = Infinity;
-
-                          const n = cards.length;
-
-                          if (n > 14) {
-                            // Simple greedy fallback to prevent performance lag
-                            const sorted = [...cards].sort((a, b) => {
-                              if (a.isCompletedSet !== b.isCompletedSet) return a.isCompletedSet ? 1 : -1;
-                              if (a.isProperty !== b.isProperty) return a.isProperty ? 1 : -1;
-                              return a.value - b.value;
-                            });
-                            const selection: string[] = [];
-                            let sum = 0;
-                            for (const card of sorted) {
-                              if (sum < due) {
-                                selection.push(card.id);
-                                sum += card.value;
-                              }
-                            }
-                            setPaymentSelection(selection);
-                            triggerHaptic('medium');
-                            playCoinSound();
-                            return;
-                          }
-
-                          const search = (index: number, current: typeof cards, currentSum: number, currentPropCount: number, currentCompletedSetCount: number) => {
-                            if (currentSum >= due) {
-                              let update = false;
-                              if (currentSum < bestValue) {
-                                update = true;
-                              } else if (currentSum === bestValue) {
-                                if (currentCompletedSetCount < bestCompletedSetCount) {
-                                  update = true;
-                                } else if (currentCompletedSetCount === bestCompletedSetCount) {
-                                  if (currentPropCount < bestPropCount) {
-                                    update = true;
-                                  } else if (currentPropCount === bestPropCount) {
-                                    if (current.length < bestCardCount) {
-                                      update = true;
-                                    }
-                                  }
-                                }
-                              }
-
-                              if (update) {
-                                bestSubset = [...current];
-                                bestValue = currentSum;
-                                bestCompletedSetCount = currentCompletedSetCount;
-                                bestPropCount = currentPropCount;
-                                bestCardCount = current.length;
-                              }
-                              return;
-                            }
-
-                            if (index >= n) return;
-
-                            // Option 1: Include cards[index]
-                            const card = cards[index];
-                            current.push(card);
-                            search(
-                              index + 1,
-                              current,
-                              currentSum + card.value,
-                              currentPropCount + (card.isProperty ? 1 : 0),
-                              currentCompletedSetCount + (card.isCompletedSet ? 1 : 0)
-                            );
-                            current.pop();
-
-                            // Option 2: Exclude cards[index]
-                            search(index + 1, current, currentSum, currentPropCount, currentCompletedSetCount);
-                          };
-
-                          // Sort to optimize search (completed sets last, properties last, cash first, cheaper first)
-                          const sortedCards = [...cards].sort((a, b) => {
-                            if (a.isCompletedSet !== b.isCompletedSet) {
-                              return a.isCompletedSet ? 1 : -1; // Completed sets last
-                            }
-                            if (a.isProperty !== b.isProperty) {
-                              return a.isProperty ? 1 : -1; // Cash first, properties last
-                            }
-                            return a.value - b.value; // Cheaper first
-                          });
-
-                          search(0, [], 0, 0, 0);
-
-                          const finalSelection = bestSubset ? (bestSubset as typeof cards).map((c) => c.id) : [];
-                          setPaymentSelection(finalSelection);
+                          const selection = calculateOptimalPaymentSelection(due);
+                          setPaymentSelection(selection);
                           triggerHaptic('medium');
                           playCoinSound();
                         }}
-                        className="flex-1 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-xl text-[9px] font-black transition-all cursor-pointer text-center"
+                        className="flex-1 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer text-center shadow-md"
                       >
                         ⚡ {profile.settings.language === 'en' ? 'Auto-Select' : 'Otomatik Seç'}
                       </motion.button>
@@ -10584,17 +11432,17 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           triggerHaptic('light');
                           setPaymentSelection([]);
                         }}
-                        className="py-2 px-4 bg-slate-800 hover:bg-slate-750 text-slate-300 rounded-xl text-[9px] font-bold transition-all cursor-pointer"
+                        className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60 rounded-xl text-xs font-black transition-all cursor-pointer"
                       >
                         {profile.settings.language === 'en' ? 'Clear' : 'Temizle'}
                       </motion.button>
                     </div>
 
-                    {/* Property Lists - Double column layout */}
-                    <div className="grid grid-cols-2 gap-3 max-h-48 overflow-y-auto pr-1 scrollbar-thin">
+                    {/* Property Lists - Double column layout with mini land card styling */}
+                    <div className="grid grid-cols-2 gap-3 max-h-52 overflow-y-auto pr-1 scrollbar-thin">
                       {/* Left: Bank Vault Cash */}
                       <div className="space-y-1.5">
-                        <span className="text-[7.5px] text-slate-500 font-black uppercase tracking-wider block">💰 {profile.settings.language === 'en' ? 'Cash Box' : 'Kasa (Nakit)'}</span>
+                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">💰 {profile.settings.language === 'en' ? 'Cash Box' : 'Kasa (Nakit)'}</span>
                         {localPlayer.bank.length > 0 ? (
                           <div className="space-y-1.5">
                             {localPlayer.bank.map((c) => {
@@ -10613,32 +11461,42 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                       setPaymentSelection((prev) => [...prev, c.id]);
                                     }
                                   }}
-                                  className={`w-full p-2 rounded-xl border text-left transition-all flex justify-between items-center cursor-pointer ${isSelected
-                                    ? 'border-emerald-500 bg-emerald-500/10 shadow-sm shadow-emerald-500/5'
-                                    : 'border-slate-800 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-950/80'
+                                  className={`w-full p-2.5 rounded-xl border text-left transition-all flex justify-between items-center cursor-pointer ${isSelected
+                                    ? 'border-emerald-400 bg-emerald-500/20 shadow-md shadow-emerald-500/10'
+                                    : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-950'
                                     }`}
                                 >
-                                  <span className="text-[9px] font-bold text-slate-200 truncate max-w-[55px]">{getTranslatedCardName(c, profile)}</span>
-                                  <span className="text-[9px] font-black text-emerald-400 shrink-0">{c.value}M</span>
+                                  <span className="text-xs font-extrabold text-slate-100 truncate max-w-[65px]">{getTranslatedCardName(c, profile)}</span>
+                                  <span className="text-xs font-black text-emerald-400 shrink-0">{c.value}M</span>
                                 </motion.button>
                               );
                             })}
                           </div>
                         ) : (
-                          <span className="text-[8px] text-slate-650 italic block py-1">{profile.settings.language === 'en' ? 'No Cash' : 'Nakit yok'}</span>
+                          <span className="text-[9px] text-slate-500 italic block py-2 text-center">{profile.settings.language === 'en' ? 'No Cash' : 'Nakit yok'}</span>
                         )}
                       </div>
 
                       {/* Right: Table Properties */}
                       <div className="space-y-1.5">
-                        <span className="text-[7.5px] text-slate-500 font-black uppercase tracking-wider block">🏢 {profile.settings.language === 'en' ? 'Properties' : 'Masadaki Mülkler'}</span>
+                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">🏢 {profile.settings.language === 'en' ? 'Properties' : 'Masadaki Mülkler'}</span>
                         {Object.values(localPlayer.properties).some((set: any) => set && set.cards.length > 0) ? (
                           <div className="space-y-1.5">
-                            {Object.keys(localPlayer.properties).flatMap((colorKey) => {
-                              const col = colorKey as CardColor;
-                              const set = localPlayer.properties[col];
-                              if (!set) return [];
-                              return set.cards.map((c) => {
+                            {(() => {
+                              const myTableProperties = Object.keys(localPlayer.properties).flatMap((colorKey) => {
+                                const col = colorKey as CardColor;
+                                const set = localPlayer.properties[col];
+                                if (!set) return [];
+                                return set.cards.map((c) => ({ c, col }));
+                              });
+
+                              myTableProperties.sort((a, b) => {
+                                const aWild = isWildcardOrDualColorCard(a.c) ? 1 : 0;
+                                const bWild = isWildcardOrDualColorCard(b.c) ? 1 : 0;
+                                return bWild - aWild;
+                              });
+
+                              return myTableProperties.map(({ c, col }) => {
                                 const isSelected = paymentSelection.includes(c.id);
                                 return (
                                   <motion.button
@@ -10654,35 +11512,35 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                         setPaymentSelection((prev) => [...prev, c.id]);
                                       }
                                     }}
-                                    className={`w-full p-2 rounded-xl border text-left transition-all flex justify-between items-center cursor-pointer gap-2 ${isSelected
-                                      ? 'border-amber-500 bg-amber-500/10 shadow-sm'
-                                      : 'border-slate-800 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-950/80'
+                                    className={`w-full p-2.5 rounded-xl border text-left transition-all flex justify-between items-center cursor-pointer gap-2 ${isSelected
+                                      ? 'border-amber-400 bg-amber-500/20 shadow-md shadow-amber-500/10'
+                                      : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-950'
                                       }`}
                                   >
                                     <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                       {renderCardColorIndicator(c, col)}
-                                      <span className="text-[9px] font-bold text-slate-200 truncate">
+                                      <span className="text-xs font-extrabold text-slate-100 truncate">
                                         {getTranslatedCardName(c, profile)}
-                                        {c.isWildcard && (c.secondaryColor && c.secondaryColor !== 'any' ? ' 🌓' : ' 🌈')}
+                                        {(c.isWildcard || c.type === 'wildcard') && (isCardMultiColorWildcard(c) ? ' 🌈' : ' 🌓')}
                                       </span>
                                     </div>
-                                    <span className="text-[9px] font-black text-amber-400 shrink-0">{c.value}M</span>
+                                    <span className="text-xs font-black text-amber-400 shrink-0">{c.value}M</span>
                                   </motion.button>
                                 );
                               });
-                            })}
+                            })()}
                           </div>
                         ) : (
-                          <span className="text-[8px] text-slate-650 italic block py-1">{profile.settings.language === 'en' ? 'No Properties' : 'Mülk yok'}</span>
+                          <span className="text-[9px] text-slate-500 italic block py-2 text-center">{profile.settings.language === 'en' ? 'No Properties' : 'Mülk yok'}</span>
                         )}
                       </div>
                     </div>
 
                     {/* Checkout Basket Overview */}
                     {paymentSelection.length > 0 && (
-                      <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-2.5 space-y-1.5 select-none shadow-inner">
-                        <span className="text-[7.5px] text-slate-500 font-black uppercase tracking-wider block">🛒 {profile.settings.language === 'en' ? 'Checkout Basket' : 'Ödeme Sepeti'} ({paymentSelection.length} {profile.settings.language === 'en' ? 'Cards' : 'Kart'})</span>
-                        <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto pr-0.5 scrollbar-thin">
+                      <div className="bg-slate-950/80 border border-slate-750/70 rounded-2xl p-3 space-y-1.5 select-none shadow-inner">
+                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">🛒 {profile.settings.language === 'en' ? 'Checkout Basket' : 'Ödeme Sepeti'} ({paymentSelection.length} {profile.settings.language === 'en' ? 'Cards' : 'Kart'})</span>
+                        <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pr-0.5 scrollbar-thin">
                           <AnimatePresence>
                             {paymentSelection.map((id) => {
                               let card: Card | undefined = localPlayer.bank.find((c) => c.id === id);
@@ -10706,15 +11564,15 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                   initial={{ opacity: 0, scale: 0.8 }}
                                   animate={{ opacity: 1, scale: 1 }}
                                   exit={{ opacity: 0, scale: 0.8 }}
-                                  className="inline-flex items-center gap-1 text-[7.5px] font-bold bg-slate-900 border border-white/5 px-2 py-0.5 rounded-lg text-slate-300"
+                                  className="inline-flex items-center gap-1.5 text-xs font-extrabold bg-slate-900 border border-white/10 px-2.5 py-1 rounded-lg text-slate-100 shadow-sm"
                                 >
                                   {card.type === 'property' || card.type === 'wildcard' ? (
-                                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: COLOR_HEX[col] }} />
+                                    <span className="w-2 h-2 rounded-full shrink-0 border border-white/20" style={{ backgroundColor: COLOR_HEX[col] }} />
                                   ) : (
-                                    <span className="text-[8px]">💵</span>
+                                    <span className="text-xs">💵</span>
                                   )}
-                                  <span className="truncate max-w-[50px]">{getTranslatedCardName(card, profile)}</span>
-                                  <span className="text-slate-400 font-extrabold">{card.value}M</span>
+                                  <span className="truncate max-w-[65px]">{getTranslatedCardName(card, profile)}</span>
+                                  <span className="text-emerald-400 font-black">{card.value}M</span>
                                 </motion.span>
                               );
                             })}
@@ -10725,8 +11583,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   </div>
 
                   {actionTimeLeft !== null && (
-                    <div className="text-[10px] bg-red-950/20 border border-red-500/20 py-1.5 px-3 rounded-xl text-red-400 font-extrabold flex items-center justify-center gap-1.5">
-                      ⏱️ {profile.settings.language === 'en' ? 'Auto payment in:' : 'Otomatik ödeme süresi:'} <span className="text-xs font-black text-red-400">{actionTimeLeft}s</span>
+                    <div className="text-xs bg-red-950/30 border border-red-500/20 py-2 px-3 rounded-xl text-red-400 font-black flex items-center justify-center gap-2">
+                      ⏱️ {profile.settings.language === 'en' ? 'Auto payment in:' : 'Otomatik ödeme süresi:'} <span className="text-sm font-black text-red-400">{actionTimeLeft}s</span>
                     </div>
                   )}
 
@@ -10741,7 +11599,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           playPlaySound();
                           handleRespondActionRequest('just-say-no');
                         }}
-                        className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-black rounded-xl text-xs transition-all shadow-md cursor-pointer border border-red-500/20"
+                        className="w-full py-3 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black rounded-xl text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer border border-red-400/30"
                       >
                         🛡️ {profile.settings.language === 'en' ? "USE 'JUST SAY NO' CARD!" : "'HAYIR TEŞEKKÜRLER' KARTINI KULLAN!"}
                       </motion.button>
@@ -10755,19 +11613,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         playCoinSound();
                         handleRespondActionRequest('pay');
                       }}
-                      className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-black rounded-xl text-xs transition-all shadow-md cursor-pointer"
+                      className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider transition-all shadow-lg cursor-pointer border border-emerald-300/40"
                     >
                       {profile.settings.language === 'en' ? 'ACCEPT & PAY / HAND OVER CARDS' : 'ÖDEMEYİ ONAYLA VE DEVRET'}
                     </motion.button>
 
-                    <motion.button
-                      whileHover={{ scale: 1 }}
-                      whileTap={{ scale: 0.98 }}
-                      onClick={() => handleForceCancelActiveAction('Ödeme/Tahsilat talebi iptal edildi.')}
-                      className="w-full py-2 bg-red-950/20 hover:bg-red-950/40 text-red-400 font-bold rounded-xl text-[10px] transition-all border border-red-500/10 cursor-pointer"
-                    >
-                      ✕ {profile.settings.language === 'en' ? 'CANCEL (Takılma Giderici)' : 'ÖDEMEYİ İPTAL ET (Takılma Giderici)'}
-                    </motion.button>
+
                   </div>
                 </>
               )}
@@ -10785,7 +11636,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setManagedSetColor(null)}
-            className="fixed inset-0 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4 z-50"
+            className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50"
           >
             <motion.div
               initial={{ scale: 0.92, y: 15, opacity: 0 }}
@@ -10793,7 +11644,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.92, y: 15, opacity: 0 }}
               transition={{ type: "spring", duration: 0.45 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900/95 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden backdrop-blur-xl"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden"
             >
               {/* Top color glow band */}
               <div className="absolute top-0 inset-x-0 h-[4px]" style={{ backgroundColor: COLOR_HEX[managedSetColor] }} />
@@ -10825,7 +11676,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 {localPlayer.properties[managedSetColor]?.cards.map((c) => {
                   const isMultiColorWildcard = c.isWildcard && (!c.secondaryColor || c.secondaryColor === 'any');
                   return (
-                    <div key={c.id} className="p-3 rounded-2xl bg-slate-950/60 border border-white/5 hover:border-white/10 flex items-center justify-between gap-3 transition-all shadow-md">
+                    <div key={c.id} onDoubleClick={() => { if (c.isWildcard && isMyTurn) { handleQuickFlipWildcard(c); setManagedSetColor(null); } }} title={c.isWildcard && isMyTurn ? (profile.settings.language === 'en' ? "Double-click to flip color" : "Rengini çevirmek için çift tıklayın") : undefined} className="p-3 rounded-2xl bg-slate-950/60 border border-white/5 hover:border-white/10 flex items-center justify-between gap-3 transition-all shadow-md cursor-pointer select-none">
                       <div className="flex items-center gap-3 min-w-0">
                         {/* Color indicator strip */}
                         <div
@@ -11056,38 +11907,47 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       {showBankVaultModal && (
         <div
           onClick={() => setShowBankVaultModal(false)}
-          className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in"
+          className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50 animate-fade-in"
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="bg-slate-900 border border-slate-750/30 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden"
+            className="bg-slate-900 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden"
             style={{
-              boxShadow: '0 0 25px 2px rgba(16, 185, 129, 0.05), inset 0 0 15px rgba(255,255,255,0.01)',
+              boxShadow: '0 0 30px 2px rgba(16, 185, 129, 0.1), inset 0 0 15px rgba(255,255,255,0.02)',
               background: 'radial-gradient(circle at top, #0f172a 0%, #090d16 100%)'
             }}
           >
             {/* Gold metallic accent line at top */}
-            <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-amber-500/10 via-amber-500/80 to-amber-500/10" />
+            <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-amber-500/20 via-amber-400 to-amber-500/20" />
 
-            <div className="flex justify-between items-center border-b border-white/5 pb-3">
+            <div className="flex justify-between items-center border-b border-white/10 pb-3">
               <div className="flex items-center gap-2">
-                <span className="text-lg filter drop-shadow">🏦</span>
+                <span className="text-2xl filter drop-shadow">🏦</span>
                 <div>
-                  <h3 className="font-black text-xs text-amber-500 uppercase tracking-widest">
+                  <h3 className="font-black text-xs text-amber-400 uppercase tracking-widest">
                     {t('bank_vault', profile)}
                   </h3>
-                  <p className="text-[8.5px] text-slate-500 font-medium">
+                  <p className="text-[10px] text-slate-400 font-bold">
                     Ödemelerde harcayabileceğiniz nakit kasası
                   </p>
                 </div>
               </div>
+              <button
+                onClick={() => {
+                  playPlaySound();
+                  setShowBankVaultModal(false);
+                }}
+                className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 hover:text-white transition-colors text-xs font-black"
+              >
+                ✕
+              </button>
             </div>
 
             {/* Neon Yeşil Dev Dijital Gösterge */}
-            <div className="bg-slate-950/80 border border-emerald-500/25 rounded-2xl p-3.5 text-center shadow-inner relative overflow-hidden select-none">
-              <div className="absolute inset-0 bg-emerald-500/5 filter blur-sm pointer-events-none" />
-              <span className="text-[7.5px] text-emerald-500/60 font-black uppercase tracking-widest block mb-0.5">TOPLAM KASA DEĞERİ</span>
-              <span className="text-2xl font-black text-emerald-400 tracking-wider filter drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]">
+            <div className="bg-slate-950/90 border border-emerald-500/40 rounded-2xl p-4 text-center shadow-inner relative overflow-hidden select-none">
+              <div className="absolute inset-0 bg-emerald-500/10 filter blur-md pointer-events-none" />
+              <span className="text-[9px] text-emerald-400/80 font-black uppercase tracking-widest block mb-0.5">TOPLAM KASA DEĞERİ</span>
+              <span className="text-3xl font-black text-emerald-400 tracking-wider filter drop-shadow-[0_0_12px_rgba(52,211,153,0.4)]">
                 🪙 {localPlayer.bank.reduce((sum, c) => sum + c.value, 0)}M
               </span>
             </div>
@@ -11095,7 +11955,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             {/* List of cards */}
             <div className="py-1">
               {localPlayer.bank.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-[10px] italic bg-black/30 rounded-2xl border border-dashed border-slate-800">
+                <div className="text-center py-8 text-slate-400 text-xs italic bg-slate-950/60 rounded-2xl border border-dashed border-slate-800 font-bold">
                   {t('bank_vault_empty', profile)}
                 </div>
               ) : (
@@ -11108,14 +11968,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         setFocusedCard(card);
                         setFocusedCardZoom(window.innerWidth < 640 ? 1.4 : 1.8);
                       }}
-                      className="flex flex-col items-center gap-1.5 p-1.5 bg-slate-950/60 rounded-2xl border border-slate-800/80 hover:border-emerald-500/50 cursor-pointer transition-all active:scale-95 text-center group"
+                      className="flex flex-col items-center gap-1.5 p-2 bg-slate-950/80 rounded-2xl border border-slate-750 hover:border-emerald-400/80 cursor-pointer transition-all active:scale-95 text-center group shadow-md"
                       title={t('view_details', profile)}
-                      style={{ boxShadow: '0 4px 6px -1px rgba(0,0,0,0.3)' }}
                     >
                       <div className="w-12 mx-auto scale-90 transition-transform group-hover:scale-95 group-hover:-translate-y-0.5 duration-200">
                         <GameCard card={card} size="medium" disable3D={true} cardBack={profile.settings.cardBack} cardSkin={profile.settings.cardSkin || 'skin_none'} />
                       </div>
-                      <span className="text-[8px] font-black text-emerald-400 block group-hover:brightness-110">
+                      <span className="text-xs font-black text-emerald-400 block group-hover:brightness-120">
                         {card.value}M 🔍
                       </span>
                     </div>
@@ -11129,7 +11988,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 playPlaySound();
                 setShowBankVaultModal(false);
               }}
-              className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold rounded-xl text-[10px] transition-all cursor-pointer"
+              className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-100 font-black rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer border border-slate-700/60 shadow-md"
             >
               Masa Başına Dön
             </button>
@@ -11151,45 +12010,42 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 setShowOpponentAssetsModal(false);
                 setAssetsOpponentId(null);
               }}
-              className="fixed inset-0 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 z-50 animate-fade-in"
+              className="fixed inset-0 bg-slate-950/90 flex items-center justify-center p-4 z-50 animate-fade-in"
             >
               <div
                 onClick={(e) => e.stopPropagation()}
-                className="bg-slate-900 border border-emerald-500/25 rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative animate-scale-up max-h-[90vh] overflow-y-auto scrollbar-thin"
+                className="bg-slate-900 border border-emerald-500/30 rounded-3xl p-5 w-full max-w-sm space-y-4 shadow-2xl relative animate-scale-up max-h-[90vh] overflow-y-auto scrollbar-thin"
                 style={{
-                  boxShadow: '0 0 25px 2px rgba(16, 185, 129, 0.05)',
+                  boxShadow: '0 0 30px 2px rgba(16, 185, 129, 0.08)',
                   background: 'radial-gradient(circle at top, #0f172a 0%, #090d16 100%)'
                 }}
               >
-                {/* Lazer Tarama Animasyonu (Scanline) */}
-                <div className="absolute inset-0 bg-gradient-to-b from-transparent via-emerald-500/5 to-transparent pointer-events-none w-full h-[200%] animate-scanline" />
-
                 {/* Header */}
-                <div className="border-b border-white/5 pb-2.5 flex justify-between items-center relative select-none">
+                <div className="border-b border-white/10 pb-3 flex justify-between items-center relative select-none">
                   <h3 className="font-black text-xs text-emerald-400 uppercase tracking-widest flex items-center gap-1.5">
                     🗂️ CASUS DOSYASI: {opponent.username}
                   </h3>
-                  <span className="text-[7.5px] font-black text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2 py-0.5 rounded-lg">
-                    {opponent.isBot ? 'BOT HUD' : 'MANUEL HUD'}
+                  <span className="text-[9px] font-black text-emerald-400 bg-emerald-950/60 border border-emerald-500/40 px-2 py-0.5 rounded-lg">
+                    {opponent.isBot ? 'BOT' : 'OYUNCU'}
                   </span>
                 </div>
 
                 {/* Bank status summary */}
-                <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3 space-y-2 text-center relative select-none">
-                  <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block">
+                <div className="bg-slate-950/80 border border-slate-750 p-3.5 rounded-2xl space-y-2 text-center relative select-none shadow-inner">
+                  <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">
                     💰 TOPLAM NAKİT REZERVİ
                   </span>
-                  <span className="text-xl font-black text-emerald-400 block tracking-wide">
+                  <span className="text-2xl font-black text-emerald-400 block tracking-wide">
                     {bankTotal}M
                   </span>
                   {bankBreakdown.length > 0 && (
-                    <div className="flex flex-wrap justify-center gap-1 mt-1">
+                    <div className="flex flex-wrap justify-center gap-1.5 mt-1">
                       {bankBreakdown.map((item) => (
                         <span
                           key={item.value}
-                          className="text-[8.5px] font-black text-emerald-400 bg-emerald-950/40 border border-emerald-900/30 px-2 py-0.5 rounded-lg leading-none"
+                          className="text-[9px] font-black text-emerald-300 bg-emerald-950/60 border border-emerald-500/30 px-2 py-0.5 rounded-lg leading-none"
                         >
-                          {item.value}M <span className="text-slate-500 font-bold text-[7px]">x{item.count}</span>
+                          {item.value}M <span className="text-slate-400 font-bold text-[8px]">x{item.count}</span>
                         </span>
                       ))}
                     </div>
@@ -11197,12 +12053,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 </div>
 
                 {/* Properties & sets bento layout */}
-                <div className="space-y-2">
-                  <span className="text-[8px] text-slate-500 font-black uppercase tracking-wider block select-none">
+                <div className="space-y-2.5">
+                  <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block select-none">
                     🏢 SAHADAKİ MÜLK SETLERİ
                   </span>
 
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-2 gap-2.5">
                     {Object.keys(opponent.properties).map((colorKey) => {
                       const col = colorKey as CardColor;
                       const set = opponent.properties[col];
@@ -11217,32 +12073,35 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       return (
                         <div
                           key={col}
-                          className={`bg-slate-950/60 border rounded-2xl p-2.5 flex flex-col justify-between transition-all duration-300 relative ${isCritical
-                            ? 'border-red-500 animate-pulse shadow-[0_0_8px_rgba(239,68,68,0.2)]'
+                          className={`bg-slate-950/80 border rounded-2xl p-2.5 flex flex-col justify-between transition-all duration-300 relative shadow-md overflow-hidden ${isCritical
+                            ? 'border-red-500/80 shadow-[0_0_12px_rgba(239,68,68,0.3)]'
                             : 'border-slate-800'
                             }`}
                         >
+                          {/* Top Color Header Strip */}
+                          <div className="absolute top-0 inset-x-0 h-1.5" style={{ backgroundColor: colorHex }} />
+
                           {isCritical && (
-                            <span className="absolute -top-1.5 -right-1 bg-red-600 text-[6.5px] text-white font-black px-1 py-0.2 rounded-lg tracking-wider animate-bounce select-none uppercase">
-                              Kritik!
+                            <span className="absolute top-2 right-2 bg-red-600 text-[7px] text-white font-black px-1.5 py-0.5 rounded-md tracking-wider animate-bounce select-none uppercase">
+                              KRİTİK!
                             </span>
                           )}
 
-                          {/* Color bar */}
-                          <div className="flex justify-between items-center text-[9px] font-bold text-slate-200">
-                            <span className="truncate flex items-center gap-1 max-w-[80px]">
-                              <span className="w-1.5 h-1.5 rounded-full shrink-0 animate-pulse" style={{ backgroundColor: colorHex }} />
+                          {/* Set color & ratio */}
+                          <div className="flex justify-between items-center text-xs font-black text-slate-100 pt-1">
+                            <span className="truncate flex items-center gap-1.5 max-w-[85px]">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/20" style={{ backgroundColor: colorHex }} />
                               {getTranslatedColorLabel(col, profile)}
                             </span>
                             {isCompleted ? (
-                              <span className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[6px] font-black px-1.5 py-0.2 rounded-md uppercase">SET</span>
+                              <span className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase">TAM SET</span>
                             ) : (
-                              <span className="text-slate-500 text-[8px] font-black">{count}/{max}</span>
+                              <span className="text-slate-400 text-xs font-black">[{count}/{max}]</span>
                             )}
                           </div>
 
-                          {/* List of properties names */}
-                          <div className="space-y-1 border-t border-slate-800/40 pt-1.5 my-1.5">
+                          {/* List of property names */}
+                          <div className="space-y-1 border-t border-white/10 pt-1.5 my-2">
                             {set.cards.map((c) => (
                               <button
                                 key={c.id}
@@ -11251,22 +12110,23 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                   setFocusedCard(c);
                                   setFocusedCardZoom(window.innerWidth < 640 ? 1.4 : 1.8);
                                 }}
-                                className="text-[8px] font-bold text-slate-400 hover:text-amber-400 block w-full text-left truncate leading-tight uppercase cursor-pointer"
+                                className="text-[9px] font-black text-slate-200 hover:text-amber-300 block w-full text-left truncate leading-snug uppercase cursor-pointer flex items-center gap-1.5"
                               >
-                                • {getTranslatedCardName(c, profile)}
+                                {renderCardColorIndicator(c, col)}
+                                <span>{getTranslatedCardName(c, profile)}</span>
                               </button>
                             ))}
                           </div>
 
-                          <div className="text-[7.5px] font-black text-emerald-400 text-center bg-slate-900/40 py-0.5 rounded-md border border-white/5">
-                            Kira: {rentVal}M
+                          <div className="text-[9px] font-black text-emerald-400 text-center bg-slate-900/80 py-1 rounded-lg border border-white/10">
+                            Kira: <strong className="text-emerald-300 font-black">{rentVal}M</strong>
                           </div>
                         </div>
                       );
                     })}
 
                     {Object.keys(opponent.properties).every(c => !opponent.properties[c as CardColor] || opponent.properties[c as CardColor]!.cards.length === 0) && (
-                      <span className="col-span-2 text-center py-8 text-[9px] text-slate-500 italic bg-slate-950/60 rounded-2xl border border-dashed border-slate-800">
+                      <span className="col-span-2 text-center py-8 text-xs text-slate-400 italic font-bold bg-slate-950/60 rounded-2xl border border-dashed border-slate-800">
                         Masada hiç mülkü bulunmuyor.
                       </span>
                     )}
@@ -11279,7 +12139,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     setShowOpponentAssetsModal(false);
                     setAssetsOpponentId(null);
                   }}
-                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold rounded-xl text-[10px] transition-all cursor-pointer relative z-10"
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-100 font-black rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer relative z-10 border border-slate-700/60 shadow-md"
                 >
                   Kapat
                 </button>
@@ -11936,20 +12796,40 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           topPos = Math.max(10, Math.min(window.innerHeight - panelHeight - 10, topPos));
 
           return (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="fixed z-[9999] w-64 bg-slate-950/95 border border-white/10 rounded-2xl p-4 shadow-2xl backdrop-blur-md text-white select-none pointer-events-none"
-              style={{
-                left: `${leftPos}px`,
-                top: `${topPos}px`,
-              }}
-            >
-              <div className="flex items-center gap-1.5 border-b border-white/5 pb-2 mb-2.5">
-                <span className="text-[10px]">📊</span>
-                <h4 className="font-extrabold text-[10px] tracking-wider uppercase text-slate-300">{profile.settings.language === 'en' ? 'Rent Analysis Panel' : 'Kira Analiz Paneli'}</h4>
-              </div>
+            <>
+              {/* Tap Outside Backdrop on mobile */}
+              <div
+                className="fixed inset-0 z-[9998] bg-black/5 cursor-pointer sm:hidden"
+                onClick={() => setAnalyzedProperty(null)}
+                onTouchStart={() => setAnalyzedProperty(null)}
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                onClick={() => setAnalyzedProperty(null)}
+                className="fixed z-[9999] w-64 bg-slate-950/95 border border-white/10 rounded-2xl p-4 shadow-2xl backdrop-blur-md text-white select-none pointer-events-auto cursor-pointer"
+                style={{
+                  left: `${leftPos}px`,
+                  top: `${topPos}px`,
+                }}
+              >
+                <div className="flex items-center justify-between border-b border-white/5 pb-2 mb-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px]">📊</span>
+                    <h4 className="font-extrabold text-[10px] tracking-wider uppercase text-slate-300">{profile.settings.language === 'en' ? 'Rent Analysis Panel' : 'Kira Analiz Paneli'}</h4>
+                  </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setAnalyzedProperty(null);
+                    }}
+                    className="w-5 h-5 rounded-full bg-white/10 hover:bg-white/20 text-white/80 text-[10px] font-bold flex items-center justify-center transition-colors cursor-pointer"
+                    title="Kapat"
+                  >
+                    ✕
+                  </button>
+                </div>
 
               <div className="space-y-3">
                 {/* Title and Color Tag */}
@@ -12026,6 +12906,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 </div>
               </div>
             </motion.div>
+          </>
           );
         })()}
       </AnimatePresence>
@@ -12700,11 +13581,11 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         return (
           <div
             onClick={() => setShowDiscardModal(false)}
-            className="fixed inset-0 bg-slate-950/75 backdrop-blur-md z-[200] flex flex-col justify-end sm:justify-center sm:items-center sm:p-4 animate-fade-in"
+            className="fixed inset-0 bg-slate-950/90 z-[200] flex flex-col justify-end sm:justify-center sm:items-center sm:p-4 animate-fade-in"
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900/95 border-t sm:border border-white/10 sm:rounded-3xl w-full sm:max-w-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative max-h-[85vh] flex flex-col backdrop-blur-xl"
+              className="bg-slate-900 border-t sm:border border-white/10 sm:rounded-3xl w-full sm:max-w-xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative max-h-[85vh] flex flex-col"
             >
 
               {/* Top accent line */}
@@ -12714,13 +13595,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               <div className="w-10 h-1 bg-slate-700/60 rounded-full mx-auto mt-3 mb-1 sm:hidden shrink-0" />
 
               {/* Header */}
-              <div className="px-5 py-3 border-b border-white/5 shrink-0">
+              <div className="px-5 py-3 border-b border-white/10 shrink-0">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-sm font-black text-rose-400 uppercase tracking-wider flex items-center gap-1.5 font-sans">
                       ⚡ {profile.settings.language === 'en' ? 'Discard Excess Cards' : 'Fazla Kartları At'}
                     </h3>
-                    <p className="text-[10px] text-slate-400 mt-0.5 font-sans">
+                    <p className="text-xs text-slate-300 mt-0.5 font-bold">
                       {profile.settings.language === 'en'
                         ? `Hand limit is 7 cards. You must discard ${excessCount} more card${excessCount > 1 ? 's' : ''}.`
                         : `El limiti 7 karttır. ${excessCount} kart daha atman gerekiyor.`
@@ -12729,15 +13610,15 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   </div>
                   <div className="flex items-center gap-2">
                     {/* Remaining to discard badge */}
-                    <div className="bg-rose-500/15 border border-rose-500/30 rounded-xl px-2.5 py-1 text-center min-w-[64px]">
-                      <span className="text-base font-black text-rose-400 leading-none block">{excessCount}</span>
-                      <span className="text-[7px] text-rose-400/80 font-black uppercase tracking-wide leading-none">
+                    <div className="bg-rose-500/20 border border-rose-500/40 rounded-xl px-3 py-1 text-center min-w-[68px]">
+                      <span className="text-lg font-black text-rose-400 leading-none block">{excessCount}</span>
+                      <span className="text-[8px] text-rose-300 font-black uppercase tracking-wide leading-none">
                         {profile.settings.language === 'en' ? 'to discard' : 'atılacak'}
                       </span>
                     </div>
                     <button
                       onClick={() => setShowDiscardModal(false)}
-                      className="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition-colors text-xs"
+                      className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 hover:text-white transition-colors text-xs font-black"
                     >
                       ✕
                     </button>
@@ -12745,25 +13626,25 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 </div>
 
                 {/* Progress bar: how many to discard */}
-                <div className="mt-2 bg-slate-800/80 rounded-full h-1 overflow-hidden">
+                <div className="mt-2.5 bg-slate-800 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className="h-full bg-rose-500 rounded-full transition-all duration-300"
+                    className="h-full bg-rose-500 rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(244,63,94,0.6)]"
                     style={{ width: `${(7 / localPlayer.hand.length) * 100}%` }}
                   />
                 </div>
-                <div className="flex justify-between text-[8px] text-slate-500 mt-0.5 font-bold">
-                  <span>{profile.settings.language === 'en' ? 'Target: 7 cards' : 'Hedef: 7 mülk/para'}</span>
+                <div className="flex justify-between text-[9px] text-slate-400 mt-1 font-black">
+                  <span>{profile.settings.language === 'en' ? 'Target: 7 cards' : 'Hedef: 7 kart'}</span>
                   <span>{profile.settings.language === 'en' ? `Currently: ${localPlayer.hand.length}` : `Şu an: ${localPlayer.hand.length}`}</span>
                 </div>
               </div>
 
               {/* Cards Grid — compact bento design */}
               <div className="overflow-y-auto flex-1 p-4">
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5">
                   {sortedHand.map((card) => {
-                    const cardColor = card.type === 'money' ? 'emerald'
-                      : card.type === 'property' || card.type === 'wildcard' ? 'blue'
-                        : 'amber';
+                    const isLand = card.type === 'property' || card.type === 'wildcard';
+                    const colorHex = isLand && card.color ? COLOR_HEX[card.color as CardColor] : null;
+
                     return (
                       <button
                         key={card.id}
@@ -12772,36 +13653,32 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           if (isOffline) handleOfflineDiscard(card.id);
                           else handleDiscardMultiplayer(card.id);
                         }}
-                        className={`relative flex flex-col items-center justify-between p-1.5 rounded-xl border transition-all hover:scale-[1.03] active:scale-95 cursor-pointer group select-none
-                          ${cardColor === 'emerald' ? 'bg-emerald-950/10 border-emerald-900/30 hover:bg-emerald-900/10 hover:border-emerald-500/40 shadow-[inset_0_1px_1px_rgba(16,185,129,0.05)]'
-                            : cardColor === 'blue' ? 'bg-blue-950/10 border-blue-900/30 hover:bg-blue-900/10 hover:border-blue-500/40 shadow-[inset_0_1px_1px_rgba(59,130,246,0.05)]'
-                              : 'bg-amber-950/10 border-amber-900/30 hover:bg-amber-900/10 hover:border-amber-500/40 shadow-[inset_0_1px_1px_rgba(245,158,11,0.05)]'
-                          }`}
+                        className="relative flex flex-col items-center justify-between p-2 rounded-2xl border transition-all hover:scale-[1.03] active:scale-95 cursor-pointer group select-none overflow-hidden bg-slate-950/80 border-slate-750 hover:border-rose-500/80 shadow-md"
                         title={card.name}
                       >
+                        {/* Mini Land Color Strip if Property/Wildcard */}
+                        {colorHex && (
+                          <div className="absolute top-0 inset-x-0 h-1.5" style={{ backgroundColor: colorHex }} />
+                        )}
+
                         {/* Mini Card container */}
-                        <div className="transform scale-[0.9] group-hover:scale-[0.95] transition-transform duration-200">
+                        <div className="transform scale-[0.9] group-hover:scale-[0.95] transition-transform duration-200 mt-1">
                           <GameCard card={card} size="mini" activeEffect={null} disable3D={true} cardBack={profile.settings.cardBack} cardSkin={profile.settings.cardSkin || 'skin_none'} />
                         </div>
 
                         {/* Name and Discard trigger */}
                         <div className="w-full mt-1.5 text-center flex flex-col items-center gap-0.5">
-                          <div className="text-[8px] font-black text-slate-300 truncate w-full px-0.5 leading-none font-sans">
-                            {TURKISH_NAMES[card.name] || card.name}
+                          <div className="text-[9px] font-black text-slate-200 truncate w-full px-0.5 leading-none uppercase">
+                            {getTranslatedCardName(card, profile)}
                           </div>
                           
-                          <div className={`text-[7px] font-extrabold px-1 py-0.5 rounded-md leading-none mt-0.5
-                            ${card.type === 'money' ? 'bg-emerald-500/10 text-emerald-400'
-                              : card.type === 'property' || card.type === 'wildcard' ? 'bg-blue-500/10 text-blue-400'
-                                : 'bg-amber-500/10 text-amber-400'
-                            }`}
-                          >
+                          <div className="text-[8px] font-black text-amber-300 bg-amber-950/60 border border-amber-500/30 px-1.5 py-0.5 rounded-md leading-none mt-0.5">
                             {card.value}M
                           </div>
                         </div>
 
                         {/* Red "AT" Quick Action block */}
-                        <div className="w-full mt-2 py-1 bg-rose-500/10 group-hover:bg-rose-500 text-rose-400 group-hover:text-white rounded-lg text-[7px] font-black text-center tracking-wider transition-all duration-150 leading-none">
+                        <div className="w-full mt-2 py-1.5 bg-rose-500/20 group-hover:bg-rose-600 text-rose-300 group-hover:text-white rounded-xl text-[9px] font-black text-center tracking-wider transition-all duration-150 leading-none border border-rose-500/30">
                           {profile.settings.language === 'en' ? 'DISCARD' : 'AT'}
                         </div>
                       </button>
@@ -12811,10 +13688,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               </div>
 
               {/* Footer */}
-              <div className="px-4 pb-4 pt-2 border-t border-white/5 shrink-0">
+              <div className="px-4 pb-4 pt-2 border-t border-white/10 shrink-0">
                 <button
                   onClick={() => setShowDiscardModal(false)}
-                  className="w-full py-2 bg-slate-800 hover:bg-slate-750 text-slate-400 hover:text-white font-bold rounded-xl text-xs transition-all cursor-pointer font-sans"
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-black rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer border border-slate-700/60 shadow-md"
                 >
                   {profile.settings.language === 'en' ? 'Close' : 'Kapat'}
                 </button>

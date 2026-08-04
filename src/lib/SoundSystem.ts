@@ -570,34 +570,138 @@ class SoundSystem {
     bell.stop(now + 0.18 + 0.3);
   }
 
+  private customAudioPlayer: HTMLAudioElement | null = null;
+
   startMusic(settings: UserSettings) {
-    if (this.isMusicActive) return;
+    if (this.isMusicActive) {
+      this.stopMusic();
+    }
+    this.isMusicActive = true;
+
+    // Check if custom audio URL is set or gameMusic is a URL
+    const trackId = settings.gameMusic || 'music_classic';
+    const isUrl = (url?: string) => url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('data:audio') || url.endsWith('.mp3') || url.endsWith('.wav') || url.endsWith('.ogg'));
+
+    const customUrl = settings.customBgmUrl || (isUrl(trackId) ? trackId : undefined);
+
+    if (customUrl) {
+      try {
+        if (this.customAudioPlayer) {
+          this.customAudioPlayer.pause();
+          this.customAudioPlayer = null;
+        }
+        this.customAudioPlayer = new Audio(customUrl);
+        this.customAudioPlayer.loop = true;
+        this.customAudioPlayer.volume = Math.max(0, Math.min(1, (settings.soundVolume / 100) * 0.4));
+        this.customAudioPlayer.play().catch((err) => {
+          console.warn('Custom background audio autoplay blocked or failed:', err);
+        });
+        return;
+      } catch (err) {
+        console.error('Error playing custom background music:', err);
+      }
+    }
+
     const ctx = this.initCtx();
     if (!ctx) return;
-    this.isMusicActive = true;
 
     if (!this.musicVolumeNode) {
       this.musicVolumeNode = ctx.createGain();
       this.musicVolumeNode.connect(ctx.destination);
     }
     
-    // Low baseline volume so it stays atmospheric
-    const vol = (settings.soundVolume / 100) * 0.08;
-    this.musicVolumeNode.gain.setValueAtTime(vol, ctx.currentTime);
+    // Set volume based on track character
+    const baseVol = (settings.soundVolume / 100) * 0.08;
+    this.musicVolumeNode.gain.setValueAtTime(baseVol, ctx.currentTime);
 
-    const chords = [
+    // Chords & Melody scales according to track style
+    let chords = [
       [220.00, 261.63, 329.63, 392.00], // Am7
       [174.61, 220.00, 261.63, 329.63], // Fmaj7
       [130.81, 164.81, 196.00, 246.94], // Cmaj7
       [196.00, 246.94, 293.66, 329.63], // G6
     ];
 
-    const melodyScales = [
-      [440.00, 523.25, 587.33, 659.25, 783.99], // A minor pentatonic
-      [349.23, 440.00, 523.25, 587.33, 659.25], // F major pentatonic
-      [261.63, 293.66, 329.63, 392.00, 440.00], // C major pentatonic
-      [293.66, 329.63, 392.00, 440.00, 493.88], // G major pentatonic
+    let melodyScales = [
+      [440.00, 523.25, 587.33, 659.25, 783.99],
+      [349.23, 440.00, 523.25, 587.33, 659.25],
+      [261.63, 293.66, 329.63, 392.00, 440.00],
+      [293.66, 329.63, 392.00, 440.00, 493.88],
     ];
+
+    let bpm = 750; // 80 BPM
+    let waveType: OscillatorType = 'triangle';
+    let bassType: OscillatorType = 'sine';
+
+    if (trackId === 'music_retro') {
+      // 8-Bit Arcade Chiptune
+      bpm = 400; // ~150 BPM
+      waveType = 'square';
+      bassType = 'square';
+      chords = [
+        [220, 261.63, 329.63], // Am
+        [174.61, 220, 261.63], // F
+        [130.81, 164.81, 196], // C
+        [196, 246.94, 293.66], // G
+      ];
+      melodyScales = [
+        [523.25, 659.25, 783.99, 1046.50, 880.00],
+        [440.00, 523.25, 659.25, 880.00, 783.99],
+        [392.00, 523.25, 659.25, 783.99, 1046.50],
+        [493.88, 587.33, 783.99, 987.77, 1174.66],
+      ];
+    } else if (trackId === 'music_cyber') {
+      // Cyberpunk Synthwave
+      bpm = 500; // ~120 BPM
+      waveType = 'sawtooth';
+      bassType = 'sawtooth';
+      chords = [
+        [110, 164.81, 220], // Am bass pad
+        [87.31, 130.81, 174.61], // F
+        [130.81, 196, 261.63], // C
+        [98, 146.83, 196], // G
+      ];
+      melodyScales = [
+        [440, 523.25, 587.33, 659.25, 880],
+        [349.23, 440, 523.25, 659.25, 698.46],
+        [261.63, 329.63, 392, 523.25, 659.25],
+        [293.66, 392, 493.88, 587.33, 783.99],
+      ];
+    } else if (trackId === 'music_chill') {
+      // Lo-Fi Chill & Coffee
+      bpm = 900; // ~66 BPM
+      waveType = 'sine';
+      bassType = 'sine';
+      chords = [
+        [261.63, 329.63, 392.00, 493.88], // Cmaj7
+        [220.00, 261.63, 329.63, 392.00], // Am7
+        [174.61, 220.00, 261.63, 329.63], // Fmaj7
+        [196.00, 246.94, 293.66, 349.23], // G7
+      ];
+      melodyScales = [
+        [523.25, 587.33, 659.25, 783.99, 987.77],
+        [440.00, 523.25, 659.25, 783.99, 880.00],
+        [349.23, 440.00, 523.25, 659.25, 698.46],
+        [392.00, 493.88, 587.33, 698.46, 783.99],
+      ];
+    } else if (trackId === 'music_epic') {
+      // Epic Heroic March
+      bpm = 600; // ~100 BPM
+      waveType = 'sawtooth';
+      bassType = 'triangle';
+      chords = [
+        [146.83, 220.00, 293.66, 370.00], // Dm/A
+        [174.61, 220.00, 261.63, 349.23], // F
+        [130.81, 164.81, 196.00, 261.63], // C
+        [196.00, 246.94, 293.66, 392.00], // G
+      ];
+      melodyScales = [
+        [293.66, 349.23, 440.00, 587.33, 698.46],
+        [349.23, 440.00, 523.25, 698.46, 880.00],
+        [261.63, 329.63, 392.00, 523.25, 659.25],
+        [392.00, 493.88, 587.33, 783.99, 987.77],
+      ];
+    }
 
     let step = 0;
 
@@ -607,38 +711,39 @@ class SoundSystem {
       const chordIndex = Math.floor(step / 4) % chords.length;
       const beatInChord = step % 4;
 
-      // 1. Play Soft Pad Chord
+      // 1. Play Pad / Chord Strum
       if (beatInChord === 0) {
         const chordNotes = chords[chordIndex];
         chordNotes.forEach((freq) => {
           const osc = this.ctx!.createOscillator();
           const gainNode = this.ctx!.createGain();
           
-          osc.type = 'triangle';
+          osc.type = waveType;
           osc.frequency.setValueAtTime(freq, now);
           
           gainNode.gain.setValueAtTime(0, now);
-          gainNode.gain.linearRampToValueAtTime(0.04, now + 0.3); // Soft attack
-          gainNode.gain.exponentialRampToValueAtTime(0.001, now + 2.8); // Long decay
+          gainNode.gain.linearRampToValueAtTime(trackId === 'music_retro' ? 0.02 : 0.04, now + 0.15);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, now + (bpm * 3.5 / 1000));
           
           osc.connect(gainNode);
           gainNode.connect(this.musicVolumeNode!);
           
           osc.start(now);
-          osc.stop(now + 2.8);
+          osc.stop(now + (bpm * 3.5 / 1000));
         });
       }
 
-      // 2. Play Deep Soft Kick Drum (Step 0 and 2)
+      // 2. Play Bass / Kick
       if (beatInChord === 0 || beatInChord === 2) {
         const kickOsc = this.ctx!.createOscillator();
         const kickGain = this.ctx!.createGain();
         
-        kickOsc.type = 'sine';
-        kickOsc.frequency.setValueAtTime(120, now);
-        kickOsc.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+        kickOsc.type = bassType;
+        const bassFreq = trackId === 'music_retro' ? 90 : trackId === 'music_cyber' ? 60 : 110;
+        kickOsc.frequency.setValueAtTime(bassFreq, now);
+        kickOsc.frequency.exponentialRampToValueAtTime(bassFreq * 0.4, now + 0.12);
         
-        kickGain.gain.setValueAtTime(0.08, now);
+        kickGain.gain.setValueAtTime(0.07, now);
         kickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
         
         kickOsc.connect(kickGain);
@@ -648,13 +753,13 @@ class SoundSystem {
         kickOsc.stop(now + 0.12);
       }
 
-      // 3. Play Retro Hihat Shaker (Step 1 and 3)
+      // 3. Play Percussion / HiHat
       if (beatInChord === 1 || beatInChord === 3) {
         const hatOsc = this.ctx!.createOscillator();
         const hatGain = this.ctx!.createGain();
         
-        hatOsc.type = 'triangle';
-        hatOsc.frequency.setValueAtTime(2000, now);
+        hatOsc.type = trackId === 'music_retro' ? 'square' : 'triangle';
+        hatOsc.frequency.setValueAtTime(trackId === 'music_cyber' ? 2800 : 1800, now);
         
         hatGain.gain.setValueAtTime(0.006, now);
         hatGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
@@ -666,26 +771,26 @@ class SoundSystem {
         hatOsc.stop(now + 0.04);
       }
 
-      // 4. Play Gentle Pentatonic Arpeggio Melodies
-      if (Math.random() > 0.4 && beatInChord !== 1) {
+      // 4. Play Arpeggios / Melodic Lead
+      if (Math.random() > 0.35 && beatInChord !== 1) {
         const scale = melodyScales[chordIndex];
         const freq = scale[Math.floor(Math.random() * scale.length)];
         
         const melOsc = this.ctx!.createOscillator();
         const melGain = this.ctx!.createGain();
         
-        melOsc.type = 'sine';
+        melOsc.type = trackId === 'music_retro' ? 'square' : waveType;
         melOsc.frequency.setValueAtTime(freq, now);
         
         melGain.gain.setValueAtTime(0, now);
-        melGain.gain.linearRampToValueAtTime(0.02, now + 0.08); // Gentle swell
-        melGain.gain.exponentialRampToValueAtTime(0.001, now + 0.6);
+        melGain.gain.linearRampToValueAtTime(0.02, now + 0.05);
+        melGain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
         
         melOsc.connect(melGain);
         melGain.connect(this.musicVolumeNode!);
         
         melOsc.start(now);
-        melOsc.stop(now + 0.6);
+        melOsc.stop(now + 0.5);
       }
 
       step++;
@@ -696,7 +801,7 @@ class SoundSystem {
     }
     
     tick();
-    this.musicInterval = setInterval(tick, 750); // 80 BPM
+    this.musicInterval = setInterval(tick, bpm);
   }
 
   stopMusic() {
@@ -705,9 +810,16 @@ class SoundSystem {
       clearInterval(this.musicInterval);
       this.musicInterval = null;
     }
+    if (this.customAudioPlayer) {
+      this.customAudioPlayer.pause();
+      this.customAudioPlayer = null;
+    }
   }
 
   updateMusicVolume(settings: UserSettings) {
+    if (this.customAudioPlayer) {
+      this.customAudioPlayer.volume = Math.max(0, Math.min(1, (settings.soundVolume / 100) * 0.4));
+    }
     if (this.musicVolumeNode && this.ctx) {
       const vol = (settings.soundVolume / 100) * 0.08;
       this.musicVolumeNode.gain.setValueAtTime(vol, this.ctx.currentTime);

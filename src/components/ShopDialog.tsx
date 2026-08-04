@@ -1,9 +1,11 @@
 import React from 'react';
+import { Sparkles, Coins, RefreshCw } from 'lucide-react';
 import { UserProfile, UserSettings, StoreItem } from '../types';
 import { sounds } from '../lib/SoundSystem';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { t } from '../lib/TranslationSystem';
 import { API_BASE_URL } from '../lib/apiConfig';
+import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
 
 interface Props {
   profile: UserProfile;
@@ -283,18 +285,162 @@ export const STORE_ITEMS: Omit<StoreItem, 'isUnlocked'>[] = [
   { id: 'board_magma', name: '🔥 Magma Lav Tahtası', category: 'player_board', price: 450, description: 'Kızgın lav çatlakları ve patlayan kıvılcım efektli oyuncu alanı tasarımı.' },
   { id: 'board_galaxy', name: '🌌 Nebula Galaksi Tahtası', category: 'player_board', price: 500, description: 'Sonsuz derinlik hissi veren dönen nebula bulutları ile süslü oyuncu alanı tasarımı.' },
   { id: 'board_ice', name: '❄️ Kutup Ayazı Buz Tahtası', category: 'player_board', price: 300, description: 'Dondurucu buz kristalleriyle çevrelenmiş şık kutup temalı oyuncu alanı tasarımı.' },
-  { id: 'board_void', name: '🌀 Karanlık Rift Tahtası', category: 'player_board', price: 420, description: 'Hiçliğin derinliklerinden gelen gizemli mor aura ve parçacık süzülmeli tasarım.' }
+  { id: 'board_void', name: '🌀 Karanlık Rift Tahtası', category: 'player_board', price: 420, description: 'Hiçliğin derinliklerinden gelen gizemli mor aura ve parçacık süzülmeli tasarım.' },
+
+  // Game Music / BGM Tracks
+  { id: 'music_classic', name: '🎵 Klasik Atmosfer', category: 'game_music', price: 0, description: 'Göz yormayan, rahatlatıcı ve derinlikli klasik masa fon müziği.' },
+  { id: 'music_retro', name: '🕹️ 8-Bit Arcade Ritim', category: 'game_music', price: 150, description: 'Eski atari salonlarından fırlayan enerjik ve nostaljik 8-bit vuruşlar.' },
+  { id: 'music_cyber', name: '⚡ Siberpunk Synthwave', category: 'game_music', price: 250, description: 'Derin baslar, gece neonları ve tempo dolu fütüristik siberpunk ritimler.' },
+  { id: 'music_chill', name: '☕ Lo-Fi Chill & Kahve', category: 'game_music', price: 200, description: 'Odaklanmanızı artıran, sıcak ve dinlendirici lo-fi piyano akorları.' },
+  { id: 'music_epic', name: '🛡️ Efsanevi Şampiyon Marşı', category: 'game_music', price: 350, description: 'Kritik hamlelerin heyecanını zirveye çıkaran epik şampiyon teması.' }
 ];
 
 export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
   const [itemsList, setItemsList] = React.useState<StoreItem[]>(STORE_ITEMS);
-  const [activeCategory, setActiveCategory] = React.useState<'all' | 'avatar' | 'card_back' | 'board_theme' | 'profile_frame' | 'celebration_sound' | 'card_skin' | 'action_vfx' | 'player_board'>('all');
+  const [activeCategory, setActiveCategory] = React.useState<'all' | 'avatar' | 'card_back' | 'board_theme' | 'profile_frame' | 'celebration_sound' | 'card_skin' | 'action_vfx' | 'player_board' | 'game_music'>('all');
   const [buyingId, setBuyingId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [previewItem, setPreviewItem] = React.useState<StoreItem | null>(null);
   const [soundIsPlaying, setSoundIsPlaying] = React.useState<boolean>(false);
   const [purchasedItemName, setPurchasedItemName] = React.useState<string | null>(null);
   const [vfxTrigger, setVfxTrigger] = React.useState<boolean>(false);
+
+  // Live Sandbox Simulator States
+  const [sandboxBoardTheme, setSandboxBoardTheme] = React.useState<string>(profile.settings.boardTheme || 'theme_green');
+  const [sandboxCardBack, setSandboxCardBack] = React.useState<string>(profile.settings.cardBack || 'back_classic');
+  const [sandboxCardSkin, setSandboxCardSkin] = React.useState<string>(profile.settings.cardSkin || '');
+  const [sandboxPlayerBoard, setSandboxPlayerBoard] = React.useState<string>(profile.settings.playerBoard || 'board_classic');
+  const [sandboxVfx, setSandboxVfx] = React.useState<string>(profile.settings.actionVfx || 'vfx_meteor');
+  const [sandboxSound, setSandboxSound] = React.useState<string>(profile.settings.celebrationSound || 'sound_classic');
+  const [sandboxFrame, setSandboxFrame] = React.useState<string>(profile.settings.profileFrame || '');
+  const [sandboxAvatar, setSandboxAvatar] = React.useState<string>(profile.avatarId || 'avatar_classic');
+  
+  const [drawnCard, setDrawnCard] = React.useState<{ id: string; name: string; color: string; rentValues: number[]; type: string; isFlipped: boolean } | null>(null);
+  const [sandboxVfxActive, setSandboxVfxActive] = React.useState<boolean>(false);
+  const [sandboxSoundPlaying, setSandboxSoundPlaying] = React.useState<boolean>(false);
+
+  // New Simulation & In-game Preview States
+  const [sandboxTab, setSandboxTab] = React.useState<'table' | 'ingame'>('ingame');
+  const [simulatedScore, setSimulatedScore] = React.useState<number>(15);
+  const [simulatedPlayedCard, setSimulatedPlayedCard] = React.useState<{ id: string; name: string; color: string; type: string } | null>(null);
+  const [simulatedShowWin, setSimulatedShowWin] = React.useState<boolean>(false);
+  const [simulatedRentFlying, setSimulatedRentFlying] = React.useState<boolean>(false);
+  const [simulatedPlayAnimation, setSimulatedPlayAnimation] = React.useState<boolean>(false);
+
+  const previewInSandbox = (item: StoreItem) => {
+    if (item.category === 'board_theme') setSandboxBoardTheme(item.id);
+    else if (item.category === 'card_back') setSandboxCardBack(item.id);
+    else if (item.category === 'card_skin') setSandboxCardSkin(item.id);
+    else if (item.category === 'player_board') setSandboxPlayerBoard(item.id);
+    else if (item.category === 'action_vfx') setSandboxVfx(item.id);
+    else if (item.category === 'celebration_sound') setSandboxSound(item.id);
+    else if (item.category === 'profile_frame') setSandboxFrame(item.id);
+    else if (item.category === 'avatar') setSandboxAvatar(item.id);
+  };
+
+  const resetSandboxToEquipped = () => {
+    setSandboxBoardTheme(profile.settings.boardTheme || 'theme_green');
+    setSandboxCardBack(profile.settings.cardBack || 'back_classic');
+    setSandboxCardSkin(profile.settings.cardSkin || '');
+    setSandboxPlayerBoard(profile.settings.playerBoard || 'board_classic');
+    setSandboxVfx(profile.settings.actionVfx || 'vfx_meteor');
+    setSandboxSound(profile.settings.celebrationSound || 'sound_classic');
+    setSandboxFrame(profile.settings.profileFrame || '');
+    setSandboxAvatar(profile.avatarId || 'avatar_classic');
+    setDrawnCard(null);
+    sounds.playPlay(profile.settings);
+  };
+
+  const triggerSandboxVfx = (vfxId: string) => {
+    setSandboxVfxActive(true);
+    sounds.playPlay(profile.settings);
+    setTimeout(() => {
+      setSandboxVfxActive(false);
+    }, 2000);
+  };
+
+  const drawCard = () => {
+    sounds.playPlay(profile.settings);
+    const mockCards = [
+      { id: 'card_dark_blue', name: 'Park Yeri', color: '#1E3A8A', rentValues: [1, 3, 8], type: 'property' },
+      { id: 'card_green', name: 'Yeşil Vadi', color: '#064E3B', rentValues: [2, 4, 7], type: 'property' },
+      { id: 'card_red', name: 'Al Sancak', color: '#B91C1C', rentValues: [1.5, 3, 6], type: 'property' },
+      { id: 'card_yellow', name: 'Altın Cadde', color: '#D97706', rentValues: [1, 2.5, 5], type: 'property' },
+      { id: 'card_deal_breaker', name: 'Deal Breaker', color: '#701A75', rentValues: [], type: 'action' },
+      { id: 'card_rent', name: 'Kira Kartı', color: '#0F766E', rentValues: [], type: 'rent' }
+    ];
+    const randomCard = mockCards[Math.floor(Math.random() * mockCards.length)];
+    setDrawnCard({
+      ...randomCard,
+      isFlipped: false
+    });
+  };
+
+  const renderFeltParticles = (themeId: string) => {
+    if (themeId === 'theme_atlantis') {
+      return (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-10">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute bg-cyan-400/20 border border-cyan-300/30 rounded-full animate-sandbox-float"
+              style={{
+                bottom: '-20px',
+                left: `${10 + i * 12}%`,
+                width: `${6 + (i % 3) * 4}px`,
+                height: `${6 + (i % 3) * 4}px`,
+                animationDelay: `${i * 0.4}s`,
+                animationDuration: `${3 + (i % 2) * 2}s`,
+              }}
+            />
+          ))}
+          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-500/0 via-cyan-400/5 to-blue-500/0 opacity-60 mix-blend-screen animate-sandbox-caustics pointer-events-none" />
+        </div>
+      );
+    }
+    if (themeId === 'theme_volcano' || themeId === 'theme_lava') {
+      return (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-10">
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute bg-orange-500 rounded-full animate-sandbox-float"
+              style={{
+                bottom: '-10px',
+                left: `${5 + i * 8}%`,
+                width: `${2 + (i % 3) * 1.5}px`,
+                height: `${2 + (i % 3) * 1.5}px`,
+                boxShadow: '0 0 8px #F97316',
+                animationDelay: `${i * 0.2}s`,
+                animationDuration: `${2 + (i % 2) * 1.5}s`,
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
+    if (themeId === 'theme_snowstorm' || themeId === 'theme_ice') {
+      return (
+        <div className="absolute inset-0 pointer-events-none overflow-hidden z-10">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute bg-white/60 rounded-full animate-sandbox-float-down"
+              style={{
+                top: '-10px',
+                left: `${10 + i * 9}%`,
+                width: `${3 + (i % 3) * 2}px`,
+                height: `${3 + (i % 3) * 2}px`,
+                animationDelay: `${i * 0.3}s`,
+                animationDuration: `${4 + (i % 2) * 2.5}s`,
+              }}
+            />
+          ))}
+        </div>
+      );
+    }
+    return null;
+  };
 
   React.useEffect(() => {
     fetch(`${API_BASE_URL}/api/shop/items`)
@@ -320,6 +466,7 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
     if (item.category === 'card_skin') return profile.settings.cardSkin === item.id;
     if (item.category === 'action_vfx') return profile.settings.actionVfx === item.id;
     if (item.category === 'player_board') return profile.settings.playerBoard === item.id;
+    if (item.category === 'game_music') return profile.settings.gameMusic === item.id;
     return false;
   };
 
@@ -333,12 +480,16 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
     else if (item.category === 'card_skin') settingKey = 'cardSkin';
     else if (item.category === 'action_vfx') settingKey = 'actionVfx';
     else if (item.category === 'player_board') settingKey = 'playerBoard';
+    else if (item.category === 'game_music') settingKey = 'gameMusic';
 
     if (!settingKey) return;
 
+    const customMediaUrl = item.mediaUrl || (item.id && (item.id.startsWith('http') || item.id.startsWith('/') || item.id.startsWith('data:')) ? item.id : undefined);
+
     const updatedSettings: UserSettings = {
       ...profile.settings,
-      ...(settingKey !== 'avatarId' ? { [settingKey]: item.id } : {})
+      ...(settingKey !== 'avatarId' ? { [settingKey]: item.id } : {}),
+      ...(item.category === 'game_music' ? { customBgmUrl: customMediaUrl } : {})
     };
 
     let updatedAvatarUrl = profile.avatarUrl;
@@ -404,11 +555,15 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
           else if (storeItem.category === 'card_skin') settingKey = 'cardSkin';
           else if (storeItem.category === 'action_vfx') settingKey = 'actionVfx';
           else if (storeItem.category === 'player_board') settingKey = 'playerBoard';
+          else if (storeItem.category === 'game_music') settingKey = 'gameMusic';
         }
+
+        const customMediaUrl = storeItem ? (storeItem.mediaUrl || (storeItem.id && (storeItem.id.startsWith('http') || storeItem.id.startsWith('/') || storeItem.id.startsWith('data:')) ? storeItem.id : undefined)) : undefined;
 
         const updatedSettings: UserSettings = {
           ...profile.settings,
-          ...(settingKey && settingKey !== 'avatarId' ? { [settingKey]: itemId } : {})
+          ...(settingKey && settingKey !== 'avatarId' ? { [settingKey]: itemId } : {}),
+          ...(storeItem?.category === 'game_music' ? { customBgmUrl: customMediaUrl } : {})
         };
 
         let updatedAvatarUrl = profile.avatarUrl;
@@ -473,29 +628,30 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
   };
 
   return (
-    <div id="shop-dialog" className="bg-black/20 border border-white/10 rounded-2xl p-6 text-white max-w-4xl mx-auto shadow-2xl relative">
+    <div id="shop-dialog" className="bg-zinc-950/25 border border-zinc-900/80 rounded-2xl p-6 text-zinc-100 max-w-4xl mx-auto shadow-2xl relative">
       {/* Shop Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 border-b border-white/10 pb-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 border-b border-zinc-900/80 pb-5">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-            <span>🛒</span> {t('shop_title_lbl', profile)}
+          <h2 className="text-base font-black uppercase tracking-wider text-zinc-100 flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-red-500" />
+            <span>{t('shop_title_lbl', profile)}</span>
           </h2>
-          <p className="text-slate-400 text-sm">{t('shop_desc_lbl', profile)}</p>
+          <p className="text-zinc-500 text-xs mt-1">{t('shop_desc_lbl', profile)}</p>
         </div>
-        <div className="flex items-center gap-2 bg-black/40 border border-white/5 px-4 py-2 rounded-xl">
-          <div className="w-3.5 h-3.5 bg-yellow-400 rounded-full shadow-md shadow-yellow-500/20"></div>
-          <span className="font-bold text-amber-300 text-lg">{t('shop_coins_lbl', profile, profile.coins)}</span>
+        <div className="flex items-center gap-2 bg-zinc-900/40 border border-zinc-900 rounded-xl px-4 py-2">
+          <Coins className="w-4 h-4 text-amber-500" />
+          <span className="font-extrabold text-amber-400 text-sm font-mono">{t('shop_coins_lbl', profile, profile.coins)}</span>
         </div>
       </div>
 
       {error && (
-        <div className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm flex items-center gap-2">
+        <div className="mb-5 p-3.5 bg-red-600/5 border border-red-500/20 rounded-xl text-red-400 text-xs flex items-center gap-2 font-bold">
           <span>⚠️</span> {error}
         </div>
       )}
 
       {/* Categories Tabs */}
-      <div className="flex flex-wrap gap-2 mb-6">
+      <div className="flex flex-wrap gap-1.5 mb-6">
         {[
           { id: 'all', label: t('shop_tab_all', profile) },
           { id: 'avatar', label: t('shop_tab_avatars', profile) },
@@ -506,6 +662,7 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
           { id: 'card_skin', label: t('shop_tab_card_skins', profile) },
           { id: 'action_vfx', label: t('shop_tab_action_vfx', profile) },
           { id: 'player_board', label: profile.settings.language === 'en' ? '🏆 Player Boards' : '🏆 Oyuncu Tahtaları' },
+          { id: 'game_music', label: profile.settings.language === 'en' ? '🎵 Game Music' : '🎵 Oyun Müzikleri' },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -513,281 +670,699 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
               setActiveCategory(tab.id as any);
               sounds.playPlay(profile.settings);
             }}
-            className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all cursor-pointer ${activeCategory === tab.id
-                ? 'bg-red-600 text-white shadow-lg shadow-red-600/15'
-                : 'bg-white/5 hover:bg-white/10 text-slate-300'
-              }`}
+            className={`px-4 py-2 rounded-xl text-xs font-extrabold uppercase tracking-wider transition-all duration-150 cursor-pointer ${
+              activeCategory === tab.id
+                ? 'bg-red-600/10 border border-red-500/40 text-red-400 shadow-sm shadow-red-500/5'
+                : 'bg-zinc-900/10 border border-zinc-900 text-zinc-400 hover:border-zinc-800'
+            }`}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Store Items Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredItems.map((item) => {
-          const isUnlocked = item.id === 'sound_classic' || profile.unlockedItems.includes(item.id);
-          const isPremium = item.price >= 350 || item.id.includes('theme_atlantis') || item.id.includes('theme_volcano') || item.id.includes('skin_') || item.id.includes('vfx_');
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-start mt-6">
+        {/* Sol Kolon: Ürün Kartları Listesi */}
+        <div className="lg:col-span-2 space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {filteredItems.map((item) => {
+              const isUnlocked = item.id === 'sound_classic' || profile.unlockedItems.includes(item.id);
+              const isPremium = item.price >= 350 || item.id.includes('theme_atlantis') || item.id.includes('theme_volcano') || item.id.includes('skin_') || item.id.includes('vfx_');
 
-          return (
-            <div
-              key={item.id}
-              className={`rounded-2xl p-4 flex flex-col justify-between transition-all relative group shop-card-3d ${
-                isPremium
-                  ? 'premium-item-glow'
-                  : 'bg-black/25 border border-white/5 hover:border-white/10 shadow-lg'
-              }`}
-            >
-              {isPremium && <div className="premium-shimmer-overlay rounded-2xl" />}
+              return (
+                <div
+                  key={item.id}
+                  onMouseEnter={() => previewInSandbox(item)}
+                  className={`rounded-2xl p-4 flex flex-col justify-between transition-all relative group shop-card-3d ${
+                    isPremium
+                      ? 'premium-item-glow'
+                      : 'bg-black/25 border border-white/5 hover:border-white/10 shadow-lg'
+                  }`}
+                >
+                  {isPremium && <div className="premium-shimmer-overlay rounded-2xl" />}
 
-              <div className="relative z-10 flex flex-col h-full justify-between">
-                <div>
-                  {/* Visual Preview Container */}
-                  <div
-                    onClick={() => {
-                      setPreviewItem(item);
-                      sounds.playPlay(profile.settings);
-                    }}
-                    className={`aspect-[4/3] rounded-xl mb-4 bg-black/40 flex items-center justify-center relative overflow-hidden group border cursor-pointer hover:bg-black/60 transition-all ${
-                      isPremium ? 'border-amber-500/25' : 'border-white/5'
-                    }`}
-                    title="Önizlemek için Tıklayın"
-                  >
-                    {/* Rarity & Discount Badges */}
-                    <div className="absolute top-2 left-2 z-20 flex flex-col gap-1 items-start pointer-events-none">
-                      {item.rarity && (
-                        <div className={`px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-wider shadow-md backdrop-blur-md ${
-                          item.rarity === 'mythic' ? 'bg-gradient-to-r from-red-600/90 via-pink-600/90 to-purple-600/90 text-white border-pink-400 animate-pulse' :
-                          item.rarity === 'legendary' ? 'bg-amber-500/90 text-amber-100 border-amber-300 animate-pulse' :
-                          item.rarity === 'epic' ? 'bg-purple-600/90 text-purple-100 border-purple-400' :
-                          item.rarity === 'rare' ? 'bg-blue-600/90 text-blue-100 border-blue-400' :
-                          'bg-slate-800/80 text-slate-300 border-slate-600'
-                        }`}>
-                          {item.rarity === 'mythic' ? '🔥 MİSTİK' :
-                           item.rarity === 'legendary' ? '🟡 EFSANEVİ' :
-                           item.rarity === 'epic' ? '🟣 EPİK' :
-                           item.rarity === 'rare' ? '🔵 NADİR' : '⚪ YAYGIN'}
+                  <div className="relative z-10 flex flex-col h-full justify-between">
+                    <div>
+                      {/* Visual Preview Container */}
+                      <div
+                        onClick={() => {
+                          previewInSandbox(item);
+                          setPreviewItem(item);
+                          sounds.playPlay(profile.settings);
+                        }}
+                        className={`aspect-[4/3] rounded-xl mb-4 bg-black/40 flex items-center justify-center relative overflow-hidden group border cursor-pointer hover:bg-black/60 transition-all ${
+                          isPremium ? 'border-amber-500/25' : 'border-white/5'
+                        }`}
+                        title="Önizlemek için Tıklayın"
+                      >
+                        {/* Rarity & Discount Badges */}
+                        <div className="absolute top-2 left-2 z-20 flex flex-col gap-1 items-start pointer-events-none">
+                          {item.rarity && (
+                            <div className={`px-2 py-0.5 rounded-full border text-[8px] font-black uppercase tracking-wider shadow-md backdrop-blur-md ${
+                              item.rarity === 'mythic' ? 'bg-gradient-to-r from-red-600/90 via-pink-600/90 to-purple-600/90 text-white border-pink-400 animate-pulse' :
+                              item.rarity === 'legendary' ? 'bg-amber-500/90 text-amber-100 border-amber-300 animate-pulse' :
+                              item.rarity === 'epic' ? 'bg-purple-600/90 text-purple-100 border-purple-400' :
+                              item.rarity === 'rare' ? 'bg-blue-600/90 text-blue-100 border-blue-400' :
+                              'bg-slate-800/80 text-slate-300 border-slate-600'
+                            }`}>
+                              {item.rarity === 'mythic' ? '🔥 MİSTİK' :
+                               item.rarity === 'legendary' ? '🟡 EFSANEVİ' :
+                               item.rarity === 'epic' ? '🟣 EPİK' :
+                               item.rarity === 'rare' ? '🔵 NADİR' : '⚪ YAYGIN'}
+                            </div>
+                          )}
+                          {item.discountPercent && item.discountPercent > 0 ? (
+                            <div className="bg-rose-600 text-white font-black text-[8px] px-2 py-0.5 rounded-full border border-rose-400 shadow-md animate-bounce">
+                              %{item.discountPercent} İNDİRİM
+                            </div>
+                          ) : null}
                         </div>
-                      )}
-                      {item.discountPercent && item.discountPercent > 0 ? (
-                        <div className="bg-rose-600 text-white font-black text-[8px] px-2 py-0.5 rounded-full border border-rose-400 shadow-md animate-bounce">
-                          %{item.discountPercent} İNDİRİM
+
+                        {/* Glassmorphic hover overlay */}
+                        <div className="absolute inset-0 bg-red-600/0 group-hover:bg-red-600/10 flex items-center justify-center transition-all duration-300 z-10">
+                          <span className="opacity-0 group-hover:opacity-100 bg-black/85 border border-white/10 text-white font-black text-[10px] px-3 py-1.5 rounded-full shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all tracking-wider">
+                            🔍 ÖNİZLEME PENCERESİ
+                          </span>
                         </div>
-                      ) : null}
+
+                        {item.mediaUrl ? (
+                          isVideoUrl(item.mediaUrl, item.mediaType) ? (
+                            <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
+                              <HlsVideoPlayer
+                                src={item.mediaUrl}
+                                className="w-full h-full object-cover rounded-xl"
+                              />
+                              <div className="absolute top-2 right-2 bg-black/80 text-amber-300 border border-amber-500/30 text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 z-20 shadow-md">
+                                🎬 VİDEO
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
+                              <img
+                                src={item.mediaUrl}
+                                alt={item.name}
+                                className="w-full h-full object-cover rounded-xl"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div className="absolute top-2 right-2 bg-black/80 text-sky-300 border border-sky-500/30 text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 z-20 shadow-md">
+                                {item.mediaType === 'gif' || item.mediaUrl.endsWith('.gif') ? '✨ GIF' : '🖼️ RESİM'}
+                              </div>
+                            </div>
+                          )
+                        ) : (
+                          item.category === 'avatar' && (
+                            <div className="w-18 h-18 rounded-full border-4 border-red-500/80 flex items-center justify-center text-4xl bg-gradient-to-br from-slate-800 to-slate-900 shadow-xl shadow-red-950/40 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 relative overflow-hidden">
+                              {AVATAR_EMOJIS[item.id] || '👑'}
+                              <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                            </div>
+                          )
+                        )}
+
+                        {item.category === 'card_back' && (() => {
+                          const cBack = CARD_BACK_STYLES[item.id] || { color: '#EF4444', symbol: '▲', pColor: '#FFF' };
+                          return (
+                            <div className="relative p-1">
+                              <div
+                                className={`w-14 h-22 rounded-xl border flex flex-col justify-between p-2 shadow-xl transition-all duration-300 ${cBack.bgClass || ''} group-hover:scale-110 group-hover:rotate-3 relative overflow-hidden`}
+                                style={{
+                                  backgroundColor: cBack.bgClass ? undefined : cBack.color,
+                                  borderColor: cBack.pColor || 'rgba(255, 255, 255, 0.2)',
+                                  boxShadow: `0 8px 16px -4px rgba(0,0,0,0.5), 0 0 12px ${(cBack.pColor || '#FFFFFF')}25`
+                                }}
+                              >
+                                <div className="text-[6px] font-black text-white/30 select-none text-left tracking-wide">DEAL</div>
+                                <span className="text-white text-3xl font-black self-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] select-none animate-pulse">
+                                  {cBack.symbol}
+                                </span>
+                                <div className="text-[6px] font-black text-white/30 select-none text-right tracking-wide">PRO</div>
+                                <div className="absolute inset-1 border border-white/5 rounded-lg pointer-events-none" />
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {item.category === 'board_theme' && (() => {
+                          const tStyle = BOARD_THEME_STYLES[item.id] || { bgClass: 'bg-slate-900', icon: '📁', badge: 'Klasik', glowColor: 'rgba(255,255,255,0.1)' };
+                          return (
+                            <div
+                              className={`w-full h-full flex flex-col items-center justify-center transition-all duration-300 relative ${tStyle.bgClass}`}
+                              style={{
+                                boxShadow: `inset 0 0 25px ${tStyle.glowColor}`
+                              }}
+                            >
+                              <div className="text-3xl filter drop-shadow-[0_0_8px_rgba(255,255,255,0.15)] animate-bounce-subtle select-none z-10">
+                                {tStyle.icon}
+                              </div>
+                              <div className="absolute bottom-2 bg-black/60 border border-white/10 px-2.5 py-0.5 rounded-full text-[8px] font-black tracking-wider uppercase text-slate-300 z-10">
+                                {tStyle.badge}
+                              </div>
+                              <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1.2px,transparent_1.2px)] [background-size:10px_10px] opacity-60 pointer-events-none" />
+                            </div>
+                          );
+                        })()}
+
+                        {item.category === 'profile_frame' && (
+                          <div className="scale-100 group-hover:scale-110 transition-transform duration-300">
+                            <AvatarWithFrame
+                              avatarId="avatar_classic"
+                              avatarUrl={profile.avatarUrl}
+                              frameId={item.id}
+                              sizeClassName="w-20 h-20 text-4xl"
+                            />
+                          </div>
+                        )}
+
+                        {item.category === 'celebration_sound' && (
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500/20 to-red-500/10 border border-amber-500/30 flex items-center justify-center text-3xl text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)] group-hover:scale-110 group-hover:rotate-12 transition-all duration-300">
+                              {item.id === 'sound_snowstorm' ? '❄️' : '🔊'}
+                            </div>
+                            <div className="flex gap-0.5 items-end justify-center h-3 w-10">
+                              <div className="w-0.75 bg-amber-500 rounded-full animate-pulse h-1" />
+                              <div className="w-0.75 bg-amber-400 rounded-full animate-pulse h-2" style={{ animationDelay: '0.15s' }} />
+                              <div className="w-0.75 bg-red-500 rounded-full animate-pulse h-3" style={{ animationDelay: '0.3s' }} />
+                              <div className="w-0.75 bg-amber-400 rounded-full animate-pulse h-1.5" style={{ animationDelay: '0.45s' }} />
+                            </div>
+                          </div>
+                        )}
+
+                        {item.category === 'game_music' && (
+                          <div className="flex flex-col items-center gap-2 relative z-10">
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 via-pink-500/20 to-amber-500/20 border-2 border-purple-500/40 flex items-center justify-center text-3xl text-purple-300 shadow-[0_0_20px_rgba(168,85,247,0.25)] group-hover:scale-110 group-hover:rotate-12 transition-all duration-300">
+                              🎵
+                            </div>
+                            <div className="flex gap-1 items-end justify-center h-4 w-12">
+                              <div className="w-1 bg-purple-500 rounded-full animate-bounce h-2" />
+                              <div className="w-1 bg-pink-400 rounded-full animate-bounce h-4" style={{ animationDelay: '0.15s' }} />
+                              <div className="w-1 bg-amber-400 rounded-full animate-bounce h-3" style={{ animationDelay: '0.3s' }} />
+                              <div className="w-1 bg-sky-400 rounded-full animate-bounce h-2.5" style={{ animationDelay: '0.45s' }} />
+                            </div>
+                            <div className="bg-black/80 border border-purple-500/30 text-purple-300 font-black text-[9px] px-2.5 py-0.5 rounded-full shadow-md">
+                              🎧 FON MÜZİĞİ
+                            </div>
+                          </div>
+                        )}
+
+                        {item.category === 'card_skin' && (
+                          <div className="w-16 h-24 rounded-xl border border-white/25 bg-slate-900 flex flex-col justify-between p-2 shadow-2xl relative overflow-hidden group-hover:scale-110 group-hover:-rotate-2 transition-all duration-300">
+                            <div className="absolute inset-0 pointer-events-none">
+                              {item.id === 'skin_holographic' && <div className="skin-holographic-overlay absolute inset-0" />}
+                              {item.id === 'skin_rune' && <div className="skin-rune-overlay absolute inset-0" />}
+                              {item.id === 'skin_snowstorm' && <div className="absolute inset-0 bg-gradient-to-br from-blue-300/30 to-sky-100/20 backdrop-blur-[1px] animate-pulse" />}
+                            </div>
+                            <div className="text-[5px] font-black text-amber-400 tracking-wider z-10 select-none">PRO SKIN</div>
+                            <div className="text-xl self-center z-10 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
+                              {item.id === 'skin_holographic' ? '💠' : item.id === 'skin_rune' ? '🔮' : '❄️'}
+                            </div>
+                            <div className="text-[6px] font-black text-slate-400 bg-black/60 border border-white/10 px-1 py-0.5 rounded text-center z-10 select-none">
+                              {item.id === 'skin_holographic' ? 'HOLOGRAM' : item.id === 'skin_rune' ? 'RÜN' : 'DONMUŞ'}
+                            </div>
+                          </div>
+                        )}
+
+                        {item.category === 'action_vfx' && (
+                          <div className="relative">
+                            <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-600/20 to-orange-500/15 border-2 border-red-500/40 flex items-center justify-center text-3xl text-red-400 group-hover:scale-110 transition-all duration-300 relative shadow-[0_0_20px_rgba(239,68,68,0.25)]">
+                              <span className="animate-pulse">{item.id === 'vfx_meteor' ? '☄️' : (item.id === 'vfx_snowstorm' ? '❄️' : '🛡️')}</span>
+                              <div className="absolute inset-0 rounded-full border border-red-500/25 scale-125 animate-ping" />
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 bg-red-600 border border-red-400/20 text-white font-extrabold text-[7px] px-1 rounded uppercase tracking-wider scale-90">VFX</div>
+                          </div>
+                        )}
+
+                        {item.category === 'player_board' && (() => {
+                          const bStyle = PLAYER_BOARD_STYLES[item.id] || PLAYER_BOARD_STYLES.board_classic;
+                          return (
+                            <div className={`w-[130px] p-2 rounded-xl border-2 transition-all duration-300 flex flex-col justify-between ${bStyle.bgClass} ${bStyle.borderClass} ${bStyle.glowClass}`}>
+                              <div className="flex items-center gap-1">
+                                <span className="text-sm select-none">{bStyle.icon}</span>
+                                <span className="text-[8px] font-black tracking-wider uppercase truncate max-w-[80px] text-slate-100">
+                                  {profile.settings.language === 'en' ? bStyle.nameEn.split(' ')[0] : bStyle.nameTr.split(' ')[0]}
+                                </span>
+                              </div>
+                              <div className="flex gap-0.5 mt-2">
+                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: '0.1s' }} />
+                                <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: '0.2s' }} />
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {isUnlocked && (
+                          <div className="absolute top-2 right-2 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold px-2.5 py-0.5 rounded-full z-20 shadow-sm animate-pulse">
+                            Açık
+                          </div>
+                        )}
+                      </div>
+
+                      <h4 className="font-extrabold text-sm text-slate-100 mb-1 flex items-center gap-1.5 group-hover:text-amber-400 transition-colors">
+                        {item.name}
+                      </h4>
+                      <p className="text-xs text-slate-400 leading-relaxed mb-4">{item.description}</p>
                     </div>
 
-                    {/* Glassmorphic hover overlay */}
-                    <div className="absolute inset-0 bg-red-600/0 group-hover:bg-red-600/10 flex items-center justify-center transition-all duration-300 z-10">
-                      <span className="opacity-0 group-hover:opacity-100 bg-black/85 border border-white/10 text-white font-black text-[10px] px-3 py-1.5 rounded-full shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all tracking-wider">
-                        🔍 ÖNİZLEME PENCERESİ
-                      </span>
-                    </div>
-
-                    {item.mediaUrl ? (
-                      item.mediaType === 'video' || item.mediaUrl.endsWith('.mp4') || item.mediaUrl.endsWith('.webm') || item.mediaUrl.includes('video') ? (
-                        <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
-                          <video
-                            src={item.mediaUrl}
-                            autoPlay
-                            loop
-                            muted
-                            playsInline
-                            className="w-full h-full object-cover rounded-xl"
-                          />
-                          <div className="absolute top-2 right-2 bg-black/80 text-amber-300 border border-amber-500/30 text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 z-20 shadow-md">
-                            🎬 VİDEO
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
-                          <img
-                            src={item.mediaUrl}
-                            alt={item.name}
-                            className="w-full h-full object-cover rounded-xl"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div className="absolute top-2 right-2 bg-black/80 text-sky-300 border border-sky-500/30 text-[9px] font-black px-2 py-0.5 rounded-full flex items-center gap-1 z-20 shadow-md">
-                            {item.mediaType === 'gif' || item.mediaUrl.endsWith('.gif') ? '✨ GIF' : '🖼️ RESİM'}
-                          </div>
-                        </div>
-                      )
-                    ) : (
-                      item.category === 'avatar' && (
-                        <div className="w-18 h-18 rounded-full border-4 border-red-500/80 flex items-center justify-center text-4xl bg-gradient-to-br from-slate-800 to-slate-900 shadow-xl shadow-red-950/40 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 relative overflow-hidden">
-                          {AVATAR_EMOJIS[item.id] || '👑'}
-                          <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                        </div>
-                      )
-                    )}
-
-                    {item.category === 'card_back' && (() => {
-                      const cBack = CARD_BACK_STYLES[item.id] || { color: '#EF4444', symbol: '▲', pColor: '#FFF' };
-                      return (
-                        <div className="relative p-1">
-                          <div
-                            className={`w-14 h-22 rounded-xl border flex flex-col justify-between p-2 shadow-xl transition-all duration-300 ${cBack.bgClass || ''} group-hover:scale-110 group-hover:rotate-3 relative overflow-hidden`}
-                            style={{
-                              backgroundColor: cBack.bgClass ? undefined : cBack.color,
-                              borderColor: cBack.pColor || 'rgba(255, 255, 255, 0.2)',
-                              boxShadow: `0 8px 16px -4px rgba(0,0,0,0.5), 0 0 12px ${(cBack.pColor || '#FFFFFF')}25`
-                            }}
+                    <div className="mt-auto">
+                      {isUnlocked ? (
+                        isItemEquipped(item) ? (
+                          <button
+                            disabled
+                            className="w-full py-2 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-extrabold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-default uppercase tracking-wider"
                           >
-                            <div className="text-[6px] font-black text-white/30 select-none text-left tracking-wide">DEAL</div>
-                            <span className="text-white text-3xl font-black self-center drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)] select-none animate-pulse">
-                              {cBack.symbol}
-                            </span>
-                            <div className="text-[6px] font-black text-white/30 select-none text-right tracking-wide">PRO</div>
-                            {/* Inner thin border frame to look like a premium playing card */}
-                            <div className="absolute inset-1 border border-white/5 rounded-lg pointer-events-none" />
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {item.category === 'board_theme' && (() => {
-                      const tStyle = BOARD_THEME_STYLES[item.id] || { bgClass: 'bg-slate-900', icon: '📁', badge: 'Klasik', glowColor: 'rgba(255,255,255,0.1)' };
-                      return (
-                        <div
-                          className={`w-full h-full flex flex-col items-center justify-center transition-all duration-300 relative ${tStyle.bgClass}`}
-                          style={{
-                            boxShadow: `inset 0 0 25px ${tStyle.glowColor}`
-                          }}
+                            <span>✓</span> KULLANILIYOR
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleEquipItem(item)}
+                            className="w-full py-2 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-black rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/20 active:scale-95 transform cursor-pointer tracking-wider uppercase"
+                          >
+                            <span>⚡</span> AKTİFLEŞTİR
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          onClick={() => handleBuy(item.id, item.price)}
+                          disabled={buyingId !== null}
+                          className="w-full py-2 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-black rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 transform cursor-pointer tracking-wider uppercase"
                         >
-                          <div className="text-3xl filter drop-shadow-[0_0_8px_rgba(255,255,255,0.15)] animate-bounce-subtle select-none z-10">
-                            {tStyle.icon}
-                          </div>
-                          <div className="absolute bottom-2 bg-black/60 border border-white/10 px-2.5 py-0.5 rounded-full text-[8px] font-black tracking-wider uppercase text-slate-300 z-10">
-                            {tStyle.badge}
-                          </div>
-                          {/* Felt pattern overlay texture */}
-                          <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.03)_1.2px,transparent_1.2px)] [background-size:10px_10px] opacity-60 pointer-events-none" />
-                        </div>
-                      );
-                    })()}
+                          {buyingId === item.id ? (
+                            <span className="animate-spin text-sm">⏳</span>
+                          ) : (
+                            <>
+                              <span>💰</span> {item.price} Altın - Satın Al
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
 
-                    {item.category === 'profile_frame' && (
-                      <div className="scale-100 group-hover:scale-110 transition-transform duration-300">
-                        <AvatarWithFrame
-                          avatarId="avatar_classic"
-                          avatarUrl={profile.avatarUrl}
-                          frameId={item.id}
-                          sizeClassName="w-20 h-20 text-4xl"
-                        />
+        {/* Sağ Kolon: Canlı İnteraktif Oyun Masası Simülatörü */}
+        <div className="lg:col-span-1 lg:sticky lg:top-6 bg-zinc-950/40 border border-zinc-900/80 rounded-2xl p-5 space-y-4 shadow-2xl">
+          <style>{`
+            @keyframes sandbox-float-up {
+              0% { transform: translateY(0) scale(0.6) rotate(0deg); opacity: 0; }
+              15% { opacity: 0.7; }
+              85% { opacity: 0.7; }
+              100% { transform: translateY(-160px) scale(1.1) rotate(180deg); opacity: 0; }
+            }
+            @keyframes sandbox-float-down {
+              0% { transform: translateY(0) scale(0.6) rotate(0deg); opacity: 0; }
+              15% { opacity: 0.8; }
+              85% { opacity: 0.8; }
+              100% { transform: translateY(160px) scale(1) rotate(360deg); opacity: 0; }
+            }
+            @keyframes sandbox-caustics {
+              0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.3; }
+              50% { transform: scale(1.1) rotate(3deg); opacity: 0.5; }
+            }
+            .animate-sandbox-float {
+              animation: sandbox-float-up 4s linear infinite;
+            }
+            .animate-sandbox-float-down {
+              animation: sandbox-float-down 5s linear infinite;
+            }
+            .animate-sandbox-caustics {
+              animation: sandbox-caustics 6s ease-in-out infinite;
+            }
+          `}</style>
+
+          <div className="flex items-center justify-between border-b border-zinc-900 pb-3">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-wider text-zinc-100 flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
+                <span>MASA SİMÜLATÖRÜ</span>
+              </h3>
+              <p className="text-[9px] text-zinc-500 mt-0.5">Tasarımları canlı olarak eşleştirin & test edin</p>
+            </div>
+            <button
+              onClick={resetSandboxToEquipped}
+              className="px-2 py-1 bg-zinc-900/80 hover:bg-zinc-800 border border-zinc-800 rounded-lg text-[8px] font-black tracking-wider text-zinc-400 hover:text-white transition-all cursor-pointer flex items-center gap-1 uppercase"
+              title="Kendi aktif kuşanılmış eşyalarına geri döndür"
+            >
+              <RefreshCw className="w-2 h-2" />
+              SIFIRLA
+            </button>
+          </div>
+
+          {/* Interactive Simulated Felt Mat */}
+          {(() => {
+            const tStyle = BOARD_THEME_STYLES[sandboxBoardTheme] || { bgClass: 'bg-slate-900', icon: '📁', badge: 'Klasik', glowColor: 'rgba(255,255,255,0.1)' };
+            const bStyle = PLAYER_BOARD_STYLES[sandboxPlayerBoard] || PLAYER_BOARD_STYLES.board_classic;
+            const cardBackStyle = CARD_BACK_STYLES[sandboxCardBack] || { color: '#EF4444', symbol: '▲', pColor: '#FFF' };
+
+            return (
+              <div 
+                className={`w-full rounded-2xl relative overflow-hidden transition-all duration-500 border border-zinc-900 flex flex-col justify-between p-4 h-[280px] shadow-inner select-none ${tStyle.bgClass} ${
+                  sandboxVfxActive && sandboxVfx === 'vfx_meteor' ? 'vfx-meteor-shake' : ''
+                }`}
+                style={{
+                  boxShadow: `inset 0 0 45px ${tStyle.glowColor || 'rgba(0,0,0,0.5)'}, 0 4px 24px rgba(0,0,0,0.4)`
+                }}
+              >
+                {/* Felt mat design overlay */}
+                <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.025)_1.5px,transparent_1.5px)] [background-size:14px_14px] opacity-40 pointer-events-none" />
+
+                {/* Theme Particles (Atlantis / Volcano / Snowstorm) */}
+                {renderFeltParticles(sandboxBoardTheme)}
+
+                {/* ACTIVE ACTION VFX OVERLAYS */}
+                {sandboxVfxActive && (
+                  <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+                    {sandboxVfx === 'vfx_meteor' && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="vfx-meteor-rock" style={{ top: '20%', right: '20%' }} />
+                        <div className="vfx-meteor-shockwave" />
+                        <div className="absolute inset-0 bg-red-600/10 pointer-events-none animate-ping" />
                       </div>
                     )}
-
-                    {item.category === 'celebration_sound' && (
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-amber-500/20 to-red-500/10 border border-amber-500/30 flex items-center justify-center text-3xl text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.15)] group-hover:scale-110 group-hover:rotate-12 transition-all duration-300">
-                          {item.id === 'sound_snowstorm' ? '❄️' : '🔊'}
+                    {sandboxVfx === 'vfx_mirror_shield' && (
+                      <div className="relative w-full h-full flex items-center justify-center">
+                        <div className="vfx-shield-hex-grid">
+                          {[...Array(9)].map((_, i) => (
+                            <div key={i} className="vfx-shield-hex" />
+                          ))}
                         </div>
-                        {/* Animated audio visualizer waves */}
-                        <div className="flex gap-0.5 items-end justify-center h-3 w-10">
-                          <div className="w-0.75 bg-amber-500 rounded-full animate-pulse h-1" />
-                          <div className="w-0.75 bg-amber-400 rounded-full animate-pulse h-2" style={{ animationDelay: '0.15s' }} />
-                          <div className="w-0.75 bg-red-500 rounded-full animate-pulse h-3" style={{ animationDelay: '0.3s' }} />
-                          <div className="w-0.75 bg-amber-400 rounded-full animate-pulse h-1.5" style={{ animationDelay: '0.45s' }} />
-                        </div>
+                        <div className="vfx-shield-shockwave" />
                       </div>
                     )}
-
-                    {item.category === 'card_skin' && (
-                      <div className="w-16 h-24 rounded-xl border border-white/25 bg-slate-900 flex flex-col justify-between p-2 shadow-2xl relative overflow-hidden group-hover:scale-110 group-hover:-rotate-2 transition-all duration-300">
-                        {/* Live overlay elements */}
-                        <div className="absolute inset-0 pointer-events-none">
-                          {item.id === 'skin_holographic' && <div className="skin-holographic-overlay absolute inset-0" />}
-                          {item.id === 'skin_rune' && <div className="skin-rune-overlay absolute inset-0" />}
-                          {item.id === 'skin_snowstorm' && <div className="absolute inset-0 bg-gradient-to-br from-blue-300/30 to-sky-100/20 backdrop-blur-[1px] animate-pulse" />}
-                        </div>
-                        <div className="text-[5px] font-black text-amber-400 tracking-wider z-10 select-none">PRO SKIN</div>
-                        <div className="text-xl self-center z-10 filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]">
-                          {item.id === 'skin_holographic' ? '💠' : item.id === 'skin_rune' ? '🔮' : '❄️'}
-                        </div>
-                        <div className="text-[6px] font-black text-slate-400 bg-black/60 border border-white/10 px-1 py-0.5 rounded text-center z-10 select-none">
-                          {item.id === 'skin_holographic' ? 'HOLOGRAM' : item.id === 'skin_rune' ? 'RÜN' : 'DONMUŞ'}
-                        </div>
-                      </div>
-                    )}
-
-                    {item.category === 'action_vfx' && (
-                      <div className="relative">
-                        <div className="w-14 h-14 rounded-full bg-gradient-to-br from-red-600/20 to-orange-500/15 border-2 border-red-500/40 flex items-center justify-center text-3xl text-red-400 group-hover:scale-110 transition-all duration-300 relative shadow-[0_0_20px_rgba(239,68,68,0.25)]">
-                          <span className="animate-pulse">{item.id === 'vfx_meteor' ? '☄️' : (item.id === 'vfx_snowstorm' ? '❄️' : '🛡️')}</span>
-                          <div className="absolute inset-0 rounded-full border border-red-500/25 scale-125 animate-ping" />
-                        </div>
-                        <div className="absolute -bottom-1 -right-1 bg-red-600 border border-red-400/20 text-white font-extrabold text-[7px] px-1 rounded uppercase tracking-wider scale-90">VFX</div>
-                      </div>
-                    )}
-
-                    {item.category === 'player_board' && (() => {
-                      const bStyle = PLAYER_BOARD_STYLES[item.id] || PLAYER_BOARD_STYLES.board_classic;
-                      return (
-                        <div className={`w-[130px] p-2 rounded-xl border-2 transition-all duration-300 flex flex-col justify-between ${bStyle.bgClass} ${bStyle.borderClass} ${bStyle.glowClass}`}>
-                          <div className="flex items-center gap-1">
-                            <span className="text-sm select-none">{bStyle.icon}</span>
-                            <span className="text-[8px] font-black tracking-wider uppercase truncate max-w-[80px] text-slate-100">
-                              {profile.settings.language === 'en' ? bStyle.nameEn.split(' ')[0] : bStyle.nameTr.split(' ')[0]}
-                            </span>
-                          </div>
-                          <div className="flex gap-0.5 mt-2">
-                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: '0.1s' }} />
-                            <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: '0.2s' }} />
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {isUnlocked && (
-                      <div className="absolute top-2 right-2 bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-bold px-2.5 py-0.5 rounded-full z-20 shadow-sm animate-pulse">
-                        Açık
+                    {sandboxVfx === 'vfx_snowstorm' && (
+                      <div className="absolute inset-0 bg-blue-100/10 pointer-events-none flex flex-col items-center justify-center">
+                        <div className="text-4xl animate-spin" style={{ animationDuration: '4s' }}>❄️</div>
+                        <span className="text-[8px] text-blue-300 font-black tracking-widest mt-1 animate-pulse uppercase">ÇIĞ VE BUZ FIRTINASI!</span>
                       </div>
                     )}
                   </div>
+                )}
 
-                  <h4 className="font-extrabold text-base text-slate-100 mb-1 flex items-center gap-1.5 group-hover:text-amber-400 transition-colors">
-                    {item.name}
-                  </h4>
-                  <p className="text-xs text-slate-400 leading-relaxed mb-4">{item.description}</p>
+                {/* Board Watermark Info */}
+                <div className="flex justify-between items-center border-b border-white/5 pb-1.5 relative z-10">
+                  <div className="flex items-center gap-1 text-[8px] font-black text-white/40 tracking-wider">
+                    <span>{tStyle.icon}</span>
+                    <span className="uppercase">{tStyle.badge} AKTİF</span>
+                  </div>
+                  <div className="text-[7px] font-mono text-white/30">CANLI ARENA</div>
                 </div>
 
-                <div className="mt-auto">
-                  {isUnlocked ? (
-                    isItemEquipped(item) ? (
-                      <button
-                        disabled
-                        className="w-full py-2.5 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 font-extrabold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-default uppercase tracking-wider"
-                      >
-                        <span>✓</span> KULLANILIYOR
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleEquipItem(item)}
-                        className="w-full py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-black rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/20 active:scale-95 transform cursor-pointer tracking-wider uppercase"
-                      >
-                        <span>⚡</span> AKTİFLEŞTİR
-                      </button>
-                    )
-                  ) : (
-                    <button
-                      onClick={() => handleBuy(item.id, item.price)}
-                      disabled={buyingId !== null}
-                      className="w-full py-2.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white font-black rounded-xl text-xs transition-all flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 active:scale-95 transform cursor-pointer tracking-wider uppercase"
+                {/* Drawn Card Pop-up (Interactive Overlay) */}
+                {drawnCard && (
+                  <div 
+                    className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[1px] z-20 cursor-pointer animate-fade-in"
+                    onClick={() => setDrawnCard(null)}
+                  >
+                    <div 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDrawnCard(prev => prev ? { ...prev, isFlipped: !prev.isFlipped } : null);
+                        sounds.playPlay(profile.settings);
+                      }}
+                      className="w-24 h-36 rounded-xl shadow-[0_12px_24px_rgba(0,0,0,0.65)] transition-all duration-300 transform hover:scale-105 active:scale-95 border border-white/10 relative overflow-hidden"
+                      style={{ perspective: '1000px' }}
                     >
-                      {buyingId === item.id ? (
-                        <span className="animate-spin text-sm">⏳</span>
+                      <div className="absolute inset-0 pointer-events-none z-10">
+                        {sandboxCardSkin === 'skin_holographic' && <div className="skin-holographic-overlay absolute inset-0" />}
+                        {sandboxCardSkin === 'skin_rune' && <div className="skin-rune-overlay absolute inset-0" />}
+                        {sandboxCardSkin === 'skin_snowstorm' && <div className="absolute inset-0 bg-gradient-to-br from-blue-300/30 to-sky-100/15 backdrop-blur-[0.5px] border border-blue-400/20" />}
+                      </div>
+
+                      {!drawnCard.isFlipped ? (
+                        <div 
+                          className={`w-full h-full p-2 flex flex-col justify-between ${cardBackStyle.bgClass || ''}`}
+                          style={{
+                            backgroundColor: cardBackStyle.bgClass ? undefined : cardBackStyle.color,
+                            borderColor: cardBackStyle.pColor || 'rgba(255,255,255,0.2)'
+                          }}
+                        >
+                          <div className="text-[6px] font-black text-white/30 tracking-wider">DEAL MASTER</div>
+                          <span className="text-white text-3xl font-black self-center drop-shadow-lg select-none animate-bounce-subtle">
+                            {cardBackStyle.symbol}
+                          </span>
+                          <div className="text-[6px] font-black text-white/30 text-right tracking-wider">TAP TO FLIP</div>
+                        </div>
                       ) : (
-                        <>
-                          <span>💰</span> {item.price} Altın - Satın Al
-                        </>
+                        <div className="w-full h-full bg-slate-900 flex flex-col p-1.5 justify-between border border-white/5 select-none">
+                          {drawnCard.type === 'property' ? (
+                            <div 
+                              className="h-8 rounded-md flex flex-col items-center justify-center p-0.5 text-center border border-white/5"
+                              style={{ backgroundColor: drawnCard.color }}
+                            >
+                              <div className="text-[7px] font-black text-white uppercase tracking-wider leading-none truncate max-w-full">
+                                {drawnCard.name}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="h-8 rounded-md flex flex-col items-center justify-center p-0.5 text-center border border-white/5 bg-purple-950/80">
+                              <div className="text-[8px] font-black text-purple-200 uppercase tracking-wider leading-none">{drawnCard.name}</div>
+                            </div>
+                          )}
+
+                          <div className="flex-1 py-1 flex flex-col justify-center gap-0.5 text-[6px] text-slate-300">
+                            {drawnCard.type === 'property' ? (
+                              <>
+                                <div className="flex justify-between items-center font-bold">
+                                  <span>🏠 1 Kart:</span>
+                                  <span className="text-amber-400 font-extrabold">${drawnCard.rentValues[0]}M</span>
+                                </div>
+                                <div className="flex justify-between items-center font-bold">
+                                  <span>🏠🏠 Set:</span>
+                                  <span className="text-amber-400 font-extrabold">${drawnCard.rentValues[2]}M</span>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="text-[6px] text-slate-400 text-center leading-tight">
+                                {drawnCard.id === 'card_deal_breaker' ? 'Tam bir mülk seti çalar.' : 'Kira toplar.'}
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="flex justify-between items-center border-t border-white/5 pt-1 mt-auto">
+                            <span className="text-[5px] text-slate-500 font-semibold">DEAL PRO</span>
+                            <span className="text-[5px] text-amber-500 font-black">★ PREVIEW</span>
+                          </div>
+                        </div>
                       )}
-                    </button>
-                  )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Main Sandbox Layout: Deck & Property Cards */}
+                <div className="flex justify-between items-center my-auto px-2 relative z-10">
+                  {/* Left: Interactive Card Deck */}
+                  <div className="flex flex-col items-center gap-1">
+                    <div 
+                      onClick={drawCard}
+                      className="group relative cursor-pointer"
+                      title="Kart çekmek için tıklayın"
+                    >
+                      <div className="absolute top-1 left-1 w-10 h-15 bg-black/40 border border-white/5 rounded-lg transform rotate-2 pointer-events-none shadow-md" />
+                      <div className="absolute top-0.5 left-0.5 w-10 h-15 bg-black/50 border border-white/5 rounded-lg transform -rotate-1 pointer-events-none shadow-md" />
+
+                      <div 
+                        className={`w-10 h-15 rounded-lg border p-1 flex flex-col justify-between shadow-lg transform group-hover:-translate-y-1 group-hover:scale-105 active:scale-95 transition-all duration-150 ${cardBackStyle.bgClass || ''}`}
+                        style={{
+                          backgroundColor: cardBackStyle.bgClass ? undefined : cardBackStyle.color,
+                          borderColor: cardBackStyle.pColor || 'rgba(255, 255, 255, 0.2)',
+                          boxShadow: `0 4px 10px rgba(0,0,0,0.5), 0 0 10px ${(cardBackStyle.pColor || '#FFFFFF')}20`
+                        }}
+                      >
+                        <span className="text-[5px] font-bold text-white/40 select-none tracking-wide">DEK</span>
+                        <span className="text-white text-xl font-black self-center drop-shadow-md select-none animate-pulse">
+                          {cardBackStyle.symbol}
+                        </span>
+                        <span className="text-[4px] font-bold text-white/40 select-none text-right tracking-wide">DRAW</span>
+                      </div>
+                    </div>
+                    <span className="text-[8px] font-black text-white/50 uppercase tracking-widest animate-pulse pointer-events-none mt-1">DESTE</span>
+                  </div>
+
+                  {/* Middle: Game Bank / Properties Showcase showing Skin */}
+                  <div className="flex flex-col items-center gap-1.5">
+                    <div className="flex gap-1.5">
+                      {/* Mini property card with skin applied */}
+                      <div className="w-9 h-14 rounded-md bg-slate-900 border border-white/10 flex flex-col justify-between p-1 shadow-lg relative overflow-hidden transform rotate-2">
+                        <div className="absolute inset-0 pointer-events-none">
+                          {sandboxCardSkin === 'skin_holographic' && <div className="skin-holographic-overlay absolute inset-0" />}
+                          {sandboxCardSkin === 'skin_rune' && <div className="skin-rune-overlay absolute inset-0" />}
+                          {sandboxCardSkin === 'skin_snowstorm' && <div className="absolute inset-0 bg-gradient-to-br from-blue-300/30 to-sky-100/15 backdrop-blur-[0.5px]" />}
+                        </div>
+                        <div className="h-2 rounded-sm bg-blue-600 border border-white/5" />
+                        <div className="text-[4px] text-slate-400 font-black text-center mt-1 leading-none">Mavi Park</div>
+                        <div className="text-[5px] text-amber-500 font-extrabold text-right mt-auto leading-none">$3.5M</div>
+                      </div>
+
+                      {/* Mini rent card with skin applied */}
+                      <div className="w-9 h-14 rounded-md bg-slate-900 border border-white/10 flex flex-col justify-between p-1 shadow-lg relative overflow-hidden transform -rotate-3">
+                        <div className="absolute inset-0 pointer-events-none">
+                          {sandboxCardSkin === 'skin_holographic' && <div className="skin-holographic-overlay absolute inset-0" />}
+                          {sandboxCardSkin === 'skin_rune' && <div className="skin-rune-overlay absolute inset-0" />}
+                          {sandboxCardSkin === 'skin_snowstorm' && <div className="absolute inset-0 bg-gradient-to-br from-blue-300/30 to-sky-100/15 backdrop-blur-[0.5px]" />}
+                        </div>
+                        <div className="h-2 rounded-sm bg-gradient-to-r from-teal-600 to-emerald-600 border border-white/5" />
+                        <div className="text-[5px] text-emerald-300 font-bold text-center mt-1 leading-none">Kira Al</div>
+                        <div className="text-center text-[4px] text-white/50 mt-auto leading-none">DEAL</div>
+                      </div>
+                    </div>
+                    <span className="text-[8px] font-black text-white/50 uppercase tracking-widest pointer-events-none mt-1">KAPLAMALAR</span>
+                  </div>
+                </div>
+
+                {/* Bottom Player Board area */}
+                <div className="relative z-10 flex justify-center w-full mt-auto">
+                  <div className={`w-[200px] p-2 rounded-lg border shadow-lg flex items-center justify-between transition-all duration-300 ${bStyle.bgClass} ${bStyle.borderClass} ${bStyle.glowClass}`}>
+                    <div className="flex items-center gap-1.5">
+                      <div className="relative">
+                        <AvatarWithFrame
+                          avatarId={sandboxAvatar}
+                          avatarUrl={profile.avatarUrl}
+                          frameId={sandboxFrame}
+                          sizeClassName="w-7 h-7 text-base"
+                        />
+                      </div>
+                      <div className="leading-tight">
+                        <div className="text-[9px] font-black text-slate-100 truncate max-w-[80px]">{profile.username}</div>
+                        <div className="text-[7px] text-slate-400">Geliştirici</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 text-[8px] font-bold bg-amber-500/10 border border-amber-500/30 text-amber-400 px-1 py-0.5 rounded-md">
+                      <span>💰</span>
+                      <span>15M</span>
+                    </div>
+                  </div>
                 </div>
               </div>
+            );
+          })()}
+
+          {/* Interactive Test Action Controls */}
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => triggerSandboxVfx(sandboxVfx)}
+              disabled={sandboxVfxActive}
+              className="py-2 bg-red-600/10 hover:bg-red-600/20 border border-red-500/20 hover:border-red-500/40 rounded-xl text-[10px] font-bold text-red-400 hover:text-white transition-all flex items-center justify-center gap-1 cursor-pointer uppercase tracking-wider"
+            >
+              <span>💥</span> VFX TEST ET
+            </button>
+            <button
+              onClick={() => {
+                setSandboxSoundPlaying(true);
+                sounds.playCelebration(sandboxSound, profile.settings);
+                setTimeout(() => setSandboxSoundPlaying(false), 1500);
+              }}
+              disabled={sandboxSoundPlaying}
+              className={`py-2 bg-amber-600/10 hover:bg-amber-600/20 border border-amber-500/20 hover:border-amber-500/40 rounded-xl text-[10px] font-bold text-amber-400 hover:text-white transition-all flex items-center justify-center gap-1 cursor-pointer uppercase tracking-wider ${
+                sandboxSoundPlaying ? 'animate-pulse' : ''
+              }`}
+            >
+              <span>🔊</span> SES TEST ET
+            </button>
+          </div>
+
+          {/* Manual Customizer selectors */}
+          <div className="bg-zinc-950/60 border border-zinc-900 rounded-xl p-3 space-y-2 text-[10px] text-zinc-400">
+            <div className="text-[9px] font-black uppercase text-zinc-500 tracking-wider mb-1">Masa Özelleştirici</div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[8px] font-bold uppercase tracking-wider text-zinc-500">Masa Teması</label>
+                <select 
+                  value={sandboxBoardTheme}
+                  onChange={(e) => {
+                    setSandboxBoardTheme(e.target.value);
+                    sounds.playPlay(profile.settings);
+                  }}
+                  className="bg-zinc-900/80 border border-zinc-800 rounded px-1.5 py-1 text-zinc-200 focus:outline-none focus:border-red-500/40 text-[9px] font-semibold cursor-pointer"
+                >
+                  <option value="theme_slate">Klasik Gri Slate</option>
+                  <option value="theme_green">Klasik Keçe Yeşil</option>
+                  <option value="theme_purple">Kraliyet Moru</option>
+                  <option value="theme_cyberpunk">Siber Izgara Neon</option>
+                  <option value="theme_lava">Magma Krateri</option>
+                  <option value="theme_abyss">Karanlık Çukur</option>
+                  <option value="theme_gold">Hazine Odası Altın</option>
+                  <option value="theme_sakura">Sakura Vadi Pembe</option>
+                  <option value="theme_ice">Kar Fırtınası Buz</option>
+                  <option value="theme_retro">Atari Retro</option>
+                  <option value="theme_toxic">Zehirli Vaha Yeşil</option>
+                  <option value="theme_matrix">Sanal Matris</option>
+                  <option value="theme_space">Uzay İstasyonu</option>
+                  <option value="theme_desert">Kayıp Çöl</option>
+                  <option value="theme_atlantis">🌊 Atlantis</option>
+                  <option value="theme_volcano">🌋 Volkanik</option>
+                  <option value="theme_snowstorm">❄️ Kış Matı</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[8px] font-bold uppercase tracking-wider text-zinc-500">Kart Arkası</label>
+                <select 
+                  value={sandboxCardBack}
+                  onChange={(e) => {
+                    setSandboxCardBack(e.target.value);
+                    sounds.playPlay(profile.settings);
+                  }}
+                  className="bg-zinc-900/80 border border-zinc-800 rounded px-1.5 py-1 text-zinc-200 focus:outline-none focus:border-red-500/40 text-[9px] font-semibold cursor-pointer"
+                >
+                  <option value="back_classic">Klasik Kırmızı</option>
+                  <option value="back_cosmic">Kozmik Siyah</option>
+                  <option value="back_gold">V.I.P Altın</option>
+                  <option value="back_neon">Retro Dalga Synth</option>
+                  <option value="back_fire">Volkanik Magma</option>
+                  <option value="back_ice">Kutup Rüzgarı</option>
+                  <option value="back_void">Karanlık Rift</option>
+                  <option value="back_matrix">Siber Kod Yağmuru</option>
+                  <option value="back_rainbow">Gökkuşağı Prizması</option>
+                  <option value="back_bubble">Deniz Köpüğü</option>
+                  <option value="back_steampunk">Buharlı Çark</option>
+                  <option value="back_laser">Lazer Izgara</option>
+                  <option value="back_galaxy">Nebula Bulutu</option>
+                  <option value="back_darkness">Gölgeler Diyarı</option>
+                  <option value="back_snowstorm">❄️ Kar Fırtınası</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[8px] font-bold uppercase tracking-wider text-zinc-500">Kart Kaplaması</label>
+                <select 
+                  value={sandboxCardSkin}
+                  onChange={(e) => {
+                    setSandboxCardSkin(e.target.value);
+                    sounds.playPlay(profile.settings);
+                  }}
+                  className="bg-zinc-900/80 border border-zinc-800 rounded px-1.5 py-1 text-zinc-200 focus:outline-none focus:border-red-500/40 text-[9px] font-semibold cursor-pointer"
+                >
+                  <option value="">Yok (Standart)</option>
+                  <option value="skin_holographic">💠 Holografik Mavi</option>
+                  <option value="skin_rune">🔮 Mistik Rün</option>
+                  <option value="skin_snowstorm">❄️ Donmuş Buz</option>
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-0.5">
+                <label className="text-[8px] font-bold uppercase tracking-wider text-zinc-500">Oyuncu Paneli</label>
+                <select 
+                  value={sandboxPlayerBoard}
+                  onChange={(e) => {
+                    setSandboxPlayerBoard(e.target.value);
+                    sounds.playPlay(profile.settings);
+                  }}
+                  className="bg-zinc-900/80 border border-zinc-800 rounded px-1.5 py-1 text-zinc-200 focus:outline-none focus:border-red-500/40 text-[9px] font-semibold cursor-pointer"
+                >
+                  <option value="board_classic">🎴 Klasik Siyah</option>
+                  <option value="board_gold">👑 V.I.P Altın</option>
+                  <option value="board_cyber">⚡ Siber Neon</option>
+                  <option value="board_magma">🔥 Magma Lav</option>
+                  <option value="board_galaxy">🌌 Nebula Galaksi</option>
+                  <option value="board_ice">❄️ Kutup Ayazı</option>
+                  <option value="board_void">🌀 Karanlık Rift</option>
+                </select>
+              </div>
             </div>
-          );
-        })}
+          </div>
+        </div>
       </div>
 
       {/* DETAILED INTERACTIVE PREVIEW MODAL */}
@@ -820,13 +1395,9 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
               <div className="bg-black/40 border border-white/5 rounded-2xl aspect-[1.5] flex items-center justify-center relative overflow-hidden p-6 mb-6">
                 {previewItem.mediaUrl ? (
                   <div className="w-full h-full relative flex items-center justify-center overflow-hidden rounded-xl">
-                    {previewItem.mediaType === 'video' || previewItem.mediaUrl.endsWith('.mp4') || previewItem.mediaUrl.endsWith('.webm') || previewItem.mediaUrl.includes('video') ? (
-                      <video
+                    {isVideoUrl(previewItem.mediaUrl, previewItem.mediaType) ? (
+                      <HlsVideoPlayer
                         src={previewItem.mediaUrl}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
                         controls
                         className="w-full h-full object-contain rounded-xl"
                       />

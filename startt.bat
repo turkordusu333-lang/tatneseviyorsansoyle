@@ -1,9 +1,9 @@
 @echo off
-title Monopoly Deal Launcher
+title Deal Master PRO Deal Launcher
 color 0a
 
 echo ==============================
-echo    MONOPOLY DEAL BASLATILIYOR
+echo    Deal Master PRO DEAL BASLATILIYOR
 echo ==============================
 echo.
 

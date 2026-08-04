@@ -3,10 +3,13 @@ import { UserProfile, Friend, DailyQuest, UserSettings } from '../types';
 import { sounds } from '../lib/SoundSystem';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { PerformanceChart } from './PerformanceChart';
+import { RankedPerformanceCard } from './RankedPerformanceCard';
 import { t } from '../lib/TranslationSystem';
 import { API_BASE_URL } from '../lib/apiConfig';
-import { STORE_ITEMS, BOARD_THEME_STYLES, CARD_BACK_STYLES, AVATAR_EMOJIS } from './ShopDialog';
-import { findShopItem, setShopItemsCache } from '../lib/shopItemsStore';
+import { STORE_ITEMS, BOARD_THEME_STYLES, CARD_BACK_STYLES, AVATAR_EMOJIS, PLAYER_BOARD_STYLES } from './ShopDialog';
+import { findShopItem, setShopItemsCache, subscribeShopItems, loadShopItems } from '../lib/shopItemsStore';
+import { COUNTRIES, getCountryByCode } from '../lib/countryData';
+import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
 
 interface Props {
   profile: UserProfile;
@@ -15,12 +18,14 @@ interface Props {
 
 const DEFAULT_ITEMS = [
   { id: 'theme_slate', name: 'Kozmik Slate', category: 'board_theme', description: 'Klasik koyu gri minimalist arka plan.' },
+  { id: 'board_classic', name: 'Klasik Siyah Tahta', category: 'player_board', description: 'Sade ve asil klasik mat siyah oyun tahtası.' },
   { id: 'back_classic', name: 'Klasik Kırmızı', category: 'card_back', description: 'Standart kırmızı arka desen.' },
   { id: 'avatar_classic', name: 'Klasik Hükümdar', category: 'avatar', description: 'Geleneksel şapkalı asilzade.' },
   { id: 'frame_none', name: 'Klasik Sınır', category: 'profile_frame', description: 'Standart sade çerçeve.' },
   { id: 'skin_none', name: 'Varsayılan Temiz Kart', category: 'card_skin', description: 'Standart kart tasarımı.' },
   { id: 'vfx_none', name: 'Efekt Yok', category: 'action_vfx', description: 'Sıradan kart oynama animasyonları.' },
-  { id: 'sound_classic', name: 'Klasik Melodi', category: 'celebration_sound', description: 'Klasik retro zafer melodisi.' }
+  { id: 'sound_classic', name: 'Klasik Melodi', category: 'celebration_sound', description: 'Klasik retro zafer melodisi.' },
+  { id: 'music_classic', name: 'Klasik Atmosfer', category: 'game_music', description: 'Göz yormayan, rahatlatıcı klasik masa fon müziği.' }
 ];
 
 export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
@@ -30,45 +35,105 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
 
   // Tab and Inventory State
   const [activeSubTab, setActiveSubTab] = React.useState<'stats' | 'inventory'>('stats');
-  const [invCategory, setInvCategory] = React.useState<'all' | 'board_theme' | 'card' | 'profile' | 'effects'>('all');
+  const [invCategory, setInvCategory] = React.useState<string>('all');
   const [shopItems, setShopItems] = React.useState<any[]>([]);
 
   React.useEffect(() => {
-    fetch(`${API_BASE_URL}/api/shop/items`)
-      .then((res) => res.json())
-      .then((data) => {
-        if (Array.isArray(data)) {
-          setShopItems(data);
-          setShopItemsCache(data);
-        }
-      })
-      .catch((err) => console.error('Error loading shop items in ProfilePanel:', err));
+    loadShopItems().then((items) => {
+      if (Array.isArray(items) && items.length > 0) {
+        setShopItems(items);
+      }
+    });
+
+    const unsubscribe = subscribeShopItems((items) => {
+      if (Array.isArray(items)) {
+        setShopItems(items);
+      }
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const allOwnedItems = React.useMemo(() => {
-    const allAvailable = [...STORE_ITEMS, ...shopItems];
+    const allAvailable = [...STORE_ITEMS];
+    shopItems.forEach((si) => {
+      if (!allAvailable.some((a) => a.id === si.id)) {
+        allAvailable.push(si);
+      }
+    });
+
     // Collect unlocked store items
-    const unlockedStore = allAvailable.filter(item => 
-      profile.unlockedItems.includes(item.id) || item.price === 0
+    const unlockedStore = allAvailable.filter(
+      (item) =>
+        profile.unlockedItems.includes(item.id) ||
+        item.price === 0 ||
+        (item as any).isUnlocked === true
     );
+
     // Combine with default free items
     const combined = [...DEFAULT_ITEMS];
-    unlockedStore.forEach(storeIdx => {
-      if (!combined.some(c => c.id === storeIdx.id)) {
+    unlockedStore.forEach((storeIdx) => {
+      if (!combined.some((c) => c.id === storeIdx.id)) {
         combined.push(storeIdx);
       }
     });
+
+    // Fallback for custom unlocked items / URLs not in combined
+    profile.unlockedItems.forEach((id) => {
+      if (!combined.some((c) => c.id === id)) {
+        const shopDetail = findShopItem(id);
+        if (shopDetail) {
+          combined.push(shopDetail);
+        } else {
+          const isUrl = id.startsWith('http') || id.startsWith('data:') || id.startsWith('/');
+          combined.push({
+            id,
+            name: isUrl ? 'Özel Medya Öğe' : id.replace('_', ' '),
+            category: id.includes('frame')
+              ? 'profile_frame'
+              : id.includes('sound')
+              ? 'celebration_sound'
+              : id.includes('music')
+              ? 'game_music'
+              : id.includes('vfx')
+              ? 'action_vfx'
+              : id.includes('board')
+              ? 'player_board'
+              : id.includes('theme')
+              ? 'board_theme'
+              : id.includes('back')
+              ? 'card_back'
+              : id.includes('skin')
+              ? 'card_skin'
+              : 'avatar',
+            description: 'Sahip olunan özel koleksiyon öğesi.',
+            mediaUrl: isUrl ? id : undefined,
+            isUnlocked: true,
+            price: 0,
+          } as any);
+        }
+      }
+    });
+
     return combined;
   }, [profile.unlockedItems, shopItems]);
 
   const filteredOwned = React.useMemo(() => {
-    return allOwnedItems.filter(item => {
+    return allOwnedItems.filter((item) => {
       if (invCategory === 'all') return true;
-      if (invCategory === 'board_theme') return item.category === 'board_theme' || item.category === 'player_board';
+      if (invCategory === 'board_theme') return item.category === 'board_theme';
+      if (invCategory === 'player_board') return item.category === 'player_board';
+      if (invCategory === 'card_back') return item.category === 'card_back';
+      if (invCategory === 'card_skin') return item.category === 'card_skin';
+      if (invCategory === 'avatar') return item.category === 'avatar';
+      if (invCategory === 'profile_frame') return item.category === 'profile_frame';
+      if (invCategory === 'celebration_sound') return item.category === 'celebration_sound';
+      if (invCategory === 'action_vfx') return item.category === 'action_vfx';
+      // Legacy merged categories
       if (invCategory === 'card') return item.category === 'card_skin' || item.category === 'card_back';
       if (invCategory === 'profile') return item.category === 'avatar' || item.category === 'profile_frame';
       if (invCategory === 'effects') return item.category === 'celebration_sound' || item.category === 'action_vfx';
-      return false;
+      return item.category === invCategory;
     });
   }, [allOwnedItems, invCategory]);
 
@@ -80,6 +145,7 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
     if (category === 'card_back') return s.cardBack === itemId;
     if (category === 'profile_frame') return (s.profileFrame || 'frame_none') === itemId;
     if (category === 'celebration_sound') return (s.celebrationSound || 'sound_classic') === itemId;
+    if (category === 'game_music') return (s.gameMusic || 'music_classic') === itemId;
     if (category === 'avatar') return profile.avatarId === itemId;
     if (category === 'action_vfx') return (s.actionVfx || 'vfx_none') === itemId;
     return false;
@@ -93,13 +159,18 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
     else if (category === 'card_back') key = 'cardBack';
     else if (category === 'profile_frame') key = 'profileFrame';
     else if (category === 'celebration_sound') key = 'celebrationSound';
+    else if (category === 'game_music') key = 'gameMusic';
     else if (category === 'avatar') key = 'avatarId';
     else if (category === 'action_vfx') key = 'actionVfx';
     else return;
 
+    const shopDetail = findShopItem(itemId);
+    const customMediaUrl = (shopDetail as any)?.mediaUrl || (itemId && (itemId.startsWith('http') || itemId.startsWith('/') || itemId.startsWith('data:')) ? itemId : undefined);
+
     const updatedSettings = {
       ...profile.settings,
       [key]: itemId,
+      ...(category === 'game_music' ? { customBgmUrl: customMediaUrl } : {})
     };
 
     const updatedProfile = {
@@ -230,10 +301,43 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
                     sizeClassName="w-16 h-16 text-3xl"
                   />
                   <div>
-                    <h3 className="font-bold text-xl text-white">{profile.username}</h3>
+                    <div className="flex items-center gap-1.5">
+                      <h3 className="font-bold text-xl text-white">{profile.username}</h3>
+                      <span className="text-lg" title={getCountryByCode(profile.country).nameTr}>
+                        {getCountryByCode(profile.country).flag}
+                      </span>
+                    </div>
                     <span className="text-xs text-red-400 font-bold bg-red-500/10 px-2.5 py-1 rounded-full inline-block mt-1">
                       {t('level', profile)} {profile.level}
                     </span>
+                  </div>
+                </div>
+
+                {/* Country Selector */}
+                <div className="mb-4 p-3 bg-white/5 border border-white/10 rounded-xl space-y-1">
+                  <label className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+                    🌍 {profile.settings.language === 'en' ? 'My Country' : 'Ülkem'}
+                  </label>
+                  <div className="flex gap-2 items-center">
+                    <span className="text-xl shrink-0">{getCountryByCode(profile.country).flag}</span>
+                    <select
+                      value={profile.country || 'TR'}
+                      onChange={(e) => {
+                        const newCountry = e.target.value;
+                        const updatedProfile = {
+                          ...profile,
+                          country: newCountry,
+                        };
+                        onUpdateProfile(updatedProfile);
+                      }}
+                      className="bg-zinc-950/80 border border-white/10 text-white rounded-lg px-2 py-1 text-xs font-bold focus:outline-none focus:border-red-500 flex-1 cursor-pointer"
+                    >
+                      {COUNTRIES.map((c) => (
+                        <option key={c.code} value={c.code} className="bg-zinc-900 text-white">
+                          {c.flag} {profile.settings.language === 'en' ? c.nameEn : c.nameTr}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
 
@@ -306,6 +410,11 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
                   <span className="font-bold text-red-400">{profile.stats.totalMoneyBanked}M</span>
                 </div>
               </div>
+            </div>
+
+            {/* Ranked Performance Card */}
+            <div className="col-span-1 md:col-span-3">
+              <RankedPerformanceCard profile={profile} />
             </div>
 
             {/* D3 Performance Chart Full-Width Card */}
@@ -524,10 +633,15 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
           <div className="flex flex-wrap gap-2 border-b border-white/10 pb-4">
             {[
               { id: 'all', label: profile.settings.language === 'en' ? 'All' : 'Tümü', icon: '📁' },
-              { id: 'board_theme', label: profile.settings.language === 'en' ? 'Board Themes' : 'Masa Temaları', icon: '🎨' },
-              { id: 'card', label: profile.settings.language === 'en' ? 'Card Skins' : 'Kart Görünümleri', icon: '🃏' },
-              { id: 'profile', label: profile.settings.language === 'en' ? 'Profile Items' : 'Profil & Avatarlar', icon: '👤' },
-              { id: 'effects', label: profile.settings.language === 'en' ? 'Sounds & VFX' : 'Sesler & Efektler', icon: '⚡' },
+              { id: 'avatar', label: profile.settings.language === 'en' ? 'Avatars' : '👑 Avatarlar', icon: '👑' },
+              { id: 'card_back', label: profile.settings.language === 'en' ? 'Card Backs' : '🃏 Kart Arkaları', icon: '🃏' },
+              { id: 'board_theme', label: profile.settings.language === 'en' ? 'Board Themes' : '🎨 Masa Temaları', icon: '🎨' },
+              { id: 'card_skin', label: profile.settings.language === 'en' ? 'Card Skins' : '✨ Kart Kaplamaları', icon: '✨' },
+              { id: 'player_board', label: profile.settings.language === 'en' ? 'Player Boards' : '🏆 Oyuncu Tahtaları', icon: '🏆' },
+              { id: 'game_music', label: profile.settings.language === 'en' ? 'Game Music' : '🎧 Oyun Müzikleri', icon: '🎧' },
+              { id: 'profile_frame', label: profile.settings.language === 'en' ? 'Profile Frames' : '🖼️ Profil Çerçeveleri', icon: '🖼️' },
+              { id: 'celebration_sound', label: profile.settings.language === 'en' ? 'Victory Sounds' : '🎵 Zafer Sesleri', icon: '🎵' },
+              { id: 'action_vfx', label: profile.settings.language === 'en' ? 'VFX Effects' : '💥 Efektler', icon: '💥' },
             ].map(cat => (
               <button
                 key={cat.id}
@@ -552,12 +666,32 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
                 
                 // Styles lookup
                 const shopDetail = findShopItem(item.id);
-                const customMediaUrl = (item as any).mediaUrl || shopDetail?.mediaUrl;
-                const isCustomVideo = customMediaUrl && ((item as any).mediaType === 'video' || shopDetail?.mediaType === 'video' || customMediaUrl.endsWith('.mp4') || customMediaUrl.endsWith('.webm') || customMediaUrl.includes('video') || customMediaUrl.startsWith('data:video'));
+                const customMediaUrl = 
+                  (item as any).mediaUrl || 
+                  shopDetail?.mediaUrl || 
+                  (item as any).previewUrl || 
+                  shopDetail?.previewUrl || 
+                  (item as any).imageUrl || 
+                  (item as any).gifUrl || 
+                  (item as any).videoUrl || 
+                  (item as any).avatarUrl || 
+                  (item as any).url ||
+                  (item.id && (item.id.startsWith('http://') || item.id.startsWith('https://') || item.id.startsWith('/') || item.id.startsWith('data:')) ? item.id : undefined);
+
+                const isCustomVideo = customMediaUrl && isVideoUrl(customMediaUrl, (item as any).mediaType || shopDetail?.mediaType);
+
+                const isCustomGif = customMediaUrl && (
+                  (item as any).mediaType === 'gif' || 
+                  shopDetail?.mediaType === 'gif' || 
+                  customMediaUrl.endsWith('.gif') || 
+                  customMediaUrl.includes('.gif') || 
+                  customMediaUrl.startsWith('data:image/gif')
+                );
 
                 const bTheme = BOARD_THEME_STYLES[item.id];
                 const cBack = CARD_BACK_STYLES[item.id];
                 const avatarEmoji = AVATAR_EMOJIS[item.id] || '👤';
+                const playerBoardStyle = PLAYER_BOARD_STYLES[item.id] || PLAYER_BOARD_STYLES.board_classic;
 
                 return (
                   <div
@@ -592,28 +726,35 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
                       {customMediaUrl ? (
                         <div className="absolute inset-0 m-2 rounded-xl overflow-hidden flex items-center justify-center bg-slate-900 border border-white/10">
                           {isCustomVideo ? (
-                            <video
-                              src={customMediaUrl}
-                              autoPlay
-                              loop
-                              muted
-                              playsInline
-                              style={{
-                                opacity: item.overlayOpacity ?? 1,
-                                mixBlendMode: (item.overlayMode as any) || 'normal'
-                              }}
-                              className="w-full h-full object-cover"
-                            />
+                            <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
+                              <HlsVideoPlayer
+                                src={customMediaUrl}
+                                style={{
+                                  opacity: item.overlayOpacity ?? 1,
+                                  mixBlendMode: (item.overlayMode as any) || 'normal'
+                                }}
+                                className="w-full h-full object-cover"
+                              />
+                              <div className="absolute top-2 right-2 bg-black/80 text-amber-300 border border-amber-500/30 text-[9px] font-black px-2 py-0.5 rounded-full z-20 shadow-md">
+                                🎬 VİDEO
+                              </div>
+                            </div>
                           ) : (
-                            <img
-                              src={customMediaUrl}
-                              alt={item.name}
-                              style={{
-                                opacity: item.overlayOpacity ?? 1,
-                                mixBlendMode: (item.overlayMode as any) || 'normal'
-                              }}
-                              className="w-full h-full object-cover"
-                            />
+                            <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
+                              <img
+                                src={customMediaUrl}
+                                alt={item.name}
+                                style={{
+                                  opacity: item.overlayOpacity ?? 1,
+                                  mixBlendMode: (item.overlayMode as any) || 'normal'
+                                }}
+                                className="w-full h-full object-cover"
+                                referrerPolicy="no-referrer"
+                              />
+                              <div className="absolute top-2 right-2 bg-black/80 text-sky-300 border border-sky-500/30 text-[9px] font-black px-2 py-0.5 rounded-full z-20 shadow-md">
+                                {isCustomGif ? '✨ GIF' : '🖼️ RESİM'}
+                              </div>
+                            </div>
                           )}
                         </div>
                       ) : (
@@ -625,6 +766,22 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
                           <span className="text-[10px] font-black tracking-wider uppercase bg-white/10 px-2 py-0.5 rounded-full text-slate-300">
                             {bTheme?.badge || 'Tema'}
                           </span>
+                        </div>
+                      )}
+
+                      {item.category === 'player_board' && (
+                        <div className={`w-[140px] p-2.5 rounded-xl border-2 shadow-lg flex flex-col justify-between ${playerBoardStyle?.bgClass || 'bg-slate-900'} ${playerBoardStyle?.borderClass || 'border-slate-800'} ${playerBoardStyle?.glowClass || ''}`}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-base select-none">{playerBoardStyle?.icon || '🏆'}</span>
+                            <span className="text-[9px] font-black tracking-wider uppercase truncate text-slate-100">
+                              {profile.settings.language === 'en' ? (playerBoardStyle?.nameEn || 'Board').split(' ')[0] : (playerBoardStyle?.nameTr || 'Tahta').split(' ')[0]}
+                            </span>
+                          </div>
+                          <div className="flex gap-1 mt-3 justify-center">
+                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: '0.1s' }} />
+                            <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" style={{ animationDelay: '0.2s' }} />
+                          </div>
                         </div>
                       )}
 

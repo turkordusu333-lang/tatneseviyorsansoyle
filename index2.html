@@ -1,133 +1,132 @@
 <!DOCTYPE html>
 <html lang="tr">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Monopoly Deal Card - Hesap Silme</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deal Master PRO - Hesap Silme</title>
 
-<style>
-body{
-    margin:0;
-    font-family:Arial,Helvetica,sans-serif;
-    background:#f4f6f9;
-    color:#333;
-}
+    <style>
+        body {
+            margin: 0;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f4f6f9;
+            color: #333;
+        }
 
-.container{
-    max-width:700px;
-    margin:60px auto;
-    background:#fff;
-    padding:40px;
-    border-radius:15px;
-    box-shadow:0 5px 20px rgba(0,0,0,.15);
-}
+        .container {
+            max-width: 700px;
+            margin: 60px auto;
+            background: #fff;
+            padding: 40px;
+            border-radius: 15px;
+            box-shadow: 0 5px 20px rgba(0, 0, 0, .15);
+        }
 
-h1{
-    color:#d32f2f;
-    text-align:center;
-}
+        h1 {
+            color: #d32f2f;
+            text-align: center;
+        }
 
-p{
-    line-height:1.7;
-}
+        p {
+            line-height: 1.7;
+        }
 
-input{
-    width:100%;
-    padding:12px;
-    margin:15px 0;
-    border:1px solid #ccc;
-    border-radius:8px;
-    font-size:16px;
-}
+        input {
+            width: 100%;
+            padding: 12px;
+            margin: 15px 0;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            font-size: 16px;
+        }
 
-button{
-    width:100%;
-    padding:14px;
-    background:#d32f2f;
-    color:white;
-    border:none;
-    border-radius:8px;
-    font-size:16px;
-    cursor:pointer;
-}
+        button {
+            width: 100%;
+            padding: 14px;
+            background: #d32f2f;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+        }
 
-button:hover{
-    background:#b71c1c;
-}
+        button:hover {
+            background: #b71c1c;
+        }
 
-#result{
-    margin-top:20px;
-    text-align:center;
-    font-weight:bold;
-    color:green;
-}
+        #result {
+            margin-top: 20px;
+            text-align: center;
+            font-weight: bold;
+            color: green;
+        }
 
-.footer{
-    margin-top:30px;
-    font-size:14px;
-    color:#777;
-}
-</style>
+        .footer {
+            margin-top: 30px;
+            font-size: 14px;
+            color: #777;
+        }
+    </style>
 </head>
 
 <body>
 
-<div class="container">
+    <div class="container">
 
-<h1>Monopoly Deal Card</h1>
-<h2>Hesap Silme Talebi</h2>
+        <h1>Deal Master PRO</h1>
+        <h2>Hesap Silme Talebi</h2>
 
-<p>
-Hesabınızı ve ilişkili verilerinizi silmek istiyorsanız aşağıdaki kullanıcı adını girerek talep oluşturabilirsiniz.
-</p>
+        <p>
+            Hesabınızı ve ilişkili verilerinizi silmek istiyorsanız aşağıdaki kullanıcı adını girerek talep
+            oluşturabilirsiniz.
+        </p>
 
-<form id="deleteForm">
+        <form id="deleteForm">
 
-<input
-type="text"
-id="username"
-placeholder="Kullanıcı Adınız"
-required>
+            <input type="text" id="username" placeholder="Kullanıcı Adınız" required>
 
-<button type="submit">
-Hesabımı Sil
-</button>
+            <button type="submit">
+                Hesabımı Sil
+            </button>
 
-</form>
+        </form>
 
-<div id="result"></div>
+        <div id="result"></div>
 
-<div class="footer">
-<p><strong>Silinecek Veriler</strong></p>
-<ul>
-<li>Oyun hesabınız</li>
-<li>Profil bilgileriniz</li>
-<li>Oyun kayıtlarınız</li>
-<li>Sunucudaki kullanıcı verileri</li>
-</ul>
+        <div class="footer">
+            <p><strong>Silinecek Veriler</strong></p>
+            <ul>
+                <li>Oyun hesabınız</li>
+                <li>Profil bilgileriniz</li>
+                <li>Oyun kayıtlarınız</li>
+                <li>Sunucudaki kullanıcı verileri</li>
+            </ul>
 
-<p>
-Hesap silme işlemi geri alınamaz.
-</p>
+            <p>
+                Hesap silme işlemi geri alınamaz.
+            </p>
 
-</div>
+        </div>
 
-</div>
+    </div>
 
-<script>
-document.getElementById("deleteForm").addEventListener("submit",function(e){
+    <script>
+        document.getElementById("deleteForm").addEventListener("submit", function (e) {
 
-e.preventDefault();
+            e.preventDefault();
 
-let username=document.getElementById("username").value;
+            let username = document.getElementById("username").value;
 
-document.getElementById("result").innerHTML=
-"✅ <b>"+username+"</b> için hesap silme talebi alınmıştır.";
+            document.getElementById("result").innerHTML =
+                "✅ <b>" + username + "</b> için hesap silme talebi alınmıştır.";
 
-this.reset();
+            this.reset();
 
-});
-</script>
+        });
+    </script>
 
 </body>
+
 </html>

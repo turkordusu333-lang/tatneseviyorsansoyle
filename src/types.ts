@@ -86,7 +86,7 @@ export type StoreItemRarity = 'common' | 'rare' | 'epic' | 'legendary' | 'mythic
 export interface StoreItem {
   id: string;
   name: string;
-  category: 'avatar' | 'card_back' | 'board_theme' | 'sound_pack' | 'profile_frame' | 'celebration_sound' | 'card_skin' | 'action_vfx' | 'player_board';
+  category: 'avatar' | 'card_back' | 'board_theme' | 'sound_pack' | 'profile_frame' | 'celebration_sound' | 'card_skin' | 'action_vfx' | 'player_board' | 'game_music';
   price: number;
   previewUrl?: string;
   previewColor?: string;
@@ -116,6 +116,8 @@ export interface UserSettings {
   cardSkin?: string; // ID of unlocked card skin
   actionVfx?: string; // ID of unlocked action VFX
   playerBoard?: string; // ID of unlocked player board theme/style!
+  gameMusic?: string; // ID of equipped game music track
+  customBgmUrl?: string; // URL if custom game music track is loaded
 }
 
 export interface Friend {
@@ -164,11 +166,13 @@ export interface GameHistoryItem {
   result: 'won' | 'lost'; // Sonuç
   coinsEarned: number; // Kazanılan jeton
   xpEarned: number; // Kazanılan XP
+  rankPointsEarned?: number; // Dereceli puan değişimi (+/-)
 }
 
 export interface UserProfile {
   id: string;
   username: string;
+  country?: string; // Player country code (e.g. TR, US, DE)
   coins: number;
   level: number;
   xp: number;
@@ -182,12 +186,15 @@ export interface UserProfile {
   dailyQuests: DailyQuest[];
   gamesHistory?: GameHistoryItem[];
   password?: string; // Optional user account password
+  rankPoints?: number; // Ranked / League Points
+  mmr?: number; // Secret Matchmaking Rating
 }
 
 // Multiplayer Game Types
 export interface GamePlayer {
   id: string;
   username: string;
+  country?: string; // Player country code
   avatarId: string;
   avatarUrl?: string;
   profileFrame?: string;
@@ -197,6 +204,8 @@ export interface GamePlayer {
   actionVfx?: string; // ID of equipped action VFX
   isBot: boolean;
   isDisconnected?: boolean;
+  hasAbandoned?: boolean;
+  hasAbandonedAlreadyPenalized?: boolean;
   isSpeaking?: boolean;
   isMuted?: boolean;
   hand: Card[];
@@ -244,6 +253,9 @@ export interface MatchState {
     gameMode: 'classic' | 'chaos' | 'speed';
   };
   password?: string; // Optional password to enter the room
+  isMatchmaking?: boolean;
+  matchmakingEntryFee?: number;
+  matchmakingWinnerShare?: number;
 }
 
 export interface ActionRequest {
