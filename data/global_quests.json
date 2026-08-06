@@ -1,0 +1,23 @@
+[
+  {
+    "id": "q-1",
+    "description": "Pratik Modunda botu yen.",
+    "targetValue": 1,
+    "rewardCoins": 50,
+    "rewardXp": 40
+  },
+  {
+    "id": "q-2",
+    "description": "Bankaya 5M para yerleştir.",
+    "targetValue": 5,
+    "rewardCoins": 40,
+    "rewardXp": 30
+  },
+  {
+    "id": "q-3",
+    "description": "Toplam 3 kira kartı oyna.",
+    "targetValue": 3,
+    "rewardCoins": 60,
+    "rewardXp": 50
+  }
+]
