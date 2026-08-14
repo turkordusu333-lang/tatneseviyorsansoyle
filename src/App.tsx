@@ -9,6 +9,7 @@ import { API_BASE_URL } from './lib/apiConfig';
 import { GlobalToast } from './components/GlobalToast';
 import { STORE_ITEMS } from './components/ShopDialog';
 import { PrivacyAndDeleteAccountPages } from './components/PrivacyAndDeleteAccountPages';
+import { AdMobBanner } from './components/AdMobBanner';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -438,6 +439,9 @@ export default function App() {
           )}
         </div>
       )}
+
+      {/* 📱 Google AdMob Banner Ad (Giriş / Ana Sayfa / Lobi) */}
+      <AdMobBanner adminSettings={adminSettings} visible={!currentRoom} />
       {/* 🎴 Cinematic Card Flip Transition Overlay */}
       <AnimatePresence>
         {isFlippingTransition && (

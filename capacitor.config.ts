@@ -5,15 +5,16 @@ const config: CapacitorConfig = {
   appName: 'Deal-Master-PRO',
   webDir: 'dist',
   server: {
-    androidScheme: 'http',
+    androidScheme: 'https',
     cleartext: true,
     allowNavigation: [
-      "16.170.166.112",
-      "16.170.166.112:3000",
+      "dealcard.duckdns.org",
+      "*.duckdns.org",
       "*"
     ]
   }
 };
 
 export default config;
+
 

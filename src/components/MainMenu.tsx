@@ -13,7 +13,7 @@ import { LuckyWheel } from './LuckyWheel';
 import { RewardedAdCoinButton } from './RewardedAdCoinButton';
 import { motion, AnimatePresence } from 'motion/react';
 import { t } from '../lib/TranslationSystem';
-import { API_BASE_URL } from '../lib/apiConfig';
+import { API_BASE_URL, WS_BASE_URL } from '../lib/apiConfig';
 import { getCountryByCode } from '../lib/countryData';
 import { 
   Play, 
@@ -134,9 +134,7 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
     setMatchmakingActive(true);
     setMatchmakingStatus('searching');
 
-    let wsUrl = API_BASE_URL.startsWith('http') 
-      ? API_BASE_URL.replace(/^http/, 'ws') 
-      : ((window.location.protocol === 'https:' ? 'wss://' : 'ws://') + window.location.host);
+    let wsUrl = WS_BASE_URL;
 
     const socket = new WebSocket(wsUrl);
     matchmakingSocketRef.current = socket;

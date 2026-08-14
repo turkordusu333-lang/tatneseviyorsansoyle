@@ -32,7 +32,7 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
 
   // Google AdMob settings
   const isTesting = adminSettings?.wheelAdMobTestingMode !== false;
-  const androidAdUnitId = adminSettings?.wheelAdMobAndroidAdUnitId || 'ca-app-pub-5045652074166668/9099969667';
+  const androidAdUnitId = adminSettings?.wheelAdMobAndroidAdUnitId || 'ca-app-pub-5045652074166668/6893680557';
   const iosAdUnitId = adminSettings?.wheelAdMobiOSAdUnitId || 'ca-app-pub-3940256099942544/1712485313';
   
   // Choose correct Ad Unit ID
@@ -163,8 +163,10 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
 
     const listenerHandles: any[] = [];
     let earnedReward = false;
+    let timeoutId: any = null;
 
     const cleanupListeners = async () => {
+      if (timeoutId) clearTimeout(timeoutId);
       for (const handle of listenerHandles) {
         try {
           await handle.remove();
@@ -174,15 +176,17 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
       }
     };
 
-    try {
-      // 1. Prepare rewarded video ad
-      await AdMob.prepareRewardVideoAd({
-        adId: activeAdUnitId,
-        isTesting: isTesting,
-      });
+    // Safety timeout
+    timeoutId = setTimeout(() => {
+      setIsNativeAdLoading(false);
+      setAdmobError("Reklam isteği zaman aşımına uğradı. Lütfen tekrar deneyin.");
+      cleanupListeners();
+    }, 15000);
 
-      // 2. Add Event listeners
+    try {
+      // 1. Add Event listeners BEFORE preparing ad
       const loadedListener = await AdMob.addListener(RewardAdPluginEvents.Loaded, async () => {
+        if (timeoutId) clearTimeout(timeoutId);
         console.log("AdMob Rewarded Ad Loaded successfully!");
         setIsNativeAdLoading(false);
         try {
@@ -196,8 +200,9 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
       listenerHandles.push(loadedListener);
 
       const failedListener = await AdMob.addListener(RewardAdPluginEvents.FailedToLoad, (info) => {
+        if (timeoutId) clearTimeout(timeoutId);
         console.error("AdMob Rewarded Ad failed to load:", info);
-        setAdmobError("Reklam yüklenemedi. İnternet bağlantınızı kontrol edin.");
+        setAdmobError("Reklam yüklenemedi (AdMob No Fill / Bağlantı). Lütfen daha sonra tekrar deneyin.");
         setIsNativeAdLoading(false);
         cleanupListeners();
       });
@@ -210,6 +215,7 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
       listenerHandles.push(rewardedListener);
 
       const dismissedListener = await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        if (timeoutId) clearTimeout(timeoutId);
         console.log("AdMob ad dismissed.");
         setIsNativeAdLoading(false);
         cleanupListeners();
@@ -221,7 +227,17 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
       });
       listenerHandles.push(dismissedListener);
 
+      // 2. Prepare rewarded video ad
+      const targetAdUnitId = isTesting
+        ? (platform === 'ios' ? 'ca-app-pub-3940256099942544/1712485313' : 'ca-app-pub-3940256099942544/5224354917')
+        : activeAdUnitId;
+
+      await AdMob.prepareRewardVideoAd({
+        adId: targetAdUnitId,
+        isTesting: isTesting,
+      });
     } catch (error: any) {
+      if (timeoutId) clearTimeout(timeoutId);
       console.error("AdMob flow exception:", error);
       setAdmobError(error?.message || "Reklam yüklenirken bir hata oluştu.");
       setIsNativeAdLoading(false);

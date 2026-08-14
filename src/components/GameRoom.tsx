@@ -10548,6 +10548,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           if (isOffline) handleOfflinePlayCard(selectedCard.id, 'action');
                           else handlePlayCardMultiplayer(selectedCard.id, 'action');
                         }
+                        setSelectedCard(null);
+                        setShowCardMenu(false);
                       }}
                       className="w-full p-3.5 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-950/30 to-slate-900 hover:from-amber-950/50 hover:to-slate-850 hover:border-amber-500/60 text-white transition-all text-left active:scale-[0.98] cursor-pointer group flex flex-col gap-0.5 shadow-md"
                     >
@@ -10596,7 +10598,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         );
       })()}
 
-      {/* 2. Wildcard Color selector prompt */}
+      {/* Wildcard Color picker prompt */}
       <AnimatePresence>
         {isMyTurn && wildcardColorPick && (
           <motion.div
@@ -10614,12 +10616,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.95, y: 10, opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-4 sm:p-5 w-full max-w-md shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col my-auto overflow-y-auto scrollbar-thin space-y-3"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-4 sm:p-5 w-full max-w-md shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col my-auto space-y-3"
             >
               {/* Radial gradient background accent */}
               <div className="absolute -top-16 -left-16 w-36 h-36 bg-amber-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-              <div className="text-center pb-2 border-b border-white/10 relative">
+              <div className="shrink-0 text-center pb-2 border-b border-white/10 relative">
                 <span className="text-xs font-black text-amber-400 tracking-widest uppercase block mb-1">
                   ✨ {t('color_select', profile)}
                 </span>
@@ -10634,7 +10636,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               </div>
 
               {match?.settings?.turnLimit !== 'unlimited' && (
-                <div className="text-center bg-amber-500/10 border border-amber-500/20 py-2 px-3 rounded-xl text-xs text-amber-400 font-black flex items-center justify-center gap-2">
+                <div className="shrink-0 text-center bg-amber-500/10 border border-amber-500/20 py-2 px-3 rounded-xl text-xs text-amber-400 font-black flex items-center justify-center gap-2">
                   <span className="relative flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
                     <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
@@ -10644,7 +10646,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               )}
 
               {/* Dynamic Property Color Options rendered as Mini Land Cards */}
-              <div className="grid grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-1 scrollbar-thin">
+              <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin grid grid-cols-2 gap-3 min-h-0">
                 {(() => {
                   const possibleColors: CardColor[] = [];
                   if (wildcardColorPick.allowedColors && wildcardColorPick.allowedColors.length > 0) {
@@ -10735,17 +10737,19 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 })()}
               </div>
 
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  triggerHaptic('light');
-                  setWildcardColorPick(null);
-                }}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
-              >
-                {t('cancel', profile)}
-              </motion.button>
+              <div className="shrink-0 pt-2 border-t border-white/10 sticky bottom-0 bg-slate-900 z-20">
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setWildcardColorPick(null);
+                  }}
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
+                >
+                  {t('cancel', profile)}
+                </motion.button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -10769,12 +10773,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.95, y: 10, opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-4 sm:p-5 w-full max-w-md shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col my-auto overflow-y-auto scrollbar-thin space-y-3"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-4 sm:p-5 w-full max-w-md shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col my-auto space-y-3"
             >
               {/* Radial gradient background accent */}
               <div className="absolute -top-16 -right-16 w-36 h-36 bg-emerald-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-              <div className="text-center pb-2 border-b border-white/10">
+              <div className="shrink-0 text-center pb-2 border-b border-white/10">
                 <span className="text-xs font-black text-emerald-400 block uppercase tracking-widest mb-1">
                   💰 {profile.settings.language === 'en' ? 'Collect Rent' : 'Kira Topla'}
                 </span>
@@ -10799,7 +10803,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     playCoinSound();
                     setUseDoubleRent(!useDoubleRent);
                   }}
-                  className={`w-full flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer select-none text-left ${useDoubleRent
+                  className={`shrink-0 w-full flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer select-none text-left ${useDoubleRent
                     ? 'bg-amber-500/15 border-amber-500/60 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
                     : 'bg-slate-950/60 border-slate-800 hover:border-amber-500/40'
                     }`}
@@ -10824,7 +10828,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 </motion.button>
               )}
 
-              <div className="grid grid-cols-2 gap-3 max-h-[260px] overflow-y-auto pr-1 scrollbar-thin">
+              <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin grid grid-cols-2 gap-3 min-h-0">
                 {(() => {
                   const possibleColors: CardColor[] = [];
                   if (rentColorPick.color) {
@@ -10918,17 +10922,19 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 })()}
               </div>
 
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  triggerHaptic('light');
-                  setRentColorPick(null);
-                }}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
-              >
-                {t('cancel', profile)}
-              </motion.button>
+              <div className="shrink-0 pt-2 border-t border-white/10 sticky bottom-0 bg-slate-900 z-20">
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setRentColorPick(null);
+                  }}
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
+                >
+                  {t('cancel', profile)}
+                </motion.button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -10952,12 +10958,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.95, y: 10, opacity: 0 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-4 sm:p-5 w-full max-w-md shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col my-auto overflow-y-auto scrollbar-thin space-y-3"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-4 sm:p-5 w-full max-w-md shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col my-auto space-y-3"
             >
               {/* Radial gradient background accent */}
               <div className="absolute -top-16 -left-16 w-36 h-36 bg-amber-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-              <div className="text-center pb-2 border-b border-white/10">
+              <div className="shrink-0 text-center pb-2 border-b border-white/10">
                 <span className="text-xs font-black text-amber-500 block uppercase tracking-widest mb-1">
                   🎯 {profile.settings.language === 'en' ? 'Target Rent Selection' : 'Kira Hedefi Seç'}
                 </span>
@@ -10971,7 +10977,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 </p>
               </div>
 
-              <div className="space-y-2.5 max-h-[320px] overflow-y-auto pr-1 scrollbar-thin">
+              <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin space-y-2.5 min-h-0">
                 {otherPlayers.map((op) => {
                   const bankTotal = op.bank.reduce((sum, c) => sum + c.value, 0);
                   const completedSets = countCompletedSets(op.properties);
@@ -11018,17 +11024,19 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 })}
               </div>
 
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  triggerHaptic('light');
-                  setRentTargetSelect(null);
-                }}
-                className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
-              >
-                {t('cancel', profile)}
-              </motion.button>
+              <div className="shrink-0 pt-2 border-t border-white/10 sticky bottom-0 bg-slate-900 z-20">
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setRentTargetSelect(null);
+                  }}
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
+                >
+                  {t('cancel', profile)}
+                </motion.button>
+              </div>
             </motion.div>
           </motion.div>
         )}
@@ -11037,15 +11045,15 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       {/* House/Hotel Color selector prompt */}
       {isMyTurn && houseHotelColorPick && (
         <div id="context-aware-interaction-panel" className="fixed inset-0 bg-slate-950/92 flex items-center justify-center p-3 sm:p-4 z-50 select-none font-sans">
-          <div className="bg-slate-900 border border-slate-750/70 rounded-3xl p-4 sm:p-5 w-full max-w-md shadow-2xl relative max-h-[90vh] flex flex-col my-auto overflow-y-auto scrollbar-thin space-y-3">
-            <div className="text-center border-b border-white/10 pb-3">
+          <div className="bg-slate-900 border border-slate-750/70 rounded-3xl p-4 sm:p-5 w-full max-w-md shadow-2xl relative max-h-[90vh] flex flex-col my-auto space-y-3 overflow-hidden">
+            <div className="shrink-0 text-center border-b border-white/10 pb-3">
               <span className="text-xs font-black text-emerald-400 block uppercase tracking-widest mb-1">🏠 MÜLK GELİŞTİR</span>
               <h3 className="text-sm font-black text-slate-100">
                 {houseHotelColorPick.actionType === 'house' ? 'Evi Hangi Sete Yerleştirmek İstersiniz?' : 'Oteli Hangi Sete Yerleştirmek İstersiniz?'}
               </h3>
             </div>
 
-            <div className="space-y-2.5 max-h-[280px] overflow-y-auto pr-1 scrollbar-thin">
+            <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin space-y-2.5 min-h-0">
               {(() => {
                 const eligibleColors: CardColor[] = [];
                 Object.keys(localPlayer.properties).forEach((colorKey) => {
@@ -11094,12 +11102,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               })()}
             </div>
 
-            <button
-              onClick={() => setHouseHotelColorPick(null)}
-              className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
-            >
-              İptal Et
-            </button>
+            <div className="shrink-0 pt-2 border-t border-white/10 sticky bottom-0 bg-slate-900 z-20">
+              <button
+                onClick={() => setHouseHotelColorPick(null)}
+                className="w-full py-3 bg-slate-800 hover:bg-slate-750 text-slate-200 font-extrabold rounded-2xl text-xs transition-all cursor-pointer border border-slate-700/50"
+              >
+                İptal Et
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -11707,8 +11717,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             >
               {myActiveRequest.type === 'just-say-no' || (myActiveRequest.jsnCount || 0) > 0 ? (
                 // JSN SAVUNMA EKRANI (Just Say No Defense Chain)
-                <div className="space-y-4 text-center">
-                  <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-red-500 via-rose-500 to-red-500" />
+                <>
+                  <div className="absolute top-0 inset-x-0 h-[3px] bg-gradient-to-r from-red-500 via-rose-500 to-red-500 z-10" />
                   <div className="absolute -top-16 -left-16 w-36 h-36 bg-rose-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
                   {(() => {
@@ -11770,168 +11780,172 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
                     return (
                       <>
-                        <div className="border-b border-white/5 pb-3">
-                          <div className={`w-14 h-14 rounded-full ${isInitiatorView ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-rose-500/10 border-rose-500/30 text-rose-500'} border flex items-center justify-center mx-auto text-2xl animate-pulse shadow-lg mb-2`}>
-                            {isInitiatorView ? '⚡' : '🛡️'}
+                        {/* Scrollable Defense Chain Body */}
+                        <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin space-y-3 text-center">
+                          <div className="border-b border-white/5 pb-3">
+                            <div className={`w-14 h-14 rounded-full ${isInitiatorView ? 'bg-amber-500/10 border-amber-500/30 text-amber-500' : 'bg-rose-500/10 border-rose-500/30 text-rose-500'} border flex items-center justify-center mx-auto text-2xl animate-pulse shadow-lg mb-2`}>
+                              {isInitiatorView ? '⚡' : '🛡️'}
+                            </div>
+                            <span className={`text-[10px] font-black ${isInitiatorView ? 'text-amber-400' : 'text-rose-500'} uppercase tracking-widest block`}>
+                              {isEn ? `DEFENSE CHAIN - STEP ${jsnCount + 1}` : `SAVUNMA ZİNCİRİ - ADIM ${jsnCount + 1}`}
+                            </span>
+                            <h3 className="text-sm font-black text-slate-100 mt-1 uppercase tracking-wide">
+                              {displayTitle}
+                            </h3>
+                            <p className="text-[9px] font-bold text-slate-400 mt-0.5">
+                              {displaySubtitle}
+                            </p>
+                            <div className="text-[10px] text-slate-300 mt-2 leading-relaxed bg-slate-950/40 p-2.5 rounded-xl border border-white/5">
+                              {displayDescription}
+                            </div>
                           </div>
-                          <span className={`text-[10px] font-black ${isInitiatorView ? 'text-amber-400' : 'text-rose-500'} uppercase tracking-widest block`}>
-                            {isEn ? `DEFENSE CHAIN - STEP ${jsnCount + 1}` : `SAVUNMA ZİNCİRİ - ADIM ${jsnCount + 1}`}
-                          </span>
-                          <h3 className="text-sm font-black text-slate-100 mt-1 uppercase tracking-wide">
-                            {displayTitle}
-                          </h3>
-                          <p className="text-[9px] font-bold text-slate-400 mt-0.5">
-                            {displaySubtitle}
-                          </p>
-                          <div className="text-[10px] text-slate-300 mt-2 leading-relaxed bg-slate-950/40 p-2.5 rounded-xl border border-white/5">
-                            {displayDescription}
-                          </div>
+
+                          {/* Detailed Action Target Visualizer for Defense Chain */}
+                          {(() => {
+                            const actionType = req.originalAction?.type || req.actionCard?.actionType || req.actionCard?.type;
+
+                            // 1. Forced Deal (Zoraki Takas)
+                            if (actionType === 'forced-deal') {
+                              let targetCard: Card | null = null;
+                              let givenCard: Card | null = null;
+                              let targetColor: CardColor = 'brown';
+                              let givenColor: CardColor = 'brown';
+
+                              if (defenderPlayer) {
+                                for (const col in defenderPlayer.properties) {
+                                  const c = defenderPlayer.properties[col as CardColor]?.cards.find(c => c.id === req.targetCardId);
+                                  if (c) { targetCard = c; targetColor = col as CardColor; break; }
+                                }
+                              }
+                              if (initiatorPlayer) {
+                                for (const col in initiatorPlayer.properties) {
+                                  const c = initiatorPlayer.properties[col as CardColor]?.cards.find(c => c.id === req.myCardId);
+                                  if (c) { givenCard = c; givenColor = col as CardColor; break; }
+                                }
+                              }
+
+                              const leftCard = isInitiatorView ? givenCard : targetCard;
+                              const leftColor = isInitiatorView ? givenColor : targetColor;
+                              const leftHeader = isInitiatorView ? (isEn ? 'Your Sent Card' : 'Sizden Gidecek') : (isEn ? 'To Be Taken From You' : 'Sizden Gidecek');
+
+                              const rightCard = isInitiatorView ? targetCard : givenCard;
+                              const rightColor = isInitiatorView ? targetColor : givenColor;
+                              const rightHeader = isInitiatorView ? (isEn ? 'To Be Received' : 'Karşılığında Gelecek') : (isEn ? 'To Be Given to You' : 'Bize Gelecek');
+
+                              return (
+                                <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-3 w-full text-center space-y-2 select-none">
+                                  <span className="text-[9px] text-amber-400 font-black uppercase tracking-wider block">🔄 TAKAS EDİLECEK KARTLAR</span>
+                                  <div className="flex items-center justify-between gap-2 px-1 text-[10px] text-slate-300 font-bold">
+                                    {/* Verilen Kart */}
+                                    <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
+                                      <span className="text-[7.5px] text-rose-400 uppercase font-black mb-1">{leftHeader}</span>
+                                      <span className="truncate w-full text-center block text-[10px] font-black">{leftCard ? getTranslatedCardName(leftCard, profile) : 'Mülk'}</span>
+                                      <div className="mt-1.5 flex items-center justify-center">
+                                        {leftCard ? renderCardColorIndicator(leftCard, leftColor) : <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: COLOR_HEX[leftColor] }} />}
+                                      </div>
+                                    </div>
+
+                                    <span className="text-xs text-amber-500 font-black shrink-0 animate-pulse">➔</span>
+
+                                    {/* Alınan Kart */}
+                                    <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
+                                      <span className="text-[7.5px] text-emerald-400 uppercase font-black mb-1">{rightHeader}</span>
+                                      <span className="truncate w-full text-center block text-[10px] font-black">{rightCard ? getTranslatedCardName(rightCard, profile) : 'Mülk'}</span>
+                                      <div className="mt-1.5 flex items-center justify-center">
+                                        {rightCard ? renderCardColorIndicator(rightCard, rightColor) : <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: COLOR_HEX[rightColor] }} />}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // 2. Sly Deal (Sinsi Anlaşma)
+                            if (actionType === 'sly-deal') {
+                              let targetCard: Card | null = null;
+                              let targetColor: CardColor = 'brown';
+                              if (defenderPlayer) {
+                                for (const col in defenderPlayer.properties) {
+                                  const c = defenderPlayer.properties[col as CardColor]?.cards.find(c => c.id === req.targetCardId);
+                                  if (c) { targetCard = c; targetColor = col as CardColor; break; }
+                                }
+                              }
+
+                              const cardLabel = isInitiatorView ? (isEn ? 'Targeting Property' : 'Çalmak İstediğiniz Mülk') : (isEn ? 'Your Targeted Property' : 'Hedeflenen Mülkünüz');
+
+                              return (
+                                <div className="bg-slate-950/80 border border-rose-500/30 rounded-2xl p-3.5 w-full text-center space-y-2 select-none shadow-lg relative overflow-hidden">
+                                  <div className="absolute top-0 inset-x-0 h-1.5" style={targetCard ? getCardHeaderStyle(targetCard, targetColor) : { backgroundColor: COLOR_HEX[targetColor] }} />
+                                  <span className="text-[10px] text-rose-400 font-black uppercase tracking-wider block">🎯 SİNSİ ANLAŞMA DETAYI</span>
+                                  <div className="p-3 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center shadow-inner">
+                                    <span className="text-[9px] text-slate-400 uppercase font-black">{cardLabel}</span>
+                                    <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
+                                      {targetCard ? renderCardColorIndicator(targetCard, targetColor) : <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />}
+                                      <span className="text-slate-100 font-black text-xs">
+                                        {targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}
+                                      </span>
+                                      {targetCard && (targetCard.isWildcard || targetCard.type === 'wildcard') && (
+                                        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                          {isCardMultiColorWildcard(targetCard) ? 'Joker 🌈' : 'Çift Renk 🌓'}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // 3. Deal Breaker (Anlaşma Bozan)
+                            if (actionType === 'deal-breaker') {
+                              const targetColor = req.targetColor as CardColor;
+                              const setLabel = isInitiatorView ? (isEn ? 'Targeting Complete Set' : 'Çalmak İstediğiniz Set') : (isEn ? 'Your Targeted Complete Set' : 'Hedeflenen Tam Setiniz');
+
+                              return (
+                                <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3.5 w-full text-center space-y-2 select-none shadow-lg relative overflow-hidden">
+                                  <div className="absolute top-0 inset-x-0 h-1" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
+                                  <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block">⚡ ANLAŞMA BOZAN DETAYI</span>
+                                  <div className="p-3 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center shadow-inner">
+                                    <span className="text-[9px] text-slate-400 uppercase font-black">{setLabel}</span>
+                                    <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
+                                      <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
+                                      <span className="text-slate-100 font-black text-xs">
+                                        {getTranslatedColorLabel(targetColor, profile)} Seti
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            // 4. Debt Collector / Rent / Birthday
+                            if (actionType === 'debt-collector' || req.amountDue > 0) {
+                              const amt = req.amountDue || 5;
+                              const amtLabel = isInitiatorView ? (isEn ? 'You Will Receive' : 'Alacağınız Tutar') : (isEn ? 'You Owe' : 'Ödemeniz Gereken Tutar');
+                              return (
+                                <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3.5 w-full text-center space-y-2 select-none shadow-lg">
+                                  <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block">💸 PARASAL TALEP DETAYI</span>
+                                  <div className="p-3 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center shadow-inner">
+                                    <span className="text-[9px] text-slate-400 uppercase font-black">{amtLabel}</span>
+                                    <span className="text-red-400 font-black mt-1 text-3xl tracking-tight">
+                                      {amt}M
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return null;
+                          })()}
+
+                          {actionTimeLeft !== null && (
+                            <div className="text-xs bg-red-950/40 border border-red-500/30 py-2 px-3 rounded-xl text-red-400 font-black flex items-center justify-center gap-2 shadow-sm">
+                              ⏱️ {isEn ? 'Auto decision in:' : 'Otomatik karar süresi:'} <span className="text-sm font-black text-red-400">{actionTimeLeft}s</span>
+                            </div>
+                          )}
                         </div>
 
-                        {/* Detailed Action Target Visualizer for Defense Chain */}
-                        {(() => {
-                          const actionType = req.originalAction?.type || req.actionCard?.actionType || req.actionCard?.type;
-
-                          // 1. Forced Deal (Zoraki Takas)
-                          if (actionType === 'forced-deal') {
-                            let targetCard: Card | null = null;
-                            let givenCard: Card | null = null;
-                            let targetColor: CardColor = 'brown';
-                            let givenColor: CardColor = 'brown';
-
-                            if (defenderPlayer) {
-                              for (const col in defenderPlayer.properties) {
-                                const c = defenderPlayer.properties[col as CardColor]?.cards.find(c => c.id === req.targetCardId);
-                                if (c) { targetCard = c; targetColor = col as CardColor; break; }
-                              }
-                            }
-                            if (initiatorPlayer) {
-                              for (const col in initiatorPlayer.properties) {
-                                const c = initiatorPlayer.properties[col as CardColor]?.cards.find(c => c.id === req.myCardId);
-                                if (c) { givenCard = c; givenColor = col as CardColor; break; }
-                              }
-                            }
-
-                            const leftCard = isInitiatorView ? givenCard : targetCard;
-                            const leftColor = isInitiatorView ? givenColor : targetColor;
-                            const leftHeader = isInitiatorView ? (isEn ? 'Your Sent Card' : 'Sizden Gidecek') : (isEn ? 'To Be Taken From You' : 'Sizden Gidecek');
-
-                            const rightCard = isInitiatorView ? targetCard : givenCard;
-                            const rightColor = isInitiatorView ? targetColor : givenColor;
-                            const rightHeader = isInitiatorView ? (isEn ? 'To Be Received' : 'Karşılığında Gelecek') : (isEn ? 'To Be Given to You' : 'Bize Gelecek');
-
-                            return (
-                              <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-3 w-full text-center space-y-2 select-none">
-                                <span className="text-[9px] text-amber-400 font-black uppercase tracking-wider block">🔄 TAKAS EDİLECEK KARTLAR</span>
-                                <div className="flex items-center justify-between gap-2 px-1 text-[10px] text-slate-300 font-bold">
-                                  {/* Verilen Kart */}
-                                  <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
-                                    <span className="text-[7.5px] text-rose-400 uppercase font-black mb-1">{leftHeader}</span>
-                                    <span className="truncate w-full text-center block text-[10px] font-black">{leftCard ? getTranslatedCardName(leftCard, profile) : 'Mülk'}</span>
-                                    <div className="mt-1.5 flex items-center justify-center">
-                                      {leftCard ? renderCardColorIndicator(leftCard, leftColor) : <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: COLOR_HEX[leftColor] }} />}
-                                    </div>
-                                  </div>
-
-                                  <span className="text-xs text-amber-500 font-black shrink-0 animate-pulse">➔</span>
-
-                                  {/* Alınan Kart */}
-                                  <div className="flex-1 p-2 bg-slate-950/60 border border-slate-800 rounded-xl flex flex-col items-center min-w-0">
-                                    <span className="text-[7.5px] text-emerald-400 uppercase font-black mb-1">{rightHeader}</span>
-                                    <span className="truncate w-full text-center block text-[10px] font-black">{rightCard ? getTranslatedCardName(rightCard, profile) : 'Mülk'}</span>
-                                    <div className="mt-1.5 flex items-center justify-center">
-                                      {rightCard ? renderCardColorIndicator(rightCard, rightColor) : <span className="w-2.5 h-2.5 rounded-full shadow-sm" style={{ backgroundColor: COLOR_HEX[rightColor] }} />}
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          // 2. Sly Deal (Sinsi Anlaşma)
-                          if (actionType === 'sly-deal') {
-                            let targetCard: Card | null = null;
-                            let targetColor: CardColor = 'brown';
-                            if (defenderPlayer) {
-                              for (const col in defenderPlayer.properties) {
-                                const c = defenderPlayer.properties[col as CardColor]?.cards.find(c => c.id === req.targetCardId);
-                                if (c) { targetCard = c; targetColor = col as CardColor; break; }
-                              }
-                            }
-
-                            const cardLabel = isInitiatorView ? (isEn ? 'Targeting Property' : 'Çalmak İstediğiniz Mülk') : (isEn ? 'Your Targeted Property' : 'Hedeflenen Mülkünüz');
-
-                            return (
-                              <div className="bg-slate-950/80 border border-rose-500/30 rounded-2xl p-3.5 w-full text-center space-y-2 select-none shadow-lg relative overflow-hidden">
-                                <div className="absolute top-0 inset-x-0 h-1.5" style={targetCard ? getCardHeaderStyle(targetCard, targetColor) : { backgroundColor: COLOR_HEX[targetColor] }} />
-                                <span className="text-[10px] text-rose-400 font-black uppercase tracking-wider block">🎯 SİNSİ ANLAŞMA DETAYI</span>
-                                <div className="p-3 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center shadow-inner">
-                                  <span className="text-[9px] text-slate-400 uppercase font-black">{cardLabel}</span>
-                                  <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
-                                    {targetCard ? renderCardColorIndicator(targetCard, targetColor) : <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />}
-                                    <span className="text-slate-100 font-black text-xs">
-                                      {targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}
-                                    </span>
-                                    {targetCard && (targetCard.isWildcard || targetCard.type === 'wildcard') && (
-                                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
-                                        {isCardMultiColorWildcard(targetCard) ? 'Joker 🌈' : 'Çift Renk 🌓'}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          // 3. Deal Breaker (Anlaşma Bozan)
-                          if (actionType === 'deal-breaker') {
-                            const targetColor = req.targetColor as CardColor;
-                            const setLabel = isInitiatorView ? (isEn ? 'Targeting Complete Set' : 'Çalmak İstediğiniz Set') : (isEn ? 'Your Targeted Complete Set' : 'Hedeflenen Tam Setiniz');
-
-                            return (
-                              <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3.5 w-full text-center space-y-2 select-none shadow-lg relative overflow-hidden">
-                                <div className="absolute top-0 inset-x-0 h-1" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
-                                <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block">⚡ ANLAŞMA BOZAN DETAYI</span>
-                                <div className="p-3 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center shadow-inner">
-                                  <span className="text-[9px] text-slate-400 uppercase font-black">{setLabel}</span>
-                                  <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
-                                    <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
-                                    <span className="text-slate-100 font-black text-xs">
-                                      {getTranslatedColorLabel(targetColor, profile)} Seti
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          // 4. Debt Collector / Rent / Birthday
-                          if (actionType === 'debt-collector' || req.amountDue > 0) {
-                            const amt = req.amountDue || 5;
-                            const amtLabel = isInitiatorView ? (isEn ? 'You Will Receive' : 'Alacağınız Tutar') : (isEn ? 'You Owe' : 'Ödemeniz Gereken Tutar');
-                            return (
-                              <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3.5 w-full text-center space-y-2 select-none shadow-lg">
-                                <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block">💸 PARASAL TALEP DETAYI</span>
-                                <div className="p-3 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center shadow-inner">
-                                  <span className="text-[9px] text-slate-400 uppercase font-black">{amtLabel}</span>
-                                  <span className="text-red-400 font-black mt-1 text-3xl tracking-tight">
-                                    {amt}M
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          return null;
-                        })()}
-
-                        {actionTimeLeft !== null && (
-                          <div className="text-xs bg-red-950/40 border border-red-500/30 py-2 px-3 rounded-xl text-red-400 font-black flex items-center justify-center gap-2 shadow-sm">
-                            ⏱️ {isEn ? 'Auto decision in:' : 'Otomatik karar süresi:'} <span className="text-sm font-black text-red-400">{actionTimeLeft}s</span>
-                          </div>
-                        )}
-
-                        <div className="flex flex-col gap-2.5 pt-1">
+                        {/* Sticky Action Footer */}
+                        <div className="shrink-0 pt-3 border-t border-white/10 sticky bottom-0 bg-slate-900 z-20 flex flex-col gap-2">
                           {localPlayer.hand.some((c) => c.actionType === 'just-say-no') ? (
                             <motion.button
                               whileHover={{ scale: 1.02 }}
@@ -11951,7 +11965,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                               }
                             </motion.button>
                           ) : (
-                            <div className="text-xs text-rose-300 bg-red-950/30 py-3 px-4 rounded-xl border border-red-500/20 text-center font-bold select-none">
+                            <div className="text-xs text-rose-300 bg-red-950/30 py-2.5 px-3 rounded-xl border border-red-500/20 text-center font-bold select-none">
                               {isEn ? "No 'Just Say No' card in hand." : "Elinizde savunma kartı (JSN) bulunmuyor."}
                             </div>
                           )}
@@ -11968,279 +11982,228 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           >
                             {acceptButtonText}
                           </motion.button>
-
-
                         </div>
                       </>
                     );
                   })()}
-                </div>
+                </>
               ) : (
                 // STANDART ÖDEME EKRANI (Kira, Borç / Checkout Terminal)
                 <>
-                  <div className="absolute top-0 inset-x-0 h-[4px] bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" />
+                  <div className="absolute top-0 inset-x-0 h-[4px] bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 z-10" />
                   <div className="absolute -top-16 -left-16 w-36 h-36 bg-emerald-500/10 rounded-full filter blur-2xl pointer-events-none" />
 
-                  <div className="text-center space-y-3 border-b border-white/10 pb-3">
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="text-xl">💳</span>
-                      <h3 className="text-xs font-black text-slate-100 leading-snug">
-                        {(() => {
-                          const sPlayer = match.players.find(p => p.id === myActiveRequest.sourcePlayerId);
-                          const cardName = myActiveRequest.actionCard ? getTranslatedCardName(myActiveRequest.actionCard, profile) : 'Aksiyon';
-                          return (
-                            <span><strong className="text-amber-400">{sPlayer?.username}</strong> size karşı <strong className="text-emerald-400">{cardName}</strong> oynadı!</span>
-                          );
-                        })()}
-                      </h3>
-                    </div>
-
-                    {/* Checkout Details Box */}
-                    {(() => {
-                      const actionType = myActiveRequest.originalAction?.type || myActiveRequest.actionCard?.actionType || myActiveRequest.actionCard?.type;
-                      const sPlayer = match.players.find(p => p.id === myActiveRequest.sourcePlayerId);
-
-                      // 1. Borç / Kira Durumu
-                      if (myActiveRequest.amountDue > 0) {
-                        return (
-                          <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3.5 inline-block w-full text-center shadow-inner">
-                            <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block mb-1">
-                              {profile.settings.language === 'en' ? 'Total Amount Due:' : 'Ödemeniz Gereken Toplam Borç:'}
-                            </span>
-                            <span className="text-3xl font-black text-red-400 tracking-tight">{myActiveRequest.amountDue}M</span>
-                          </div>
-                        );
-                      }
-
-                      // 2. Zorla Takas (Forced Deal)
-                      if (actionType === 'forced-deal') {
-                        let targetCard: Card | null = null;
-                        let givenCard: Card | null = null;
-                        let targetColor: CardColor = 'brown';
-                        let givenColor: CardColor = 'brown';
-
-                        for (const col in localPlayer.properties) {
-                          const c = localPlayer.properties[col as CardColor]?.cards.find(c => c.id === myActiveRequest.targetCardId);
-                          if (c) { targetCard = c; targetColor = col as CardColor; break; }
-                        }
-                        if (sPlayer) {
-                          for (const col in sPlayer.properties) {
-                            const c = sPlayer.properties[col as CardColor]?.cards.find(c => c.id === myActiveRequest.myCardId);
-                            if (c) { givenCard = c; givenColor = col as CardColor; break; }
-                          }
-                        }
-
-                        return (
-                          <div className="bg-slate-950/80 border border-amber-500/30 rounded-2xl p-3 w-full text-center space-y-2 select-none shadow-md">
-                            <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider block">🔄 ZORUNLU TAKAS TEKLİFİ</span>
-
-                            <div className="flex items-center justify-between gap-2 text-xs text-slate-200 font-bold">
-                              {/* Verilen Kart (Bizden Çalınacak) */}
-                              <div className="flex-1 p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center min-w-0">
-                                <span className="text-[8px] text-rose-400 uppercase font-black mb-1">Sizden Gidecek</span>
-                                <span className="truncate w-full text-center block text-xs font-black">{targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}</span>
-                                <div className="mt-1.5 flex items-center justify-center">
-                                  {targetCard ? renderCardColorIndicator(targetCard, targetColor) : <span className="w-3 h-3 rounded-full shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />}
-                                </div>
-                              </div>
-
-                              <span className="text-sm text-amber-400 font-black shrink-0 animate-pulse">➔</span>
-
-                              {/* Alınan Kart (Bize Gelecek) */}
-                              <div className="flex-1 p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center min-w-0">
-                                <span className="text-[8px] text-emerald-400 uppercase font-black mb-1">Bize Gelecek</span>
-                                <span className="truncate w-full text-center block text-xs font-black">{givenCard ? getTranslatedCardName(givenCard, profile) : 'Mülk'}</span>
-                                <div className="mt-1.5 flex items-center justify-center">
-                                  {givenCard ? renderCardColorIndicator(givenCard, givenColor) : <span className="w-3 h-3 rounded-full shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[givenColor] }} />}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      // 3. Sinsi Anlaşma (Sly Deal)
-                      if (actionType === 'sly-deal') {
-                        let targetCard: Card | null = null;
-                        let targetColor: CardColor = 'brown';
-                        for (const col in localPlayer.properties) {
-                          const c = localPlayer.properties[col as CardColor]?.cards.find(c => c.id === myActiveRequest.targetCardId);
-                          if (c) { targetCard = c; targetColor = col as CardColor; break; }
-                        }
-
-                        return (
-                          <div className="bg-slate-950/80 border border-rose-500/30 rounded-2xl p-3 w-full text-center space-y-2 select-none shadow-md relative overflow-hidden">
-                            <div className="absolute top-0 inset-x-0 h-1.5" style={targetCard ? getCardHeaderStyle(targetCard, targetColor) : { backgroundColor: COLOR_HEX[targetColor] }} />
-                            <span className="text-[10px] text-rose-400 font-black uppercase tracking-wider block">🎯 TEK MÜLK ÇALMA TALEBİ</span>
-                            <div className="p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center">
-                              <span className="text-[9px] text-slate-400 uppercase font-black">İstenen Mülkünüz</span>
-                              <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
-                                {targetCard ? renderCardColorIndicator(targetCard, targetColor) : <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />}
-                                <span className="text-slate-100 font-black text-xs">
-                                  {targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}
-                                </span>
-                                {targetCard && (targetCard.isWildcard || targetCard.type === 'wildcard') && (
-                                  <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
-                                    {isCardMultiColorWildcard(targetCard) ? 'Joker 🌈' : 'Çift Renk 🌓'}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      // 4. Anlaşma Bozan (Deal Breaker)
-                      if (actionType === 'deal-breaker') {
-                        const targetColor = myActiveRequest.targetColor as CardColor;
-
-                        return (
-                          <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3 w-full text-center space-y-2 select-none shadow-md">
-                            <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block">⚡ TAM SET ÇALMA TALEBİ</span>
-                            <div className="p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center">
-                              <span className="text-[9px] text-slate-400 uppercase font-black">İstenen Tamamlanmış Setiniz</span>
-                              <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
-                                <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
-                                <span className="text-slate-100 font-black text-xs">
-                                  {getTranslatedColorLabel(targetColor, profile)} Seti
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      return null;
-                    })()}
-                  </div>
-
-                  {/* Payment Board Checkout */}
-                  <div className="space-y-3.5">
-                    {/* Remaining Balance Bar */}
-                    {(() => {
-                      const totalSelectedVal = paymentSelection.reduce((acc, id) => {
-                        const bc = localPlayer.bank.find((card) => card.id === id);
-                        if (bc) return acc + bc.value;
-                        for (const col in localPlayer.properties) {
-                          const pc = localPlayer.properties[col as CardColor]?.cards.find((card) => card.id === id);
-                          if (pc) return acc + pc.value;
-                        }
-                        return acc;
-                      }, 0);
-                      const amountDue = myActiveRequest?.amountDue || 0;
-                      const remainingDebt = Math.max(0, amountDue - totalSelectedVal);
-                      const progressPercent = Math.min(100, (totalSelectedVal / amountDue) * 100);
-
-                      return (
-                        <div className="bg-slate-950/80 border border-slate-750/70 p-3 rounded-2xl space-y-2 select-none shadow-inner">
-                          <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-white/10">
-                            <div
-                              className="h-full bg-gradient-to-r from-red-500 to-emerald-400 transition-all duration-300"
-                              style={{ width: `${progressPercent}%` }}
-                            />
-                          </div>
-                          <div className="flex justify-between items-center text-xs font-black">
-                            <span className="text-slate-300">{profile.settings.language === 'en' ? 'Remaining Due:' : 'Kalan Borç:'} <strong className="text-red-400 text-sm">{remainingDebt}M</strong></span>
-                            {remainingDebt === 0 ? (
-                              <span className="text-emerald-400 font-black animate-pulse flex items-center gap-1 text-xs">
-                                ✓ {profile.settings.language === 'en' ? 'READY TO PAY!' : 'ÖDEME HAZIR!'}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">{profile.settings.language === 'en' ? 'Paid:' : 'Ödenen:'} <strong className="text-emerald-400">{totalSelectedVal}M / {amountDue}M</strong></span>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
-
-                    {/* Quick Selection buttons */}
-                    <div className="flex gap-2">
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => {
-                          const due = myActiveRequest?.amountDue || 0;
-                          const selection = calculateOptimalPaymentSelection(due);
-                          setPaymentSelection(selection);
-                          triggerHaptic('medium');
-                          playCoinSound();
-                        }}
-                        className="flex-1 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer text-center shadow-md"
-                      >
-                        ⚡ {profile.settings.language === 'en' ? 'Auto-Select' : 'Otomatik Seç'}
-                      </motion.button>
-                      <motion.button
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                        onClick={() => {
-                          triggerHaptic('light');
-                          setPaymentSelection([]);
-                        }}
-                        className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60 rounded-xl text-xs font-black transition-all cursor-pointer"
-                      >
-                        {profile.settings.language === 'en' ? 'Clear' : 'Temizle'}
-                      </motion.button>
-                    </div>
-
-                    {/* Property Lists - Double column layout with mini land card styling */}
-                    <div className="grid grid-cols-2 gap-3 max-h-52 overflow-y-auto pr-1 scrollbar-thin">
-                      {/* Left: Bank Vault Cash */}
-                      <div className="space-y-1.5">
-                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">💰 {profile.settings.language === 'en' ? 'Cash Box' : 'Kasa (Nakit)'}</span>
-                        {localPlayer.bank.length > 0 ? (
-                          <div className="space-y-1.5">
-                            {localPlayer.bank.map((c) => {
-                              const isSelected = paymentSelection.includes(c.id);
-                              return (
-                                <motion.button
-                                  key={c.id}
-                                  whileHover={{ scale: 1.02 }}
-                                  whileTap={{ scale: 0.98 }}
-                                  onClick={() => {
-                                    triggerHaptic('light');
-                                    playCoinSound();
-                                    if (isSelected) {
-                                      setPaymentSelection((prev) => prev.filter((id) => id !== c.id));
-                                    } else {
-                                      setPaymentSelection((prev) => [...prev, c.id]);
-                                    }
-                                  }}
-                                  className={`w-full p-2.5 rounded-xl border text-left transition-all flex justify-between items-center cursor-pointer ${isSelected
-                                    ? 'border-emerald-400 bg-emerald-500/20 shadow-md shadow-emerald-500/10'
-                                    : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-950'
-                                    }`}
-                                >
-                                  <span className="text-xs font-extrabold text-slate-100 truncate max-w-[65px]">{getTranslatedCardName(c, profile)}</span>
-                                  <span className="text-xs font-black text-emerald-400 shrink-0">{c.value}M</span>
-                                </motion.button>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <span className="text-[9px] text-slate-500 italic block py-2 text-center">{profile.settings.language === 'en' ? 'No Cash' : 'Nakit yok'}</span>
-                        )}
+                  {/* Scrollable Payment Body */}
+                  <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin space-y-3">
+                    <div className="text-center space-y-3 border-b border-white/10 pb-3">
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-xl">💳</span>
+                        <h3 className="text-xs font-black text-slate-100 leading-snug">
+                          {(() => {
+                            const sPlayer = match.players.find(p => p.id === myActiveRequest.sourcePlayerId);
+                            const cardName = myActiveRequest.actionCard ? getTranslatedCardName(myActiveRequest.actionCard, profile) : 'Aksiyon';
+                            return (
+                              <span><strong className="text-amber-400">{sPlayer?.username}</strong> size karşı <strong className="text-emerald-400">{cardName}</strong> oynadı!</span>
+                            );
+                          })()}
+                        </h3>
                       </div>
 
-                      {/* Right: Table Properties */}
-                      <div className="space-y-1.5">
-                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">🏢 {profile.settings.language === 'en' ? 'Properties' : 'Masadaki Mülkler'}</span>
-                        {Object.values(localPlayer.properties).some((set: any) => set && set.cards.length > 0) ? (
-                          <div className="space-y-1.5">
-                            {(() => {
-                              const myTableProperties = Object.keys(localPlayer.properties).flatMap((colorKey) => {
-                                const col = colorKey as CardColor;
-                                const set = localPlayer.properties[col];
-                                if (!set) return [];
-                                return set.cards.map((c) => ({ c, col }));
-                              });
+                      {/* Checkout Details Box */}
+                      {(() => {
+                        const actionType = myActiveRequest.originalAction?.type || myActiveRequest.actionCard?.actionType || myActiveRequest.actionCard?.type;
+                        const sPlayer = match.players.find(p => p.id === myActiveRequest.sourcePlayerId);
 
-                              myTableProperties.sort((a, b) => {
-                                const aWild = isWildcardOrDualColorCard(a.c) ? 1 : 0;
-                                const bWild = isWildcardOrDualColorCard(b.c) ? 1 : 0;
-                                return bWild - aWild;
-                              });
+                        // 1. Borç / Kira Durumu
+                        if (myActiveRequest.amountDue > 0) {
+                          return (
+                            <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3.5 inline-block w-full text-center shadow-inner">
+                              <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block mb-1">
+                                {profile.settings.language === 'en' ? 'Total Amount Due:' : 'Ödemeniz Gereken Toplam Borç:'}
+                              </span>
+                              <span className="text-3xl font-black text-red-400 tracking-tight">{myActiveRequest.amountDue}M</span>
+                            </div>
+                          );
+                        }
 
-                              return myTableProperties.map(({ c, col }) => {
+                        // 2. Zorla Takas (Forced Deal)
+                        if (actionType === 'forced-deal') {
+                          let targetCard: Card | null = null;
+                          let givenCard: Card | null = null;
+                          let targetColor: CardColor = 'brown';
+                          let givenColor: CardColor = 'brown';
+
+                          for (const col in localPlayer.properties) {
+                            const c = localPlayer.properties[col as CardColor]?.cards.find(c => c.id === myActiveRequest.targetCardId);
+                            if (c) { targetCard = c; targetColor = col as CardColor; break; }
+                          }
+                          if (sPlayer) {
+                            for (const col in sPlayer.properties) {
+                              const c = sPlayer.properties[col as CardColor]?.cards.find(c => c.id === myActiveRequest.myCardId);
+                              if (c) { givenCard = c; givenColor = col as CardColor; break; }
+                            }
+                          }
+
+                          return (
+                            <div className="bg-slate-950/80 border border-amber-500/30 rounded-2xl p-3 w-full text-center space-y-2 select-none shadow-md">
+                              <span className="text-[10px] text-amber-400 font-black uppercase tracking-wider block">🔄 ZORUNLU TAKAS TEKLİFİ</span>
+
+                              <div className="flex items-center justify-between gap-2 text-xs text-slate-200 font-bold">
+                                {/* Verilen Kart (Bizden Çalınacak) */}
+                                <div className="flex-1 p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center min-w-0">
+                                  <span className="text-[8px] text-rose-400 uppercase font-black mb-1">Sizden Gidecek</span>
+                                  <span className="truncate w-full text-center block text-xs font-black">{targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}</span>
+                                  <div className="mt-1.5 flex items-center justify-center">
+                                    {targetCard ? renderCardColorIndicator(targetCard, targetColor) : <span className="w-3 h-3 rounded-full shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />}
+                                  </div>
+                                </div>
+
+                                <span className="text-sm text-amber-400 font-black shrink-0 animate-pulse">➔</span>
+
+                                {/* Alınan Kart (Bize Gelecek) */}
+                                <div className="flex-1 p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center min-w-0">
+                                  <span className="text-[8px] text-emerald-400 uppercase font-black mb-1">Bize Gelecek</span>
+                                  <span className="truncate w-full text-center block text-xs font-black">{givenCard ? getTranslatedCardName(givenCard, profile) : 'Mülk'}</span>
+                                  <div className="mt-1.5 flex items-center justify-center">
+                                    {givenCard ? renderCardColorIndicator(givenCard, givenColor) : <span className="w-3 h-3 rounded-full shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[givenColor] }} />}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // 3. Sinsi Anlaşma (Sly Deal)
+                        if (actionType === 'sly-deal') {
+                          let targetCard: Card | null = null;
+                          let targetColor: CardColor = 'brown';
+                          for (const col in localPlayer.properties) {
+                            const c = localPlayer.properties[col as CardColor]?.cards.find(c => c.id === myActiveRequest.targetCardId);
+                            if (c) { targetCard = c; targetColor = col as CardColor; break; }
+                          }
+
+                          return (
+                            <div className="bg-slate-950/80 border border-rose-500/30 rounded-2xl p-3 w-full text-center space-y-2 select-none shadow-md relative overflow-hidden">
+                              <div className="absolute top-0 inset-x-0 h-1.5" style={targetCard ? getCardHeaderStyle(targetCard, targetColor) : { backgroundColor: COLOR_HEX[targetColor] }} />
+                              <span className="text-[10px] text-rose-400 font-black uppercase tracking-wider block">🎯 TEK MÜLK ÇALMA TALEBİ</span>
+                              <div className="p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center">
+                                <span className="text-[9px] text-slate-400 uppercase font-black">İstenen Mülkünüz</span>
+                                <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
+                                  {targetCard ? renderCardColorIndicator(targetCard, targetColor) : <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />}
+                                  <span className="text-slate-100 font-black text-xs">
+                                    {targetCard ? getTranslatedCardName(targetCard, profile) : 'Mülk'}
+                                  </span>
+                                  {targetCard && (targetCard.isWildcard || targetCard.type === 'wildcard') && (
+                                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">
+                                      {isCardMultiColorWildcard(targetCard) ? 'Joker 🌈' : 'Çift Renk 🌓'}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // 4. Anlaşma Bozan (Deal Breaker)
+                        if (actionType === 'deal-breaker') {
+                          const targetColor = myActiveRequest.targetColor as CardColor;
+
+                          return (
+                            <div className="bg-slate-950/80 border border-red-500/30 rounded-2xl p-3 w-full text-center space-y-2 select-none shadow-md">
+                              <span className="text-[10px] text-red-400 font-black uppercase tracking-wider block">⚡ TAM SET ÇALMA TALEBİ</span>
+                              <div className="p-2.5 bg-slate-900 border border-slate-700/60 rounded-xl flex flex-col items-center">
+                                <span className="text-[9px] text-slate-400 uppercase font-black">İstenen Tamamlanmış Setiniz</span>
+                                <div className="mt-1.5 px-3 py-1 bg-slate-950 rounded-lg border border-white/10 flex items-center gap-2">
+                                  <span className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-white/20" style={{ backgroundColor: COLOR_HEX[targetColor] }} />
+                                  <span className="text-slate-100 font-black text-xs">
+                                    {getTranslatedColorLabel(targetColor, profile)} Seti
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return null;
+                      })()}
+                    </div>
+
+                    {/* Payment Board Checkout */}
+                    <div className="space-y-3.5">
+                      {/* Remaining Balance Bar */}
+                      {(() => {
+                        const totalSelectedVal = paymentSelection.reduce((acc, id) => {
+                          const bc = localPlayer.bank.find((card) => card.id === id);
+                          if (bc) return acc + bc.value;
+                          for (const col in localPlayer.properties) {
+                            const pc = localPlayer.properties[col as CardColor]?.cards.find((card) => card.id === id);
+                            if (pc) return acc + pc.value;
+                          }
+                          return acc;
+                        }, 0);
+                        const amountDue = myActiveRequest?.amountDue || 0;
+                        const remainingDebt = Math.max(0, amountDue - totalSelectedVal);
+                        const progressPercent = Math.min(100, (totalSelectedVal / amountDue) * 100);
+
+                        return (
+                          <div className="bg-slate-950/80 border border-slate-750/70 p-3 rounded-2xl space-y-2 select-none shadow-inner">
+                            <div className="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-white/10">
+                              <div
+                                className="h-full bg-gradient-to-r from-red-500 to-emerald-400 transition-all duration-300"
+                                style={{ width: `${progressPercent}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between items-center text-xs font-black">
+                              <span className="text-slate-300">{profile.settings.language === 'en' ? 'Remaining Due:' : 'Kalan Borç:'} <strong className="text-red-400 text-sm">{remainingDebt}M</strong></span>
+                              {remainingDebt === 0 ? (
+                                <span className="text-emerald-400 font-black animate-pulse flex items-center gap-1 text-xs">
+                                  ✓ {profile.settings.language === 'en' ? 'READY TO PAY!' : 'ÖDEME HAZIR!'}
+                                </span>
+                              ) : (
+                                <span className="text-slate-400">{profile.settings.language === 'en' ? 'Paid:' : 'Ödenen:'} <strong className="text-emerald-400">{totalSelectedVal}M / {amountDue}M</strong></span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
+                      {/* Quick Selection buttons */}
+                      <div className="flex gap-2">
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => {
+                            const due = myActiveRequest?.amountDue || 0;
+                            const selection = calculateOptimalPaymentSelection(due);
+                            setPaymentSelection(selection);
+                            triggerHaptic('medium');
+                            playCoinSound();
+                          }}
+                          className="flex-1 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer text-center shadow-md"
+                        >
+                          ⚡ {profile.settings.language === 'en' ? 'Auto-Select' : 'Otomatik Seç'}
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.98 }}
+                          onClick={() => {
+                            triggerHaptic('light');
+                            setPaymentSelection([]);
+                          }}
+                          className="py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/60 rounded-xl text-xs font-black transition-all cursor-pointer"
+                        >
+                          {profile.settings.language === 'en' ? 'Clear' : 'Temizle'}
+                        </motion.button>
+                      </div>
+
+                      {/* Property Lists - Double column layout with mini land card styling */}
+                      <div className="grid grid-cols-2 gap-3 max-h-52 overflow-y-auto pr-1 scrollbar-thin">
+                        {/* Left: Bank Vault Cash */}
+                        <div className="space-y-1.5">
+                          <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">💰 {profile.settings.language === 'en' ? 'Cash Box' : 'Kasa (Nakit)'}</span>
+                          {localPlayer.bank.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {localPlayer.bank.map((c) => {
                                 const isSelected = paymentSelection.includes(c.id);
                                 return (
                                   <motion.button
@@ -12256,83 +12219,136 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                         setPaymentSelection((prev) => [...prev, c.id]);
                                       }
                                     }}
-                                    className={`w-full p-2.5 rounded-xl border text-left transition-all flex justify-between items-center cursor-pointer gap-2 ${isSelected
-                                      ? 'border-amber-400 bg-amber-500/20 shadow-md shadow-amber-500/10'
+                                    className={`w-full p-2.5 rounded-xl border text-left transition-all flex justify-between items-center cursor-pointer ${isSelected
+                                      ? 'border-emerald-400 bg-emerald-500/20 shadow-md shadow-emerald-500/10'
                                       : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-950'
                                       }`}
                                   >
-                                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                      {renderCardColorIndicator(c, col)}
-                                      <span className="text-xs font-extrabold text-slate-100 truncate">
-                                        {getTranslatedCardName(c, profile)}
-                                        {(c.isWildcard || c.type === 'wildcard') && (isCardMultiColorWildcard(c) ? ' 🌈' : ' 🌓')}
-                                      </span>
-                                    </div>
-                                    <span className="text-xs font-black text-amber-400 shrink-0">{c.value}M</span>
+                                    <span className="text-xs font-extrabold text-slate-100 truncate max-w-[65px]">{getTranslatedCardName(c, profile)}</span>
+                                    <span className="text-xs font-black text-emerald-400 shrink-0">{c.value}M</span>
                                   </motion.button>
                                 );
-                              });
-                            })()}
-                          </div>
-                        ) : (
-                          <span className="text-[9px] text-slate-500 italic block py-2 text-center">{profile.settings.language === 'en' ? 'No Properties' : 'Mülk yok'}</span>
-                        )}
-                      </div>
-                    </div>
+                              })}
+                            </div>
+                          ) : (
+                            <span className="text-[9px] text-slate-500 italic block py-2 text-center">{profile.settings.language === 'en' ? 'No Cash' : 'Nakit yok'}</span>
+                          )}
+                        </div>
 
-                    {/* Checkout Basket Overview */}
-                    {paymentSelection.length > 0 && (
-                      <div className="bg-slate-950/80 border border-slate-750/70 rounded-2xl p-3 space-y-1.5 select-none shadow-inner">
-                        <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">🛒 {profile.settings.language === 'en' ? 'Checkout Basket' : 'Ödeme Sepeti'} ({paymentSelection.length} {profile.settings.language === 'en' ? 'Cards' : 'Kart'})</span>
-                        <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pr-0.5 scrollbar-thin">
-                          <AnimatePresence>
-                            {paymentSelection.map((id) => {
-                              let card: Card | undefined = localPlayer.bank.find((c) => c.id === id);
-                              let col: CardColor = 'brown';
-                              if (!card) {
-                                for (const cKey in localPlayer.properties) {
-                                  const found = localPlayer.properties[cKey as CardColor]?.cards.find((c) => c.id === id);
-                                  if (found) {
-                                    card = found;
-                                    col = cKey as CardColor;
-                                    break;
+                        {/* Right: Table Properties */}
+                        <div className="space-y-1.5">
+                          <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">🏢 {profile.settings.language === 'en' ? 'Properties' : 'Masadaki Mülkler'}</span>
+                          {Object.values(localPlayer.properties).some((set: any) => set && set.cards.length > 0) ? (
+                            <div className="space-y-1.5">
+                              {(() => {
+                                const myTableProperties = Object.keys(localPlayer.properties).flatMap((colorKey) => {
+                                  const col = colorKey as CardColor;
+                                  const set = localPlayer.properties[col];
+                                  if (!set) return [];
+                                  return set.cards.map((c) => ({ c, col }));
+                                });
+
+                                myTableProperties.sort((a, b) => {
+                                  const aWild = isWildcardOrDualColorCard(a.c) ? 1 : 0;
+                                  const bWild = isWildcardOrDualColorCard(b.c) ? 1 : 0;
+                                  return bWild - aWild;
+                                });
+
+                                return myTableProperties.map(({ c, col }) => {
+                                  const isSelected = paymentSelection.includes(c.id);
+                                  return (
+                                    <motion.button
+                                      key={c.id}
+                                      whileHover={{ scale: 1.02 }}
+                                      whileTap={{ scale: 0.98 }}
+                                      onClick={() => {
+                                        triggerHaptic('light');
+                                        playCoinSound();
+                                        if (isSelected) {
+                                          setPaymentSelection((prev) => prev.filter((id) => id !== c.id));
+                                        } else {
+                                          setPaymentSelection((prev) => [...prev, c.id]);
+                                        }
+                                      }}
+                                      className={`w-full p-2.5 rounded-xl border text-left transition-all flex justify-between items-center cursor-pointer gap-2 ${isSelected
+                                        ? 'border-amber-400 bg-amber-500/20 shadow-md shadow-amber-500/10'
+                                        : 'border-slate-800 bg-slate-950/60 hover:border-slate-700 hover:bg-slate-950'
+                                        }`}
+                                    >
+                                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                        {renderCardColorIndicator(c, col)}
+                                        <span className="text-xs font-extrabold text-slate-100 truncate">
+                                          {getTranslatedCardName(c, profile)}
+                                          {(c.isWildcard || c.type === 'wildcard') && (isCardMultiColorWildcard(c) ? ' 🌈' : ' 🌓')}
+                                        </span>
+                                      </div>
+                                      <span className="text-xs font-black text-amber-400 shrink-0">{c.value}M</span>
+                                    </motion.button>
+                                  );
+                                });
+                              })()}
+                            </div>
+                          ) : (
+                            <span className="text-[9px] text-slate-500 italic block py-2 text-center">{profile.settings.language === 'en' ? 'No Properties' : 'Mülk yok'}</span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Checkout Basket Overview */}
+                      {paymentSelection.length > 0 && (
+                        <div className="bg-slate-950/80 border border-slate-750/70 rounded-2xl p-3 space-y-1.5 select-none shadow-inner">
+                          <span className="text-[9px] text-slate-400 font-black uppercase tracking-wider block">🛒 {profile.settings.language === 'en' ? 'Checkout Basket' : 'Ödeme Sepeti'} ({paymentSelection.length} {profile.settings.language === 'en' ? 'Cards' : 'Kart'})</span>
+                          <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pr-0.5 scrollbar-thin">
+                            <AnimatePresence>
+                              {paymentSelection.map((id) => {
+                                let card: Card | undefined = localPlayer.bank.find((c) => c.id === id);
+                                let col: CardColor = 'brown';
+                                if (!card) {
+                                  for (const cKey in localPlayer.properties) {
+                                    const found = localPlayer.properties[cKey as CardColor]?.cards.find((c) => c.id === id);
+                                    if (found) {
+                                      card = found;
+                                      col = cKey as CardColor;
+                                      break;
+                                    }
                                   }
                                 }
-                              }
-                              if (!card) return null;
+                                if (!card) return null;
 
-                              return (
-                                <motion.span
-                                  key={id}
-                                  layoutId={`payment-cart-${id}`}
-                                  initial={{ opacity: 0, scale: 0.8 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.8 }}
-                                  className="inline-flex items-center gap-1.5 text-xs font-extrabold bg-slate-900 border border-white/10 px-2.5 py-1 rounded-lg text-slate-100 shadow-sm"
-                                >
-                                  {card.type === 'property' || card.type === 'wildcard' ? (
-                                    <span className="w-2 h-2 rounded-full shrink-0 border border-white/20" style={{ backgroundColor: COLOR_HEX[col] }} />
-                                  ) : (
-                                    <span className="text-xs">💵</span>
-                                  )}
-                                  <span className="truncate max-w-[65px]">{getTranslatedCardName(card, profile)}</span>
-                                  <span className="text-emerald-400 font-black">{card.value}M</span>
-                                </motion.span>
-                              );
-                            })}
-                          </AnimatePresence>
+                                return (
+                                  <motion.span
+                                    key={id}
+                                    layoutId={`payment-cart-${id}`}
+                                    initial={{ opacity: 0, scale: 0.8 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.8 }}
+                                    className="inline-flex items-center gap-1.5 text-xs font-extrabold bg-slate-900 border border-white/10 px-2.5 py-1 rounded-lg text-slate-100 shadow-sm"
+                                  >
+                                    {card.type === 'property' || card.type === 'wildcard' ? (
+                                      <span className="w-2 h-2 rounded-full shrink-0 border border-white/20" style={{ backgroundColor: COLOR_HEX[col] }} />
+                                    ) : (
+                                      <span className="text-xs">💵</span>
+                                    )}
+                                    <span className="truncate max-w-[65px]">{getTranslatedCardName(card, profile)}</span>
+                                    <span className="text-emerald-400 font-black">{card.value}M</span>
+                                  </motion.span>
+                                );
+                              })}
+                            </AnimatePresence>
+                          </div>
                         </div>
+                      )}
+                    </div>
+
+                    {actionTimeLeft !== null && (
+                      <div className="text-xs bg-red-950/30 border border-red-500/20 py-2 px-3 rounded-xl text-red-400 font-black flex items-center justify-center gap-2">
+                        ⏱️ {profile.settings.language === 'en' ? 'Auto payment in:' : 'Otomatik ödeme süresi:'} <span className="text-sm font-black text-red-400">{actionTimeLeft}s</span>
                       </div>
                     )}
                   </div>
 
-                  {actionTimeLeft !== null && (
-                    <div className="text-xs bg-red-950/30 border border-red-500/20 py-2 px-3 rounded-xl text-red-400 font-black flex items-center justify-center gap-2">
-                      ⏱️ {profile.settings.language === 'en' ? 'Auto payment in:' : 'Otomatik ödeme süresi:'} <span className="text-sm font-black text-red-400">{actionTimeLeft}s</span>
-                    </div>
-                  )}
-
-                  <div className="flex flex-col gap-2 pt-1">
+                  {/* Sticky Action Footer */}
+                  <div className="shrink-0 pt-3 border-t border-white/10 sticky bottom-0 bg-slate-900 z-20 flex flex-col gap-2">
                     {/* If they have Just Say No in hand, offer playing it */}
                     {localPlayer.hand.some((c) => c.actionType === 'just-say-no') && (
                       <motion.button
@@ -12361,8 +12377,6 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     >
                       {profile.settings.language === 'en' ? 'ACCEPT & PAY / HAND OVER CARDS' : 'ÖDEMEYİ ONAYLA VE DEVRET'}
                     </motion.button>
-
-
                   </div>
                 </>
               )}
@@ -12388,13 +12402,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               exit={{ scale: 0.92, y: 15, opacity: 0 }}
               transition={{ type: "spring", duration: 0.45 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-6 w-full max-w-sm space-y-4 shadow-2xl relative overflow-hidden"
+              className="bg-slate-900 border border-slate-750/70 rounded-3xl p-4 sm:p-5 w-full max-w-sm shadow-2xl relative overflow-hidden max-h-[90vh] flex flex-col my-auto space-y-3"
             >
               {/* Top color glow band */}
               <div className="absolute top-0 inset-x-0 h-[4px]" style={{ backgroundColor: COLOR_HEX[managedSetColor] }} />
               <div className="absolute -top-16 -left-16 w-36 h-36 rounded-full filter blur-2xl pointer-events-none" style={{ backgroundColor: `${COLOR_HEX[managedSetColor]}15` }} />
 
-              <div className="flex justify-between items-center border-b border-white/5 pb-2 pt-1 relative">
+              <div className="shrink-0 flex justify-between items-center border-b border-white/5 pb-2 pt-1 relative">
                 <h3 className="font-black text-xs text-white uppercase flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ backgroundColor: COLOR_HEX[managedSetColor] }} />
                   {profile.settings.language === 'en' ? 'Set Management' : 'Set Yönetimi'} - <span style={{ color: COLOR_HEX[managedSetColor] }} className="font-black">{getTranslatedColorLabel(managedSetColor, profile)}</span>
@@ -12410,13 +12424,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 </button>
               </div>
 
-              <p className="text-[9.5px] text-slate-400 leading-normal">
+              <p className="shrink-0 text-[9.5px] text-slate-400 leading-normal">
                 {profile.settings.language === 'en'
                   ? 'Rearrange your wildcards or change colors using the action buttons.'
                   : 'Joker kartlarınızın rengini değiştirebilir ve setinizi düzenleyebilirsiniz.'}
               </p>
 
-              <div className="space-y-2.5 max-h-64 overflow-y-auto pr-1 scrollbar-thin">
+              <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin space-y-2.5 min-h-0">
                 {localPlayer.properties[managedSetColor]?.cards.map((c) => {
                   const isMultiColorWildcard = c.isWildcard && (!c.secondaryColor || c.secondaryColor === 'any');
                   return (
@@ -12469,17 +12483,19 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 })}
               </div>
 
-              <motion.button
-                whileHover={{ scale: 1.01 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  triggerHaptic('light');
-                  setManagedSetColor(null);
-                }}
-                className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-white font-extrabold rounded-xl text-xs transition-all shadow-md cursor-pointer border border-white/5"
-              >
-                {profile.settings.language === 'en' ? 'Close' : 'Kapat'}
-              </motion.button>
+              <div className="shrink-0 pt-2 border-t border-white/10 sticky bottom-0 bg-slate-900 z-20">
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    triggerHaptic('light');
+                    setManagedSetColor(null);
+                  }}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-750 text-white font-extrabold rounded-xl text-xs transition-all shadow-md cursor-pointer border border-white/5"
+                >
+                  {profile.settings.language === 'en' ? 'Close' : 'Kapat'}
+                </motion.button>
+              </div>
             </motion.div>
           </motion.div>
         )}

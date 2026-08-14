@@ -68,6 +68,10 @@ interface AdminSettings {
   wheelAdMobiOSAdUnitId?: string;
   wheelAdMobTestingMode?: boolean;
   rewardedAdCoinAmount?: number;
+  bannerAdMobEnabled?: boolean;
+  bannerAdMobAndroidAdUnitId?: string;
+  bannerAdMobiOSAdUnitId?: string;
+  bannerAdMobTestingMode?: boolean;
 }
 
 interface Stats {
@@ -125,10 +129,14 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     wheelReward4: 500,
     wheelReward5: 1000,
     wheelReward6: 25,
-    wheelAdMobAndroidAdUnitId: 'ca-app-pub-5045652074166668/9099969667',
+    wheelAdMobAndroidAdUnitId: 'ca-app-pub-5045652074166668/6893680557',
     wheelAdMobiOSAdUnitId: '',
     wheelAdMobTestingMode: true,
-    rewardedAdCoinAmount: 100
+    rewardedAdCoinAmount: 100,
+    bannerAdMobEnabled: true,
+    bannerAdMobAndroidAdUnitId: 'ca-app-pub-5045652074166668/1473978700',
+    bannerAdMobiOSAdUnitId: '',
+    bannerAdMobTestingMode: true
   });
 
   const [stats, setStats] = useState<Stats>({
@@ -927,7 +935,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
               activeTab === 'analytics' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
             }`}
           >
-            <span>🌍</span> Sistem Analitiği
+            <span>������</span> Sistem Analitiği
           </button>
           <button
             onClick={() => setActiveTab('rules')}
@@ -1655,7 +1663,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                       <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Google AdMob Ayarları</span>
                       
                       <div className="flex items-center justify-between py-1">
-                        <span className="text-xs text-slate-300 font-medium">Test Reklam Modu</span>
+                        <span className="text-xs text-slate-300 font-medium">Test Reklam Modu (Global)</span>
                         <input
                           type="checkbox"
                           checked={settings.wheelAdMobTestingMode ?? true}
@@ -1664,46 +1672,64 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                         />
                       </div>
 
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] text-slate-400 font-bold uppercase">Android Ad Unit ID</label>
-                        <input
-                          type="text"
-                          placeholder="Boş bırakılırsa Test ID kullanılır"
-                          value={settings.wheelAdMobAndroidAdUnitId ?? ''}
-                          onChange={(e) => {
-                            const next = { ...settings, wheelAdMobAndroidAdUnitId: e.target.value };
-                            setSettings(next);
-                          }}
-                          onBlur={() => handleSaveSettings()}
-                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                        />
+                      {/* Ödüllü Reklam (Rewarded Video) */}
+                      <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5 space-y-2">
+                        <span className="text-[11px] text-amber-400 font-bold block">🎥 Ödüllü Video Reklamı (Deal Card)</span>
+                        
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-slate-400 font-bold uppercase">Android Rewarded Unit ID</label>
+                          <input
+                            type="text"
+                            placeholder="ca-app-pub-5045652074166668/6893680557"
+                            value={settings.wheelAdMobAndroidAdUnitId ?? ''}
+                            onChange={(e) => {
+                              const next = { ...settings, wheelAdMobAndroidAdUnitId: e.target.value };
+                              setSettings(next);
+                            }}
+                            onBlur={() => handleSaveSettings()}
+                            className="w-full px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-slate-400 font-bold uppercase">Ödül Altın Miktarı</label>
+                          <input
+                            type="number"
+                            placeholder="100"
+                            value={settings.rewardedAdCoinAmount ?? 100}
+                            onChange={(e) => handleSliderChange('rewardedAdCoinAmount', Number(e.target.value))}
+                            onBlur={() => handleSaveSettings()}
+                            className="w-full px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] text-slate-400 font-bold uppercase">iOS Ad Unit ID</label>
-                        <input
-                          type="text"
-                          placeholder="Boş bırakılırsa Test ID kullanılır"
-                          value={settings.wheelAdMobiOSAdUnitId ?? ''}
-                          onChange={(e) => {
-                            const next = { ...settings, wheelAdMobiOSAdUnitId: e.target.value };
-                            setSettings(next);
-                          }}
-                          onBlur={() => handleSaveSettings()}
-                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                        />
-                      </div>
+                      {/* Banner Reklamı (Banner Ads) */}
+                      <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[11px] text-indigo-400 font-bold block">📱 Banner Reklamı (Giriş / Ana Sayfa / Lobi)</span>
+                          <input
+                            type="checkbox"
+                            checked={settings.bannerAdMobEnabled ?? true}
+                            onChange={() => handleToggle('bannerAdMobEnabled')}
+                            className="w-3.5 h-3.5 accent-indigo-600 cursor-pointer"
+                          />
+                        </div>
 
-                      <div className="space-y-1.5">
-                        <label className="block text-[10px] text-slate-400 font-bold uppercase">Ödüllü Reklam Coin Ödülü (Örn: 100)</label>
-                        <input
-                          type="number"
-                          placeholder="100"
-                          value={settings.rewardedAdCoinAmount ?? 100}
-                          onChange={(e) => handleSliderChange('rewardedAdCoinAmount', Number(e.target.value))}
-                          onBlur={() => handleSaveSettings()}
-                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                        />
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-slate-400 font-bold uppercase">Android Banner Unit ID</label>
+                          <input
+                            type="text"
+                            placeholder="ca-app-pub-5045652074166668/1473978700"
+                            value={settings.bannerAdMobAndroidAdUnitId ?? ''}
+                            onChange={(e) => {
+                              const next = { ...settings, bannerAdMobAndroidAdUnitId: e.target.value };
+                              setSettings(next);
+                            }}
+                            onBlur={() => handleSaveSettings()}
+                            className="w-full px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>

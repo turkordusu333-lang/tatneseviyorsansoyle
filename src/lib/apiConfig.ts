@@ -1,5 +1,6 @@
-// AWS EC2 Sunucu Adresi (fallback)
-export const SERVER_HOST = '16.170.166.112:3000';
+// Sunucu Domain ve Port Adresi (DuckDNS SSL / Fallback / Mobil APK)
+export const SERVER_HOST = 'dealcard.duckdns.org';
+export const USE_HTTPS = true;
 
 export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
@@ -16,8 +17,8 @@ export function getApiBaseUrl(): string {
     }
   }
 
-  // APK (Capacitor WebView) ve Build zamanında varsayılan olarak EC2 sunucu adresini ver
-  return `http://${SERVER_HOST}`;
+  // APK (Capacitor WebView) ve Build zamanında varsayılan olarak güncel sunucu adresini ver
+  return `${USE_HTTPS ? 'https' : 'http'}://${SERVER_HOST}`;
 }
 
 export function getWsBaseUrl(): string {
@@ -34,7 +35,7 @@ export function getWsBaseUrl(): string {
     }
   }
 
-  return `ws://${SERVER_HOST}`;
+  return `${USE_HTTPS ? 'wss' : 'ws'}://${SERVER_HOST}`;
 }
 
 export const API_BASE_URL = getApiBaseUrl();
@@ -43,4 +44,5 @@ export const WS_BASE_URL = getWsBaseUrl();
 if (typeof window !== 'undefined') {
   console.log(`[apiConfig] API_BASE_URL: "${API_BASE_URL}", WS_BASE_URL: "${WS_BASE_URL}"`);
 }
+
 

@@ -24,7 +24,7 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
 }) => {
   const rewardCoins = adminSettings?.rewardedAdCoinAmount ?? 100;
   const isTesting = adminSettings?.wheelAdMobTestingMode !== false;
-  const androidAdUnitId = adminSettings?.wheelAdMobAndroidAdUnitId || 'ca-app-pub-5045652074166668/9099969667';
+  const androidAdUnitId = adminSettings?.wheelAdMobAndroidAdUnitId || 'ca-app-pub-5045652074166668/6893680557';
   const iosAdUnitId = adminSettings?.wheelAdMobiOSAdUnitId || 'ca-app-pub-3940256099942544/1712485313';
   const adDuration = adminSettings?.wheelAdDurationSeconds ?? 8;
 
@@ -90,8 +90,10 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
 
     const listenerHandles: any[] = [];
     let earnedReward = false;
+    let timeoutId: any = null;
 
     const cleanupListeners = async () => {
+      if (timeoutId) clearTimeout(timeoutId);
       for (const handle of listenerHandles) {
         try {
           await handle.remove();
@@ -101,15 +103,17 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
       }
     };
 
-    try {
-      // 1. Prepare Rewarded Video Ad
-      await AdMob.prepareRewardVideoAd({
-        adId: activeAdUnitId,
-        isTesting: isTesting,
-      });
+    // Safety timeout in case network blocks or no event fires
+    timeoutId = setTimeout(() => {
+      setIsLoading(false);
+      setErrorMessage('Reklam isteği zaman aşımına uğradı. Lütfen tekrar deneyin.');
+      cleanupListeners();
+    }, 15000);
 
-      // 2. Event Listeners
+    try {
+      // 1. Add Event Listeners BEFORE preparing ad so no events are missed
       const loadedListener = await AdMob.addListener(RewardAdPluginEvents.Loaded, async () => {
+        if (timeoutId) clearTimeout(timeoutId);
         setIsLoading(false);
         try {
           await AdMob.showRewardVideoAd();
@@ -122,8 +126,9 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
       listenerHandles.push(loadedListener);
 
       const failedListener = await AdMob.addListener(RewardAdPluginEvents.FailedToLoad, (info) => {
+        if (timeoutId) clearTimeout(timeoutId);
         console.error('AdMob failed to load:', info);
-        setErrorMessage('Reklam yüklenemedi. Bağlantınızı kontrol edin.');
+        setErrorMessage('Reklam yüklenemedi (AdMob No Fill / Bağlantı). Lütfen daha sonra tekrar deneyin.');
         setIsLoading(false);
         cleanupListeners();
       });
@@ -136,6 +141,7 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
       listenerHandles.push(rewardedListener);
 
       const dismissedListener = await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
+        if (timeoutId) clearTimeout(timeoutId);
         setIsLoading(false);
         cleanupListeners();
         if (earnedReward) {
@@ -145,7 +151,18 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
         }
       });
       listenerHandles.push(dismissedListener);
+
+      // 2. Prepare Rewarded Video Ad (using test ad unit id if in test mode and no custom ID given)
+      const targetAdUnitId = isTesting
+        ? (platform === 'ios' ? 'ca-app-pub-3940256099942544/1712485313' : 'ca-app-pub-3940256099942544/5224354917')
+        : activeAdUnitId;
+
+      await AdMob.prepareRewardVideoAd({
+        adId: targetAdUnitId,
+        isTesting: isTesting,
+      });
     } catch (error: any) {
+      if (timeoutId) clearTimeout(timeoutId);
       console.error('Native AdMob error:', error);
       setErrorMessage(error?.message || 'Reklam yüklenirken bir hata oluştu.');
       setIsLoading(false);
