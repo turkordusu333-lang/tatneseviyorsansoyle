@@ -1,8 +1,0 @@
-{
-  "name": "Deal Master PRO Online",
-  "description": "Eş zamanlı çok oyunculu, sesli sohbetli, bot pratik modlu ve özelleştirilebilir mağaza ve profilli modern Deal Master PRO kart oyunu.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
