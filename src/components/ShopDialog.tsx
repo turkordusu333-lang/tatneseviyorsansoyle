@@ -6,10 +6,12 @@ import { AvatarWithFrame } from './AvatarWithFrame';
 import { t } from '../lib/TranslationSystem';
 import { API_BASE_URL } from '../lib/apiConfig';
 import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
+import { RewardedAdCoinButton } from './RewardedAdCoinButton';
 
 interface Props {
   profile: UserProfile;
   onUpdateProfile: (updated: UserProfile) => void;
+  adminSettings?: any;
 }
 
 export const AVATAR_EMOJIS: Record<string, string> = {
@@ -295,7 +297,7 @@ export const STORE_ITEMS: Omit<StoreItem, 'isUnlocked'>[] = [
   { id: 'music_epic', name: '🛡️ Efsanevi Şampiyon Marşı', category: 'game_music', price: 350, description: 'Kritik hamlelerin heyecanını zirveye çıkaran epik şampiyon teması.' }
 ];
 
-export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
+export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile, adminSettings }) => {
   const [itemsList, setItemsList] = React.useState<StoreItem[]>(STORE_ITEMS);
   const [activeCategory, setActiveCategory] = React.useState<'all' | 'avatar' | 'card_back' | 'board_theme' | 'profile_frame' | 'celebration_sound' | 'card_skin' | 'action_vfx' | 'player_board' | 'game_music'>('all');
   const [buyingId, setBuyingId] = React.useState<string | null>(null);
@@ -638,10 +640,28 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile }) => {
           </h2>
           <p className="text-zinc-500 text-xs mt-1">{t('shop_desc_lbl', profile)}</p>
         </div>
-        <div className="flex items-center gap-2 bg-zinc-900/40 border border-zinc-900 rounded-xl px-4 py-2">
-          <Coins className="w-4 h-4 text-amber-500" />
-          <span className="font-extrabold text-amber-400 text-sm font-mono">{t('shop_coins_lbl', profile, profile.coins)}</span>
+        <div className="flex items-center gap-2.5">
+          <RewardedAdCoinButton
+            profile={profile}
+            onUpdateProfile={onUpdateProfile}
+            adminSettings={adminSettings}
+            variant="badge"
+          />
+          <div className="flex items-center gap-2 bg-zinc-900/40 border border-zinc-900 rounded-xl px-4 py-2">
+            <Coins className="w-4 h-4 text-amber-500" />
+            <span className="font-extrabold text-amber-400 text-sm font-mono">{t('shop_coins_lbl', profile, profile.coins)}</span>
+          </div>
         </div>
+      </div>
+
+      {/* Rewarded Ad Card Banner */}
+      <div className="mb-6">
+        <RewardedAdCoinButton
+          profile={profile}
+          onUpdateProfile={onUpdateProfile}
+          adminSettings={adminSettings}
+          variant="card"
+        />
       </div>
 
       {error && (

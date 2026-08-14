@@ -188,6 +188,7 @@ export interface UserProfile {
   password?: string; // Optional user account password
   rankPoints?: number; // Ranked / League Points
   mmr?: number; // Secret Matchmaking Rating
+  lastLuckyWheelSpin?: string; // ISO string of last wheel spin
 }
 
 // Multiplayer Game Types

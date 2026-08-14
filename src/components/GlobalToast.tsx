@@ -18,7 +18,7 @@ interface Props {
   profile: UserProfile | null;
 }
 
-export const GlobalToast: React.FC<Props> = ({ profile }) => {
+const GlobalToastComponent: React.FC<Props> = ({ profile }) => {
   const [toasts, setToasts] = React.useState<ToastItem[]>([]);
 
   React.useEffect(() => {
@@ -119,3 +119,6 @@ export const GlobalToast: React.FC<Props> = ({ profile }) => {
     </div>
   );
 };
+
+export const GlobalToast = React.memo(GlobalToastComponent);
+

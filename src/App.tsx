@@ -64,8 +64,9 @@ export default function App() {
   const [loading, setLoading] = React.useState(false);
   const [adminSettings, setAdminSettings] = React.useState<any>(null);
 
-  // Navigation states
+  // Navigation & Arena states
   const [currentRoom, setCurrentRoom] = React.useState<{ roomId: string; isOffline: boolean; password?: string } | null>(null);
+  const [isArenaCollapsed, setIsArenaCollapsed] = React.useState(false);
 
   // Transition states for card flip
   const [isFlippingTransition, setIsFlippingTransition] = React.useState(false);
@@ -224,6 +225,7 @@ export default function App() {
         dailyQuests: updated.dailyQuests,
         achievements: updated.achievements,
         password: updated.password,
+        lastLuckyWheelSpin: updated.lastLuckyWheelSpin,
       }),
     })
       .then((res) => {
@@ -422,6 +424,7 @@ export default function App() {
                 onUpdateProfile={handleUpdateProfile}
                 adminSettings={adminSettings}
                 roomPassword={currentRoom.password}
+                onArenaCollapseChange={(collapsed) => setIsArenaCollapsed(collapsed)}
               />
             </GameRoomErrorBoundary>
           ) : (

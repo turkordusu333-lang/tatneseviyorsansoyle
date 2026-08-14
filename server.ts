@@ -391,7 +391,18 @@ let globalAdminSettings = {
   rankedIncompletePropWeight: 2,
   rankedBankCashWeight: 1,
   rankedSoloQueueOnly: true,
-  rankedAnonymity: true
+  rankedAnonymity: true,
+  normalHandCardSize: 100,
+  compactHandCardSize: 100,
+  wheelEnabled: true,
+  wheelCooldownMinutes: 60,
+  wheelAdDurationSeconds: 8,
+  wheelReward1: 50,
+  wheelReward2: 100,
+  wheelReward3: 200,
+  wheelReward4: 500,
+  wheelReward5: 1000,
+  wheelReward6: 25
 };
 
 const GLOBAL_ACHIEVEMENTS_FILE = path.join(DATA_DIR, 'global_achievements.json');
@@ -1655,7 +1666,7 @@ async function startServer() {
 
   // Custom profile updater endpoint
   app.post('/api/profile/update', async (req, res) => {
-    const { userId, avatarUrl, gamesHistory, coins, xp, stats, dailyQuests, achievements, password, country } = req.body;
+    const { userId, avatarUrl, gamesHistory, coins, xp, stats, dailyQuests, achievements, password, country, lastLuckyWheelSpin } = req.body;
     const users = await loadUsers();
     const user = users[userId];
 
@@ -1675,6 +1686,7 @@ async function startServer() {
     if (achievements !== undefined) user.achievements = achievements;
     if (password !== undefined) user.password = password;
     if (country !== undefined) user.country = country;
+    if (lastLuckyWheelSpin !== undefined) user.lastLuckyWheelSpin = lastLuckyWheelSpin;
 
     users[userId] = user;
     await saveUsers(users);

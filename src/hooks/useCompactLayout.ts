@@ -87,14 +87,14 @@ export function useCompactLayout(initialValue = true) {
               : 'min-h-[58px]';
       }
 
-      // Stack Overlap Margin Class (beautifully calibrated to ensure headers/banners are always visible)
+      // Stack Overlap Margin Class (beautifully calibrated to ensure headers/banners are always visible and tight across mobile & desktop)
       let stackOverlapClass = '';
       if (cardCount >= 4) {
-        stackOverlapClass = '-mt-[112%]';
+        stackOverlapClass = '-mt-[48px] sm:-mt-[49px] md:-mt-[50px]';
       } else if (cardCount >= 3) {
-        stackOverlapClass = '-mt-[105%]';
+        stackOverlapClass = '-mt-[46px] sm:-mt-[47px] md:-mt-[48px]';
       } else {
-        stackOverlapClass = '-mt-[95%]';
+        stackOverlapClass = '-mt-[45px] sm:-mt-[46px] md:-mt-[47px]';
       }
 
       const fanOffsetY = cardCount >= 4 ? 16 : 14;

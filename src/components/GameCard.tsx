@@ -315,7 +315,7 @@ const getSkinStyles = (cardBack?: string) => {
   }
 };
 
-export const GameCard: React.FC<GameCardProps> = ({
+const GameCardComponent: React.FC<GameCardProps> = ({
   card,
   size = 'normal',
   isSelected = false,
@@ -1469,3 +1469,5 @@ export const GameCard: React.FC<GameCardProps> = ({
     </Holo>
   );
 };
+
+export const GameCard = React.memo(GameCardComponent);

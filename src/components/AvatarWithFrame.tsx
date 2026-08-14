@@ -28,7 +28,7 @@ export const AVATAR_EMOJIS_MAP: Record<string, string> = {
   avatar_snowstorm: '🥶',
 };
 
-export const AvatarWithFrame: React.FC<AvatarWithFrameProps> = ({
+const AvatarWithFrameComponent: React.FC<AvatarWithFrameProps> = ({
   avatarId,
   avatarUrl,
   frameId = 'frame_none',
@@ -152,3 +152,6 @@ export const AvatarWithFrame: React.FC<AvatarWithFrameProps> = ({
     </div>
   );
 };
+
+export const AvatarWithFrame = React.memo(AvatarWithFrameComponent);
+

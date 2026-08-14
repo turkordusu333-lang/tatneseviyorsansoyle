@@ -7,33 +7,38 @@ interface HoloProps {
   style?: React.CSSProperties;
 }
 
-export const Holo: React.FC<HoloProps> = ({ children, rarity, className = '', style = {} }) => {
+const HoloComponent: React.FC<HoloProps> = ({ children, rarity, className = '', style = {} }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ x: 50, y: 50 });
   const [isHovered, setIsHovered] = useState(false);
+  const rafRef = useRef<number | null>(null);
+
+  const updateCoords = (clientX: number, clientY: number) => {
+    if (!containerRef.current) return;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    
+    rafRef.current = requestAnimationFrame(() => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = Math.min(100, Math.max(0, ((clientX - rect.left) / rect.width) * 100));
+      const y = Math.min(100, Math.max(0, ((clientY - rect.top) / rect.height) * 100));
+      setCoords({ x, y });
+    });
+  };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    setCoords({ x, y });
+    updateCoords(e.clientX, e.clientY);
   };
 
   const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (!containerRef.current || e.touches.length === 0) return;
-    const touch = e.touches[0];
-    const rect = containerRef.current.getBoundingClientRect();
-    const x = ((touch.clientX - rect.left) / rect.width) * 100;
-    const y = ((touch.clientY - rect.top) / rect.height) * 100;
-    setCoords({ x, y });
+    if (e.touches.length === 0) return;
+    updateCoords(e.touches[0].clientX, e.touches[0].clientY);
   };
 
   const isPremium = rarity !== 'SIRADAN';
 
   return (
     <div
-      id={`holo-wrapper-${Math.random().toString(36).substr(2, 9)}`}
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onTouchMove={handleTouchMove}
@@ -56,7 +61,6 @@ export const Holo: React.FC<HoloProps> = ({ children, rarity, className = '', st
       {isPremium && (
         <>
           <div 
-            id={`holo-dodge-${Math.random().toString(36).substr(2, 9)}`}
             className="pointer-events-none absolute inset-0 z-30 mix-blend-color-dodge transition-opacity duration-300"
             style={{
               opacity: 'var(--holo-opacity)',
@@ -68,7 +72,6 @@ export const Holo: React.FC<HoloProps> = ({ children, rarity, className = '', st
             }}
           />
           <div 
-            id={`holo-overlay-${Math.random().toString(36).substr(2, 9)}`}
             className="pointer-events-none absolute inset-0 z-30 mix-blend-overlay transition-opacity duration-300"
             style={{
               opacity: 'var(--holo-opacity)',
@@ -80,3 +83,5 @@ export const Holo: React.FC<HoloProps> = ({ children, rarity, className = '', st
     </div>
   );
 };
+
+export const Holo = React.memo(HoloComponent);

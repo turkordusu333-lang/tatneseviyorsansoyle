@@ -427,7 +427,17 @@
     "medium_word": "Orta",
     "hard_word": "Zor",
     "hide_own_board_btn": "Kendi Tahtamı Gizle",
-    "show_own_board_btn": "Kendi Tahtamı Göster"
+    "show_own_board_btn": "Kendi Tahtamı Göster",
+    "lucky_wheel": "Şans Çarkı",
+    "spin": "Çevir",
+    "watch_ad_to_spin": "Reklam İzle ve Çevir",
+    "lucky_wheel_desc": "Her saat başı ücretsiz çark çevirebilir veya reklam izleyerek bekleme süresini atlayıp tekrar çevirebilirsin!",
+    "lucky_wheel_cooldown": "Kalan Süre: {0}",
+    "ad_playing": "Sponsorlu Reklam Oynatılıyor...",
+    "skip_ad_in": "Reklamı geçmek için kalan süre: {0} saniye",
+    "congratulations": "Tebrikler!",
+    "lucky_wheel_reward": "{0} kazandın!",
+    "claim_reward": "Ödülü Al"
   },
   "en": {
     "game_title": "Deal Master PRO",
@@ -857,6 +867,16 @@
     "medium_word": "Medium",
     "hard_word": "Hard",
     "hide_own_board_btn": "Hide My Board",
-    "show_own_board_btn": "Show My Board"
+    "show_own_board_btn": "Show My Board",
+    "lucky_wheel": "Lucky Wheel",
+    "spin": "Spin",
+    "watch_ad_to_spin": "Watch Ad to Spin",
+    "lucky_wheel_desc": "You can spin the wheel for free every hour or watch an ad to skip the cooldown and spin again!",
+    "lucky_wheel_cooldown": "Cooldown remaining: {0}",
+    "ad_playing": "Sponsored Ad is Playing...",
+    "skip_ad_in": "Skip ad in: {0} seconds",
+    "congratulations": "Congratulations!",
+    "lucky_wheel_reward": "You won {0}!",
+    "claim_reward": "Claim Reward"
   }
 }

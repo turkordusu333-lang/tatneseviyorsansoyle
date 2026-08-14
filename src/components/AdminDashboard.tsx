@@ -53,6 +53,21 @@ interface AdminSettings {
   rankedBankCashWeight?: number;
   rankedSoloQueueOnly?: boolean;
   rankedAnonymity?: boolean;
+  normalHandCardSize?: number;
+  compactHandCardSize?: number;
+  wheelEnabled?: boolean;
+  wheelCooldownMinutes?: number;
+  wheelAdDurationSeconds?: number;
+  wheelReward1?: number;
+  wheelReward2?: number;
+  wheelReward3?: number;
+  wheelReward4?: number;
+  wheelReward5?: number;
+  wheelReward6?: number;
+  wheelAdMobAndroidAdUnitId?: string;
+  wheelAdMobiOSAdUnitId?: string;
+  wheelAdMobTestingMode?: boolean;
+  rewardedAdCoinAmount?: number;
 }
 
 interface Stats {
@@ -100,7 +115,20 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     rankedIncompletePropWeight: 2,
     rankedBankCashWeight: 1,
     rankedSoloQueueOnly: true,
-    rankedAnonymity: true
+    rankedAnonymity: true,
+    wheelEnabled: true,
+    wheelCooldownMinutes: 60,
+    wheelAdDurationSeconds: 8,
+    wheelReward1: 50,
+    wheelReward2: 100,
+    wheelReward3: 200,
+    wheelReward4: 500,
+    wheelReward5: 1000,
+    wheelReward6: 25,
+    wheelAdMobAndroidAdUnitId: 'ca-app-pub-5045652074166668/9099969667',
+    wheelAdMobiOSAdUnitId: '',
+    wheelAdMobTestingMode: true,
+    rewardedAdCoinAmount: 100
   });
 
   const [stats, setStats] = useState<Stats>({
@@ -1216,6 +1244,67 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                 </div>
               </div>
 
+              {/* Kart Boyut Ayarları Kartı */}
+              <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-2xl space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🎴</span>
+                  <div>
+                    <h4 className="text-xs text-indigo-400 font-extrabold uppercase tracking-wider">
+                      ELDEKİ KARTLARIN BOYUTU (DİNAMİK ÖLÇEKLENDİRME)
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Oyuncunun elindeki kartların boyutunu dinamik olarak ayarlayın. Hem normal hem de sıkışık (kompakt) yerleşim düzeni için ayrı ayrı kontrol edilebilir.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                  {/* Normal Düzen Kart Boyutu */}
+                  <div className="space-y-2 bg-slate-950/40 p-4 rounded-xl border border-white/5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-300 font-bold">Normal Düzen Kart Boyutu</span>
+                      <span className="text-indigo-400 font-black">%{settings.normalHandCardSize ?? 100}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="50"
+                      max="150"
+                      step="5"
+                      value={settings.normalHandCardSize ?? 100}
+                      onChange={(e) => handleSliderChange('normalHandCardSize', Number(e.target.value))}
+                      onMouseUp={() => handleSaveSettings()}
+                      onTouchEnd={() => handleSaveSettings()}
+                      className="w-full accent-indigo-600 cursor-pointer"
+                    />
+                    <span className="text-[9px] text-slate-500 block leading-tight">
+                      Varsayılan: %100. Kart boyutunu büyüterek veya küçülterek oyun ekranı dengelenir.
+                    </span>
+                  </div>
+
+                  {/* Sıkışık Düzen Kart Boyutu */}
+                  <div className="space-y-2 bg-slate-950/40 p-4 rounded-xl border border-white/5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-300 font-bold">Sıkışık (Kompakt) Düzen Kart Boyutu</span>
+                      <span className="text-indigo-400 font-black">%{settings.compactHandCardSize ?? 100}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="50"
+                      max="150"
+                      step="5"
+                      value={settings.compactHandCardSize ?? 100}
+                      onChange={(e) => handleSliderChange('compactHandCardSize', Number(e.target.value))}
+                      onMouseUp={() => handleSaveSettings()}
+                      onTouchEnd={() => handleSaveSettings()}
+                      className="w-full accent-indigo-600 cursor-pointer"
+                    />
+                    <span className="text-[9px] text-slate-500 block leading-tight">
+                      Varsayılan: %100. Sıkışık düzen etkinken eldeki kartların kaplayacağı alan ölçeklenir.
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* Bot & Ödül Yönetimi Card */}
               <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-2xl space-y-4">
                 <div className="flex items-center gap-2">
@@ -1494,6 +1583,218 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                       onChange={() => handleToggle('rankedAnonymity')}
                       className="w-5 h-5 accent-indigo-500 cursor-pointer shrink-0"
                     />
+                  </div>
+                </div>
+              </div>
+
+              {/* Şans Çarkı (Lucky Wheel) Ayarları */}
+              <div className="bg-slate-900/40 border border-slate-800 p-5 rounded-2xl space-y-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🎡</span>
+                  <div>
+                    <h4 className="text-xs text-indigo-400 font-extrabold uppercase tracking-wider">
+                      ŞANS ÇARKI (LUCKY WHEEL) AYARLARI
+                    </h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      Oyuncuların ücretsiz veya reklam izleyerek çark çevirip ödüller kazandığı mekaniği yönetin.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                  {/* Left Column: General Wheel Rules */}
+                  <div className="space-y-4 bg-slate-950/40 p-4 rounded-xl border border-white/5">
+                    <span className="text-xs text-slate-300 font-bold block border-b border-white/5 pb-2">Temel Kurallar</span>
+                    
+                    <div className="flex items-center justify-between py-1">
+                      <span className="text-xs text-slate-300 font-medium">Şans Çarkı Etkin</span>
+                      <input
+                        type="checkbox"
+                        checked={settings.wheelEnabled ?? true}
+                        onChange={() => handleToggle('wheelEnabled')}
+                        className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-300">Çark Çevirme Bekleme Süresi</span>
+                        <span className="text-indigo-400 font-black">{settings.wheelCooldownMinutes ?? 60} Dakika</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="5"
+                        max="1440"
+                        step="5"
+                        value={settings.wheelCooldownMinutes ?? 60}
+                        onChange={(e) => handleSliderChange('wheelCooldownMinutes', Number(e.target.value))}
+                        onMouseUp={() => handleSaveSettings()}
+                        className="w-full accent-indigo-600 cursor-pointer"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-slate-300">Reklam İzleme Süresi (Saniye / Bekleme Atla)</span>
+                        <span className="text-emerald-400 font-black">{settings.wheelAdDurationSeconds ?? 8} Saniye</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="2"
+                        max="30"
+                        step="1"
+                        value={settings.wheelAdDurationSeconds ?? 8}
+                        onChange={(e) => handleSliderChange('wheelAdDurationSeconds', Number(e.target.value))}
+                        onMouseUp={() => handleSaveSettings()}
+                        className="w-full accent-indigo-600 cursor-pointer"
+                      />
+                    </div>
+
+                    {/* Google AdMob Configuration */}
+                    <div className="border-t border-white/5 pt-3.5 mt-3.5 space-y-3.5">
+                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Google AdMob Ayarları</span>
+                      
+                      <div className="flex items-center justify-between py-1">
+                        <span className="text-xs text-slate-300 font-medium">Test Reklam Modu</span>
+                        <input
+                          type="checkbox"
+                          checked={settings.wheelAdMobTestingMode ?? true}
+                          onChange={() => handleToggle('wheelAdMobTestingMode')}
+                          className="w-4 h-4 accent-indigo-600 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase">Android Ad Unit ID</label>
+                        <input
+                          type="text"
+                          placeholder="Boş bırakılırsa Test ID kullanılır"
+                          value={settings.wheelAdMobAndroidAdUnitId ?? ''}
+                          onChange={(e) => {
+                            const next = { ...settings, wheelAdMobAndroidAdUnitId: e.target.value };
+                            setSettings(next);
+                          }}
+                          onBlur={() => handleSaveSettings()}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase">iOS Ad Unit ID</label>
+                        <input
+                          type="text"
+                          placeholder="Boş bırakılırsa Test ID kullanılır"
+                          value={settings.wheelAdMobiOSAdUnitId ?? ''}
+                          onChange={(e) => {
+                            const next = { ...settings, wheelAdMobiOSAdUnitId: e.target.value };
+                            setSettings(next);
+                          }}
+                          onBlur={() => handleSaveSettings()}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase">Ödüllü Reklam Coin Ödülü (Örn: 100)</label>
+                        <input
+                          type="number"
+                          placeholder="100"
+                          value={settings.rewardedAdCoinAmount ?? 100}
+                          onChange={(e) => handleSliderChange('rewardedAdCoinAmount', Number(e.target.value))}
+                          onBlur={() => handleSaveSettings()}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Wedges / Rewards Configuration */}
+                  <div className="space-y-4 bg-slate-950/40 p-4 rounded-xl border border-white/5">
+                    <span className="text-xs text-slate-300 font-bold block border-b border-white/5 pb-2">Çark Bölmeleri ve Ödülleri</span>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Bölme 1 (Gold)</label>
+                        <input
+                          type="number"
+                          value={settings.wheelReward1 ?? 50}
+                          onChange={(e) => {
+                            const next = { ...settings, wheelReward1: Number(e.target.value) };
+                            setSettings(next);
+                          }}
+                          onBlur={() => handleSaveSettings()}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Bölme 2 (Gold)</label>
+                        <input
+                          type="number"
+                          value={settings.wheelReward2 ?? 100}
+                          onChange={(e) => {
+                            const next = { ...settings, wheelReward2: Number(e.target.value) };
+                            setSettings(next);
+                          }}
+                          onBlur={() => handleSaveSettings()}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Bölme 3 (Gold)</label>
+                        <input
+                          type="number"
+                          value={settings.wheelReward3 ?? 200}
+                          onChange={(e) => {
+                            const next = { ...settings, wheelReward3: Number(e.target.value) };
+                            setSettings(next);
+                          }}
+                          onBlur={() => handleSaveSettings()}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Bölme 4 (Gold)</label>
+                        <input
+                          type="number"
+                          value={settings.wheelReward4 ?? 500}
+                          onChange={(e) => {
+                            const next = { ...settings, wheelReward4: Number(e.target.value) };
+                            setSettings(next);
+                          }}
+                          onBlur={() => handleSaveSettings()}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Bölme 5 (Gold)</label>
+                        <input
+                          type="number"
+                          value={settings.wheelReward5 ?? 1000}
+                          onChange={(e) => {
+                            const next = { ...settings, wheelReward5: Number(e.target.value) };
+                            setSettings(next);
+                          }}
+                          onBlur={() => handleSaveSettings()}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Bölme 6 (XP)</label>
+                        <input
+                          type="number"
+                          value={settings.wheelReward6 ?? 25}
+                          onChange={(e) => {
+                            const next = { ...settings, wheelReward6: Number(e.target.value) };
+                            setSettings(next);
+                          }}
+                          onBlur={() => handleSaveSettings()}
+                          className="w-full px-3 py-1.5 text-xs bg-slate-900 border border-slate-800 rounded-lg text-slate-200"
+                        />
+                      </div>
+                    </div>
+                    <span className="block text-[9px] text-slate-500 leading-tight">
+                      * Not: Değişiklikler anında kaydedilir ve oyuncuların çark ekranında güncellenir.
+                    </span>
                   </div>
                 </div>
               </div>

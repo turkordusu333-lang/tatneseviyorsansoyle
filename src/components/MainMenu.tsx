@@ -8,6 +8,9 @@ import { sounds } from '../lib/SoundSystem';
 import { AvatarWithFrame } from './AvatarWithFrame';
 import { AdminDashboard } from './AdminDashboard';
 import { ProfileOperationsModal } from './ProfileOperationsModal';
+import { HowToPlayModal } from './HowToPlayModal';
+import { LuckyWheel } from './LuckyWheel';
+import { RewardedAdCoinButton } from './RewardedAdCoinButton';
 import { motion, AnimatePresence } from 'motion/react';
 import { t } from '../lib/TranslationSystem';
 import { API_BASE_URL } from '../lib/apiConfig';
@@ -63,6 +66,8 @@ export function getLeagueTier(points: number) {
 
 export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom, adminSettings, onUpdateAdminSettings }) => {
   const [activeTab, setActiveTab] = React.useState<'play' | 'bot_practice' | 'tournaments' | 'shop' | 'customization' | 'profile' | 'rules' | 'leaderboard' | 'admin'>('play');
+  const [showHowToPlayModal, setShowHowToPlayModal] = React.useState(false);
+  const [showLuckyWheel, setShowLuckyWheel] = React.useState(false);
   const [questsExpanded, setQuestsExpanded] = React.useState(false);
   const [botDifficulty, setBotDifficulty] = React.useState<'easy' | 'medium' | 'hard'>('medium');
   const [rooms, setRooms] = React.useState<any[]>([]);
@@ -487,9 +492,17 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
               <span>{pingMs !== null ? `${pingMs}ms` : '---'}</span>
             </div>
 
-            <div className="flex items-center gap-1 bg-zinc-900/40 px-2 py-0.5 sm:px-3 sm:py-1.5 rounded-xl border border-zinc-800/80">
-              <Coins className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-500" />
-              <span className="text-[9px] sm:text-xs font-mono font-bold text-amber-400">{profile.coins}</span>
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1 bg-zinc-900/40 px-2 py-0.5 sm:px-3 sm:py-1.5 rounded-xl border border-zinc-800/80">
+                <Coins className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-500" />
+                <span className="text-[9px] sm:text-xs font-mono font-bold text-amber-400">{profile.coins}</span>
+              </div>
+              <RewardedAdCoinButton
+                profile={profile}
+                onUpdateProfile={onUpdateProfile}
+                adminSettings={adminSettings}
+                variant="badge"
+              />
             </div>
 
             {/* Quick Language Toggle */}
@@ -628,6 +641,45 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
               );
             })}
           </div>
+
+          {/* Lucky Wheel Promo Card */}
+          {(!adminSettings || adminSettings.wheelEnabled !== false) && (
+            <div className="bg-gradient-to-br from-indigo-950/40 to-slate-900/60 border border-yellow-500/20 rounded-2xl p-4.5 space-y-3 shadow-md relative overflow-hidden group">
+              {/* Decorative background glow */}
+              <div className="absolute -right-6 -bottom-6 w-16 h-16 rounded-full bg-yellow-500/10 blur-xl group-hover:scale-150 transition-all duration-500 pointer-events-none" />
+              
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center text-yellow-400 font-bold text-sm">
+                    🎡
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-100 uppercase tracking-wide">
+                      {t('lucky_wheel', profile)}
+                    </h4>
+                    <span className="text-[10px] text-yellow-400/90 font-bold block">
+                      Ücretsiz Ödüller!
+                    </span>
+                  </div>
+                </div>
+                <Sparkles className="w-3.5 h-3.5 text-yellow-400 animate-pulse shrink-0" />
+              </div>
+
+              <p className="text-[10px] sm:text-[11px] text-slate-400 leading-relaxed">
+                Her saat başı ücretsiz çevir, Gold ve XP kazan veya bekleme süresini reklam izleyerek atla!
+              </p>
+
+              <button
+                onClick={() => {
+                  sounds.playPlay(profile.settings);
+                  setShowLuckyWheel(true);
+                }}
+                className="w-full py-2.5 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-950 text-xs font-extrabold uppercase tracking-wider rounded-xl transition shadow-md hover:shadow-yellow-500/10 active:scale-95 cursor-pointer"
+              >
+                Çarkı Çevir
+              </button>
+            </div>
+          )}
 
           {/* Persistent Stats & History Cards (Visible on Desktop) */}
           <div className="hidden lg:flex flex-col gap-5 w-full">
@@ -828,6 +880,16 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                           <span>{onlinePlayerCount} Aktif Oyuncu</span>
                         </span>
+                        <button
+                          onClick={() => {
+                            sounds.playPlay(profile.settings);
+                            setShowHowToPlayModal(true);
+                          }}
+                          className="ml-2 text-[10px] bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border border-amber-500/30 px-2.5 py-1 rounded-full font-black inline-flex items-center gap-1 transition-all cursor-pointer shadow-sm hover:scale-105"
+                        >
+                          <BookOpen className="w-3 h-3" />
+                          <span>{profile.settings.language === 'en' ? 'How to Play?' : 'Nasıl Oynanır?'}</span>
+                        </button>
                       </h3>
                       <p className="text-xs text-zinc-500 mt-0.5">{t('multiplayer_lobby_desc', profile)}</p>
                     </div>
@@ -1351,7 +1413,7 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
               )}
 
               {/* TAB 4: Shop */}
-              {activeTab === 'shop' && <ShopDialog profile={profile} onUpdateProfile={onUpdateProfile} />}
+              {activeTab === 'shop' && <ShopDialog profile={profile} onUpdateProfile={onUpdateProfile} adminSettings={adminSettings} />}
 
               {/* TAB 5: Customization */}
               {activeTab === 'customization' && <CustomizationPanel profile={profile} onUpdateProfile={onUpdateProfile} />}
@@ -1362,9 +1424,21 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
               {/* TAB 7: Rules / Instructions */}
               {activeTab === 'rules' && (
                 <div className="bg-black/20 border border-white/10 rounded-2xl p-6 space-y-6 shadow-2xl">
-                  <div className="border-b border-white/10 pb-4">
-                    <h3 className="text-xl font-bold text-red-500">📜 Deal Master PRO Deal Kuralları</h3>
-                    <p className="text-xs text-slate-400">Hızlıca öğrenip kazanmaya başlayın</p>
+                  <div className="border-b border-white/10 pb-4 flex items-center justify-between">
+                    <div>
+                      <h3 className="text-xl font-bold text-red-500">📜 Deal Master PRO Deal Kuralları</h3>
+                      <p className="text-xs text-slate-400">Hızlıca öğrenip kazanmaya başlayın</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        sounds.playPlay(profile.settings);
+                        setShowHowToPlayModal(true);
+                      }}
+                      className="px-3.5 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg hover:brightness-110 transition-all cursor-pointer flex items-center gap-1.5"
+                    >
+                      <BookOpen className="w-4 h-4" />
+                      <span>{profile.settings.language === 'en' ? 'Master Guide' : 'Kapsamlı Rehberi Aç'}</span>
+                    </button>
                   </div>
 
                   <div className="space-y-4 text-xs text-slate-300 leading-relaxed">
@@ -1867,6 +1941,22 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
           </div>
         )}
       </AnimatePresence>
+
+      {/* How to Play Overlay Modal */}
+      <HowToPlayModal
+        isOpen={showHowToPlayModal}
+        onClose={() => setShowHowToPlayModal(false)}
+        profile={profile}
+      />
+
+      {/* Şans Çarkı / Lucky Wheel Overlay Modal */}
+      <LuckyWheel
+        isOpen={showLuckyWheel}
+        onClose={() => setShowLuckyWheel(false)}
+        profile={profile}
+        onUpdateProfile={onUpdateProfile}
+        adminSettings={adminSettings}
+      />
 
       {/* Footer credits line */}
       <footer className="border-t border-white/10 py-4 text-center text-[10px] text-slate-500 bg-black/40 mt-8 z-10">
