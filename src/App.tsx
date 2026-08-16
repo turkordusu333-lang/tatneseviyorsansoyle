@@ -8,6 +8,7 @@ import { initTranslations, addTranslationListener, t, changeLanguage } from './l
 import { API_BASE_URL } from './lib/apiConfig';
 import { GlobalToast } from './components/GlobalToast';
 import { STORE_ITEMS } from './components/ShopDialog';
+import { loadShopItems } from './lib/shopItemsStore';
 import { PrivacyAndDeleteAccountPages } from './components/PrivacyAndDeleteAccountPages';
 import { AdMobBanner } from './components/AdMobBanner';
 import { AvatarWithFrame } from './components/AvatarWithFrame';
@@ -120,6 +121,7 @@ export default function App() {
       })
       .catch(console.error);
 
+    loadShopItems();
     initTranslations();
     const unsubscribe = addTranslationListener(() => {
       setTranslationVersion((v) => v + 1);
@@ -218,15 +220,15 @@ export default function App() {
       };
 
       const updated = [newAccount, ...filtered].slice(0, 6);
+      setSavedAccounts(updated);
       localStorage.setItem('mono_deal_saved_accounts', JSON.stringify(updated));
       localStorage.setItem('last_logged_username', user.username);
-      setSavedAccounts(updated);
     } catch (e) {
-      console.error('Failed to save account to localStorage', e);
+      console.error('Failed to save account:', e);
     }
   };
 
-  const removeSavedAccount = (username: string, e: React.MouseEvent) => {
+  const handleRemoveSavedAccount = (e: React.MouseEvent, username: string) => {
     e.stopPropagation();
     const filtered = savedAccounts.filter((a) => a.username.toLowerCase() !== username.toLowerCase());
     setSavedAccounts(filtered);
@@ -313,6 +315,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId: updated.id,
+        avatarId: updated.avatarId,
         avatarUrl: updated.avatarUrl,
         gamesHistory: updated.gamesHistory,
         coins: updated.coins,
@@ -321,7 +324,10 @@ export default function App() {
         dailyQuests: updated.dailyQuests,
         achievements: updated.achievements,
         password: updated.password,
+        country: updated.country,
         lastLuckyWheelSpin: updated.lastLuckyWheelSpin,
+        settings: updated.settings,
+        unlockedItems: updated.unlockedItems,
       }),
     })
       .then((res) => {

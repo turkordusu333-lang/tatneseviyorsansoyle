@@ -614,10 +614,32 @@ const countCompletedSets = (properties: any): number => {
 const countTeamCompletedSets = (players: GamePlayer[], team: 'team_blue' | 'team_red'): number => {
   if (!players || players.length === 0) return 0;
   const teamPlayers = players.filter((p, idx) => (p.team || (idx % 2 === 0 ? 'team_blue' : 'team_red')) === team);
-  let total = 0;
-  teamPlayers.forEach(tp => {
-    total += countCompletedSets(tp.properties);
+  if (teamPlayers.length === 0) return 0;
+
+  // Combine property cards of each color across teammates
+  const combinedCardsByColor: Record<string, number> = {};
+  teamPlayers.forEach((tp) => {
+    if (tp.properties) {
+      for (const colorKey in tp.properties) {
+        const col = colorKey as CardColor;
+        const set = tp.properties[col];
+        if (set && set.cards) {
+          combinedCardsByColor[col] = (combinedCardsByColor[col] || 0) + set.cards.length;
+        }
+      }
+    }
   });
+
+  let total = 0;
+  for (const colorKey in combinedCardsByColor) {
+    const col = colorKey as CardColor;
+    const count = combinedCardsByColor[col];
+    const required = MAX_IN_SET[col];
+    if (required && required > 0) {
+      total += Math.floor(count / required);
+    }
+  }
+
   return total;
 };
 
@@ -942,6 +964,15 @@ const CanvasBackground: React.FC<{ theme: string }> = ({ theme }) => {
       particles.push(p);
     }
 
+    // On mobile devices (coarse pointer / small screen), render static background once to save 100% GPU bandwidth
+    if (window.innerWidth < 768 || (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) {
+      if (!themeItem?.mediaUrl) {
+        ctx.fillStyle = baseColors[theme] || '#0f172a';
+        ctx.fillRect(0, 0, width, height);
+      }
+      return;
+    }
+
     const render = () => {
       ctx.clearRect(0, 0, width, height);
 
@@ -1234,6 +1265,16 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   const [match, setMatch] = React.useState<MatchState | null>(null);
   const matchRef = React.useRef<MatchState | null>(null);
   const botTimeoutRef = React.useRef<any>(null);
+  const [, setShopItemsVersion] = React.useState(0);
+
+  React.useEffect(() => {
+    loadShopItems();
+    const unsubscribe = subscribeShopItems(() => {
+      setShopItemsVersion((v) => v + 1);
+    });
+    return () => unsubscribe();
+  }, []);
+
   React.useEffect(() => {
     matchRef.current = match;
   }, [match]);
@@ -1283,8 +1324,18 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     chaosHotPotato: false,
   });
 
-  const checkWinnerWithSettings = (properties: any) => {
-    return checkWinner(properties, match?.settings?.targetSets || 3);
+  const checkWinnerWithSettings = (properties: any, player?: GamePlayer, allPlayers?: GamePlayer[]): boolean => {
+    const currentPlayers = allPlayers || match?.players || [];
+    const targetSets = match?.settings?.targetSets || (match?.settings?.gameMode === '2v2_team' ? 4 : 3);
+
+    if (match?.settings?.gameMode === '2v2_team' && currentPlayers.length > 0) {
+      const p = player || localPlayer;
+      const pTeam = p?.team || (currentPlayers.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red');
+      const teamSets = countTeamCompletedSets(currentPlayers, pTeam);
+      return teamSets >= targetSets;
+    }
+
+    return checkWinner(properties, targetSets);
   };
 
   const [showShieldDefenseFor, setShowShieldDefenseFor] = React.useState<string | null>(null);
@@ -2188,7 +2239,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
       triggerHaptic('medium');
-      setExpandedPropertyColor(prev => prev === col ? null : col);
+      setManagedSetColor(col);
       setAnalyzedProperty({
         color: col,
         ownerName: owner,
@@ -2232,7 +2283,6 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   const [timeLeft, setTimeLeft] = React.useState(30);
   const [actionTimeLeft, setActionTimeLeft] = React.useState<number | null>(null);
   const [managedSetColor, setManagedSetColor] = React.useState<CardColor | null>(null);
-  const [expandedPropertyColor, setExpandedPropertyColor] = React.useState<CardColor | null>(null);
   const [buildingTooltipColor, setBuildingTooltipColor] = React.useState<CardColor | null>(null);
   const [isOpponentsGrid, setIsOpponentsGrid] = React.useState(false);
   const [hideOwnBoard, setHideOwnBoard] = React.useState(false);
@@ -2244,23 +2294,6 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       onArenaCollapseChange(isArenaCollapsed);
     }
   }, [isArenaCollapsed, onArenaCollapseChange]);
-
-  React.useEffect(() => {
-    if (!expandedPropertyColor) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (target && !target.closest('.property-details-sheet') && !target.closest('.property-set-card-trigger')) {
-        setExpandedPropertyColor(null);
-      }
-    };
-    const timer = setTimeout(() => {
-      document.addEventListener('click', handler);
-    }, 50);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('click', handler);
-    };
-  }, [expandedPropertyColor]);
 
   React.useEffect(() => {
     if (!buildingTooltipColor) return;
@@ -2382,6 +2415,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   const wasTouchMovedRef = React.useRef(false);
   const touchAnimFrameRef = React.useRef<number | null>(null);
   const touchPosRef = React.useRef<{ x: number; y: number } | null>(null);
+  const touchDragPreviewRef = React.useRef<HTMLDivElement | null>(null);
   const [touchDragCard, setTouchDragCard] = React.useState<Card | null>(null);
   const [touchPosition, setTouchPosition] = React.useState<{ x: number; y: number } | null>(null);
   const [touchStartPos, setTouchStartPos] = React.useState<{ x: number; y: number } | null>(null);
@@ -2423,57 +2457,62 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       }
 
       touchPosRef.current = { x: clientX, y: clientY };
+
+      // Direct GPU transform update on preview element for zero-latency 60-120 FPS dragging
+      if (touchDragPreviewRef.current) {
+        touchDragPreviewRef.current.style.transform = `translate3d(${clientX - 57}px, ${clientY - 85}px, 0)`;
+      }
+
       if (!touchAnimFrameRef.current) {
         touchAnimFrameRef.current = requestAnimationFrame(() => {
           touchAnimFrameRef.current = null;
-          if (touchPosRef.current) {
-            setTouchPosition(touchPosRef.current);
+          const pos = touchPosRef.current;
+          if (!pos) return;
+
+          // Highlight drop zones in real-time synced with rAF on mobile!
+          const bankEl = document.getElementById('bank-drop-zone');
+          const propertiesEl = document.getElementById('properties-drop-zone');
+          const padding = 75;
+
+          if (bankEl) {
+            const rect = bankEl.getBoundingClientRect();
+            const overBank = (
+              pos.x >= rect.left - padding &&
+              pos.x <= rect.right + padding &&
+              pos.y >= rect.top - padding &&
+              pos.y <= rect.bottom + padding
+            );
+            setIsDragOverBank((prev) => (prev !== overBank ? overBank : prev));
           }
-        });
-      }
 
-      // Highlight drop zones in real-time when dragging on mobile!
-      const bankEl = document.getElementById('bank-drop-zone');
-      const propertiesEl = document.getElementById('properties-drop-zone');
-      const padding = 55; // Generous forgiving touch zone padding for mobile screens
+          if (propertiesEl) {
+            const rect = propertiesEl.getBoundingClientRect();
+            const overProperties = (
+              pos.x >= rect.left - padding &&
+              pos.x <= rect.right + padding &&
+              pos.y >= rect.top - padding &&
+              pos.y <= rect.bottom + padding
+            );
+            setIsDragOverProperties((prev) => (prev !== overProperties ? overProperties : prev));
 
-      if (bankEl) {
-        const rect = bankEl.getBoundingClientRect();
-        const overBank = (
-          clientX >= rect.left - padding &&
-          clientX <= rect.right + padding &&
-          clientY >= rect.top - padding &&
-          clientY <= rect.bottom + padding
-        );
-        setIsDragOverBank((prev) => (prev !== overBank ? overBank : prev));
-      }
-
-      if (propertiesEl) {
-        const rect = propertiesEl.getBoundingClientRect();
-        const overProperties = (
-          clientX >= rect.left - padding &&
-          clientX <= rect.right + padding &&
-          clientY >= rect.top - padding &&
-          clientY <= rect.bottom + padding
-        );
-        setIsDragOverProperties((prev) => (prev !== overProperties ? overProperties : prev));
-
-        // Find specific property set under the user's finger on mobile
-        let foundSetColor: CardColor | null = null;
-        if (overProperties) {
-          const elementUnderTouch = document.elementFromPoint(clientX, clientY);
-          if (elementUnderTouch) {
-            const closestSet = elementUnderTouch.closest('[id^="property-set-"]');
-            if (closestSet) {
-              const id = closestSet.id; // Format: "property-set-COLOR-PLAYERID"
-              const parts = id.split('-');
-              if (parts.length >= 3) {
-                foundSetColor = parts[2] as CardColor;
+            // Find specific property set under the user's finger on mobile
+            let foundSetColor: CardColor | null = null;
+            if (overProperties) {
+              const elementUnderTouch = document.elementFromPoint(pos.x, pos.y);
+              if (elementUnderTouch) {
+                const closestSet = elementUnderTouch.closest('[id^="property-set-"]');
+                if (closestSet) {
+                  const id = closestSet.id; // Format: "property-set-COLOR-PLAYERID"
+                  const parts = id.split('-');
+                  if (parts.length >= 3) {
+                    foundSetColor = parts[2] as CardColor;
+                  }
+                }
               }
             }
+            setDraggingOverSetColor(foundSetColor);
           }
-        }
-        setDraggingOverSetColor(foundSetColor);
+        });
       }
     }
   };
@@ -2507,7 +2546,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
       let droppedOnBank = false;
       let droppedOnProperties = false;
-      const padding = 55; // Generous forgiving touch zone padding for mobile screens
+      const padding = 75; // Generous forgiving touch zone padding for mobile screens
 
       if (bankEl) {
         const rect = bankEl.getBoundingClientRect();
@@ -2893,17 +2932,33 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       clearTimeout(showcaseTimeoutRef.current);
       showcaseTimeoutRef.current = null;
     }
-    if (showcaseCard) {
-      setShowcaseCard(null);
-      const nextAnim = animationQueue[0];
-      if (nextAnim) {
-        triggerCardFlight(nextAnim.card, nextAnim.startId, nextAnim.endId, () => {
-          setAnimationQueue((prev) => prev.slice(1));
-          setIsProcessingAnimation(false);
+    setShowcaseCard((currentShowcase) => {
+      if (currentShowcase) {
+        setAnimationQueue((currentQueue) => {
+          const nextAnim = currentQueue[0];
+          if (nextAnim) {
+            triggerCardFlight(nextAnim.card, nextAnim.startId, nextAnim.endId, () => {
+              setAnimationQueue((prev) => prev.slice(1));
+              setIsProcessingAnimation(false);
+            });
+          } else {
+            setIsProcessingAnimation(false);
+          }
+          return currentQueue;
         });
       }
-    }
-  }, [showcaseCard, animationQueue]);
+      return null;
+    });
+  }, []);
+
+  // Dedicated indestructible 2-second auto-close timer for the action card showcase overlay
+  React.useEffect(() => {
+    if (!showcaseCard) return;
+    const timer = setTimeout(() => {
+      skipShowcase();
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [showcaseCard, skipShowcase]);
 
   // Action / Rent Toast State
   const [actionToast, setActionToast] = React.useState<{
@@ -3283,6 +3338,19 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             );
           });
 
+          // In offline or resolved actions, check recent logs for target player
+          if (targetPlayerIds.length === 0) {
+            recentLogs.forEach(log => {
+              newMatch.players.forEach(p => {
+                if (p.id !== turnPlayer.id && (log.message.includes(p.username) || (p.id === profile.id && (log.message.includes('senden') || log.message.includes('senin'))))) {
+                  if (!targetPlayerIds.includes(p.id)) {
+                    targetPlayerIds.push(p.id);
+                  }
+                }
+              });
+            });
+          }
+
           // TRIGGER: Dynamic Rent/Birthday/Debt-collector rent collected
           if (turnPlayer.id === profile.id && !isDiscarded) {
             if (card.type === 'rent' || card.actionType === 'debt-collector' || card.actionType === 'birthday') {
@@ -3407,7 +3475,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     setIsProcessingAnimation(true);
     const nextAnim = animationQueue[0];
 
-    // 1. Showcase (ONLY for action plays that affect players or opponents, skip for Pass Go, bank, and property)
+    // 1. Showcase (ONLY for action plays that affect the local player, skip if played by me or if I'm not the target)
     const actType = nextAnim.card.actionType || nextAnim.card.type;
     const isActionPlay = nextAnim.zone === 'action' && [
       'deal-breaker',
@@ -3420,11 +3488,56 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     ].includes(actType);
 
     const isActor = nextAnim.playerName === profile.username || match?.players.find((p) => p.username === nextAnim.playerName)?.id === profile.id;
-    const isTarget = nextAnim.targetPlayerIds?.includes(profile.id);
-    const isGlobalAction = !nextAnim.targetPlayerIds || nextAnim.targetPlayerIds.length === 0 || actType === 'birthday' || actType === 'rent';
-    const isLocalInvolved = isActor || isTarget || isGlobalAction;
+    
+    // Check 2v2 teammate immunity
+    const is2v2 = match?.settings?.gameMode === '2v2_team';
+    const actorPlayer = match?.players.find((p) => p.username === nextAnim.playerName);
+    const localPlayer = match?.players.find((p) => p.id === profile.id);
+    const isTeammate = is2v2 && actorPlayer && localPlayer && (
+      (actorPlayer.team || (match!.players.indexOf(actorPlayer) % 2 === 0 ? 'team_blue' : 'team_red')) ===
+      (localPlayer.team || (match!.players.indexOf(localPlayer) % 2 === 0 ? 'team_blue' : 'team_red'))
+    );
 
-    const showShowcase = isActionPlay && isLocalInvolved;
+    const isTarget = !!nextAnim.targetPlayerIds?.includes(profile.id);
+    const is2PlayerGame = (match?.players.length || 0) === 2;
+
+    let isAffectingMe = false;
+    // Rule 1: Never show showcase to the player who played the card (isActor)
+    // Rule 2: Never show showcase if the actor is my teammate in 2v2 (isTeammate)
+    // Rule 3: Only show if this action affects/targets the local player
+    if (!isActor && !isTeammate) {
+      const isWildRent = actType === 'rent' && (
+        nextAnim.card.isWildcard ||
+        (nextAnim.card.name && nextAnim.card.name.includes('Her Renk')) ||
+        nextAnim.card.actionType === 'wild_rent' ||
+        (nextAnim.card.allowedColors && nextAnim.card.allowedColors.length > 2)
+      );
+
+      if (actType === 'birthday') {
+        // Birthday affects all opposing players
+        isAffectingMe = true;
+      } else if (actType === 'rent' && !isWildRent && (!nextAnim.targetPlayerIds || nextAnim.targetPlayerIds.length === 0)) {
+        // Dual-color standard rent (global to all opponents)
+        isAffectingMe = true;
+      } else if (isWildRent || ['deal-breaker', 'sly-deal', 'forced-deal', 'debt-collector', 'just-say-no', 'rent'].includes(actType)) {
+        // Single-target action card or single-target wild rent (Her Renk Kira)
+        if (nextAnim.targetPlayerIds && nextAnim.targetPlayerIds.length > 0) {
+          isAffectingMe = isTarget;
+        } else if (is2PlayerGame) {
+          isAffectingMe = true;
+        } else {
+          // Check recent logs in 3+ player games
+          const recentLogs = match?.logs.slice(-3) || [];
+          isAffectingMe = recentLogs.some(l =>
+            l.message.includes(profile.username) ||
+            l.message.toLowerCase().includes('senden') ||
+            l.message.toLowerCase().includes('senin')
+          );
+        }
+      }
+    }
+
+    const showShowcase = isActionPlay && isAffectingMe;
 
     // Play corresponding voiceover for this card play
     playVoiceover(nextAnim.zone, nextAnim.card, nextAnim.playerName);
@@ -3438,7 +3551,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           setAnimationQueue((prev) => prev.slice(1));
           setIsProcessingAnimation(false);
         });
-      }, 3500);
+      }, 2000);
     } else {
       setShowcaseCard(null);
       triggerCardFlight(nextAnim.card, nextAnim.startId, nextAnim.endId, () => {
@@ -3973,8 +4086,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             message: isTournament
               ? `🏆 TURNUVA MAÇI BAŞLADI: ${is4p ? '4 Kişilik Masa Elemesi' : (is2v2 ? '2v2 Takım Şampiyonası' : `${tOpponent}'a karşı`)}! Hedef: ${tTargetSets} Set.`
               : is2v2
-              ? '⚔️ 2v2 TAKIM SAVAŞI BAŞLADI: Sadık Bot Partner ile ortaksınız!'
-              : 'Çevrimdışı Pratik Maçı Başladı! Kartlar dağıtıldı.',
+                ? '⚔️ 2v2 TAKIM SAVAŞI BAŞLADI: Sadık Bot Partner ile ortaksınız!'
+                : 'Çevrimdışı Pratik Maçı Başladı! Kartlar dağıtıldı.',
             timestamp: Date.now(),
           },
         ],
@@ -4256,13 +4369,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             score2: 3,
           }),
         })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data && data.user) {
-            onUpdateProfile(data.user);
-          }
-        })
-        .catch(console.error);
+          .then((res) => res.json())
+          .then((data) => {
+            if (data && data.user) {
+              onUpdateProfile(data.user);
+            }
+          })
+          .catch(console.error);
       }
     }
 
@@ -4709,8 +4822,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         });
         playDrawSound();
       } else if (card.actionType === 'birthday') {
-        // Collect 2M from all other players (bots)
-        const targets = match.players.filter((p) => p.id !== activePlayer.id);
+        // Collect 2M from all other opponent players (exclude teammate in 2v2)
+        const is2v2 = match.settings?.gameMode === '2v2_team';
+        const activeTeam = activePlayer.team || (match.players.indexOf(activePlayer) % 2 === 0 ? 'team_blue' : 'team_red');
+        const isTeammate = (p: GamePlayer) => (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === activeTeam;
+        const targets = match.players.filter((p) => p.id !== activePlayer.id && (!is2v2 || !isTeammate(p)));
+
         targets.forEach((tp) => {
           if (tp.isBot) {
             const payments = BotEngine.selectPayment(tp, 2);
@@ -4726,13 +4843,17 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         showActionToast(
           'info',
           '🎂 Doğum Günü Kutlaması!',
-          `${activePlayer.username} bir doğum günü partisi verdi ve herkesten 2M topladı!`,
+          `${activePlayer.username} bir doğum günü partisi verdi ve ${is2v2 ? 'rakiplerden' : 'herkesten'} 2M topladı!`,
           activePlayer
         );
       } else if (card.actionType === 'debt-collector') {
-        const targetId = payload?.targetPlayerId || match.players.find((p) => p.id !== activePlayer.id)?.id;
+        const is2v2 = match.settings?.gameMode === '2v2_team';
+        const activeTeam = activePlayer.team || (match.players.indexOf(activePlayer) % 2 === 0 ? 'team_blue' : 'team_red');
+        const isTeammate = (p: GamePlayer) => (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === activeTeam;
+
+        const targetId = payload?.targetPlayerId || match.players.find((p) => p.id !== activePlayer.id && (!is2v2 || !isTeammate(p)))?.id;
         const targetPlayer = match.players.find((p) => p.id === targetId);
-        if (targetPlayer) {
+        if (targetPlayer && (!is2v2 || !isTeammate(targetPlayer))) {
           if (targetPlayer.isBot) {
             const jsnIdx = targetPlayer.hand.findIndex((c) => c.actionType === 'just-say-no');
             if (jsnIdx !== -1) {
@@ -4773,6 +4894,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           }
         }
       } else if (card.type === 'rent') {
+        const is2v2 = match.settings?.gameMode === '2v2_team';
+        const activeTeam = activePlayer.team || (match.players.indexOf(activePlayer) % 2 === 0 ? 'team_blue' : 'team_red');
+        const isTeammate = (p: GamePlayer) => (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === activeTeam;
+
         const chosenColor = extraColor || 'brown';
         const set = updatedPlayer.properties[chosenColor];
         if (set && set.cards.length > 0) {
@@ -4787,10 +4912,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
           const isWildRent = card.name === 'Her Renk Kira Kartı' || !card.color;
           if (isWildRent) {
-            // Collect from ONLY one player
-            const targetId = payload?.targetPlayerId || match.players.find((p) => p.id !== activePlayer.id)?.id;
+            // Collect from ONLY one opponent player
+            const targetId = payload?.targetPlayerId || match.players.find((p) => p.id !== activePlayer.id && (!is2v2 || !isTeammate(p)))?.id;
             const targetPlayer = match.players.find((p) => p.id === targetId);
-            if (targetPlayer) {
+            if (targetPlayer && (!is2v2 || !isTeammate(targetPlayer))) {
               if (targetPlayer.isBot) {
                 const payments = BotEngine.selectPayment(targetPlayer, rentVal);
                 transferOfflinePayment(targetPlayer.id, activePlayer.id, payments);
@@ -4809,8 +4934,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               }
             }
           } else {
-            // Collect from EVERYONE (standard dual-color rent)
-            const targets = match.players.filter((p) => p.id !== activePlayer.id);
+            // Collect from OPPONENTS (exclude teammate in 2v2)
+            const targets = match.players.filter((p) => p.id !== activePlayer.id && (!is2v2 || !isTeammate(p)));
             targets.forEach((targetPlayer) => {
               if (targetPlayer.isBot) {
                 const payments = BotEngine.selectPayment(targetPlayer, rentVal);
@@ -4826,7 +4951,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             showActionToast(
               'rent',
               '💰 Kira Tahsilatı!',
-              `${activePlayer.username} herkesten ${COLOR_LABELS[chosenColor]} mülkleri için ${rentVal}M kira aldı!`,
+              `${activePlayer.username} ${is2v2 ? 'rakip takımdan' : 'herkesten'} ${COLOR_LABELS[chosenColor]} mülkleri için ${rentVal}M kira aldı!`,
               activePlayer
             );
           }
@@ -5070,12 +5195,30 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       actionsPlayedThisTurn: nextActionsCount,
     };
 
-    // Check if any player has won
+    // Check if any player or team has won
     let offlineWinnerId: string | null = null;
-    for (const p of updatedPlayers) {
-      if (checkWinnerWithSettings(p.properties)) {
-        offlineWinnerId = p.id;
-        break;
+    let offlineWinnerTeam: string | undefined = undefined;
+
+    if (match.settings?.gameMode === '2v2_team') {
+      const targetSets = match.settings?.targetSets || 4;
+      const blueSets = countTeamCompletedSets(updatedPlayers, 'team_blue');
+      const redSets = countTeamCompletedSets(updatedPlayers, 'team_red');
+
+      if (blueSets >= targetSets) {
+        offlineWinnerTeam = 'team_blue';
+        const winner = updatedPlayers.find((p, idx) => (p.team || (idx % 2 === 0 ? 'team_blue' : 'team_red')) === 'team_blue');
+        offlineWinnerId = winner?.id || updatedPlayers[0].id;
+      } else if (redSets >= targetSets) {
+        offlineWinnerTeam = 'team_red';
+        const winner = updatedPlayers.find((p, idx) => (p.team || (idx % 2 === 0 ? 'team_blue' : 'team_red')) === 'team_red');
+        offlineWinnerId = winner?.id || updatedPlayers[1]?.id || updatedPlayers[0].id;
+      }
+    } else {
+      for (const p of updatedPlayers) {
+        if (checkWinnerWithSettings(p.properties, p, updatedPlayers)) {
+          offlineWinnerId = p.id;
+          break;
+        }
       }
     }
 
@@ -5083,9 +5226,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       const winner = updatedPlayers.find((p) => p.id === offlineWinnerId);
       nextMatch.status = 'finished';
       nextMatch.winnerId = offlineWinnerId;
+      if (offlineWinnerTeam) {
+        nextMatch.winnerTeam = offlineWinnerTeam;
+      }
       nextMatch.logs.push({
         id: `win-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        message: `Maçı ${winner?.username} kazandı! Oyun bitti.`,
+        message: offlineWinnerTeam
+          ? `🏆 2v2 TAKIM ŞAMPİYONU: ${offlineWinnerTeam === 'team_blue' ? 'Mavi Takım 🔵' : 'Kırmızı Takım 🔴'}!`
+          : `Maçı ${winner?.username} kazandı! Oyun bitti.`,
         timestamp: Date.now()
       });
 
@@ -5451,7 +5599,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           });
         }
 
-        if (checkWinnerWithSettings(currentBot.properties)) {
+        if (checkWinnerWithSettings(currentBot.properties, currentBot, activeMatch.players)) {
           handleOfflineWinner(currentBot.id);
           return;
         }
@@ -5913,17 +6061,29 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     playNextBotAction();
   };
 
-  const handleOfflineWinner = (winnerId: string) => {
+  const handleOfflineWinner = (winnerId: string, winnerTeamParam?: string) => {
     if (!match) return;
+
+    const is2v2 = match.settings?.gameMode === '2v2_team';
+    const winnerTeam = winnerTeamParam || match.winnerTeam || (is2v2
+      ? (match.players.find(p => p.id === winnerId)?.team || (match.players.findIndex(p => p.id === winnerId) % 2 === 0 ? 'team_blue' : 'team_red'))
+      : undefined);
 
     const winner = match.players.find((p) => p.id === winnerId);
     setMatch({
       ...match,
       status: 'finished',
       winnerId,
+      winnerTeam,
       logs: [
         ...match.logs,
-        { id: `win-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, message: `Maçı ${winner?.username} kazandı! Oyun bitti.`, timestamp: Date.now() },
+        {
+          id: `win-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          message: winnerTeam
+            ? `🏆 2v2 TAKIM ŞAMPİYONU: ${winnerTeam === 'team_blue' ? 'Mavi Takım 🔵' : 'Kırmızı Takım 🔴'}!`
+            : `Maçı ${winner?.username} kazandı! Oyun bitti.`,
+          timestamp: Date.now()
+        },
       ],
     });
 
@@ -5946,20 +6106,23 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           score2: playerWon ? 1 : 3,
         }),
       })
-      .then(res => res.json())
-      .then(data => {
-        if (data.user) {
-          onUpdateProfile(data.user);
-        }
-      })
-      .catch(console.error);
+        .then(res => res.json())
+        .then(data => {
+          if (data.user) {
+            onUpdateProfile(data.user);
+          }
+        })
+        .catch(console.error);
     }
 
     const allowPracticeRewards = isOffline ? (adminSettings?.botPracticeRewardsEnabled === true) : true;
 
     if (allowPracticeRewards) {
+      const localTeam = localPlayer.team || (match.players.indexOf(localPlayer) % 2 === 0 ? 'team_blue' : 'team_red');
+      const isPlayerWinner = is2v2 ? (winnerTeam === localTeam) : (winnerId === profile.id);
+
       // Award XP/Coins to the profile
-      if (winnerId === profile.id) {
+      if (isPlayerWinner) {
         sounds.playCelebration(profile.settings.celebrationSound, profile.settings);
         const updatedProfile = {
           ...profile,
@@ -6115,14 +6278,26 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
   const handleReturnFromAfk = () => {
     if (!isOffline && socketRef.current?.readyState === WebSocket.OPEN) {
-      socketRef.current.send(JSON.stringify({ type: 'return_from_afk', userId: profile.id, roomId }));
+      socketRef.current.send(JSON.stringify({
+        type: 'return_from_afk',
+        userId: profile.id,
+        username: profile.username,
+        roomId
+      }));
     }
     setMatch(prev => {
       if (!prev) return prev;
-      return {
+      const updatedPlayers = prev.players.map(p =>
+        (p.id === profile.id || p.username === profile.username)
+          ? { ...p, isDisconnected: false, isAfk: false, hasAbandoned: false }
+          : p
+      );
+      const nextMatch = {
         ...prev,
-        players: prev.players.map(p => p.id === profile.id ? { ...p, isDisconnected: false, isAfk: false } : p)
+        players: updatedPlayers
       };
+      matchRef.current = nextMatch;
+      return nextMatch;
     });
   };
 
@@ -7723,11 +7898,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                   handleSwitchTeam(p.id);
                                 }
                               }}
-                              className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                                p.team === 'team_red'
+                              className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${p.team === 'team_red'
                                   ? 'bg-rose-600/30 text-rose-200 border-rose-500/60 hover:bg-rose-600/50 hover:border-rose-400'
                                   : 'bg-blue-600/30 text-blue-200 border-blue-500/60 hover:bg-blue-600/50 hover:border-blue-400'
-                              }`}
+                                }`}
                               title={profile.settings.language === 'en' ? 'Click to Switch Team (Blue / Red)' : 'Takım Değiştirmek İçin Tıklayın (Mavi / Kırmızı)'}
                             >
                               <span>{p.team === 'team_red' ? '🔴 Kırmızı Takım' : '🔵 Mavi Takım'}</span>
@@ -7897,7 +8071,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                   className={`py-1 rounded-lg text-center border transition-all text-xs ${isSelected
                                     ? 'bg-indigo-500/20 border-indigo-500/50 text-indigo-300 font-extrabold shadow-sm'
                                     : 'bg-black/20 border-white/5 text-slate-400 hover:bg-black/30 disabled:opacity-40'
-                                  }`}
+                                    }`}
                                 >
                                   {pCount}P
                                 </button>
@@ -8110,8 +8284,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     setHideOwnBoard(!hideOwnBoard);
                   }}
                   className={`px-2 py-0.5 rounded border text-[8px] cursor-pointer transition-all flex items-center gap-1 active:scale-95 ${hideOwnBoard
-                      ? 'bg-amber-500/20 border-amber-500/30 text-amber-300'
-                      : 'bg-white/5 border-white/10 hover:bg-white/10 text-slate-300'
+                    ? 'bg-amber-500/20 border-amber-500/30 text-amber-300'
+                    : 'bg-white/5 border-white/10 hover:bg-white/10 text-slate-300'
                     }`}
                 >
                   {hideOwnBoard
@@ -8272,23 +8446,30 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       }
                     }}
                     className={`flex-shrink-0 w-[155px] sm:w-[165px] p-2 rounded-2xl border backdrop-blur-md transition-all cursor-pointer relative overflow-hidden select-none ${bStyle.bgClass} ${bStyle.textClass || 'text-slate-200'} ${playerVisualStates[p.id]?.type === 'card_gain'
-                        ? 'border-cyan-400 ring-2 ring-cyan-500 shadow-[0_0_25px_rgba(34,211,238,0.8)] scale-[1.02] z-20'
-                        : playerVisualStates[p.id]?.type === 'deal_breaker_target'
-                          ? 'border-fuchsia-500 ring-2 ring-fuchsia-600 shadow-[0_0_30px_rgba(217,70,239,0.9)] scale-[1.02] z-20'
-                          : activeHighImpactCard?.actorId === p.id
-                            ? 'border-indigo-400 ring-2 ring-indigo-500 shadow-[0_0_30px_rgba(99,102,241,0.85)] scale-[1.02] z-20 animate-pulse'
-                            : activeActionCard && !selectedOpponentId
-                              ? (isOpponentEligible
-                                ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-[0_0_18px_rgba(245,158,11,0.5)] scale-[1.02] z-20 animate-pulse border-dashed'
+                      ? 'border-cyan-400 ring-2 ring-cyan-500 shadow-[0_0_25px_rgba(34,211,238,0.8)] scale-[1.02] z-20'
+                      : playerVisualStates[p.id]?.type === 'deal_breaker_target'
+                        ? 'border-fuchsia-500 ring-2 ring-fuchsia-600 shadow-[0_0_30px_rgba(217,70,239,0.9)] scale-[1.02] z-20'
+                        : activeHighImpactCard?.actorId === p.id
+                          ? 'border-indigo-400 ring-2 ring-indigo-500 shadow-[0_0_30px_rgba(99,102,241,0.85)] scale-[1.02] z-20 animate-pulse'
+                          : activeActionCard && !selectedOpponentId
+                            ? (isOpponentEligible
+                              ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-[0_0_18px_rgba(245,158,11,0.5)] scale-[1.02] z-20 animate-pulse border-dashed'
+                              : 'opacity-25 grayscale pointer-events-none scale-95 border-slate-900')
+                            : activeActionCard && selectedOpponentId
+                              ? (p.id === selectedOpponentId
+                                ? 'border-emerald-500 ring-2 ring-emerald-500/50 shadow-[0_0_18px_rgba(16,185,129,0.4)] scale-[1.02] z-20'
                                 : 'opacity-25 grayscale pointer-events-none scale-95 border-slate-900')
-                              : activeActionCard && selectedOpponentId
-                                ? (p.id === selectedOpponentId
-                                  ? 'border-emerald-500 ring-2 ring-emerald-500/50 shadow-[0_0_18px_rgba(16,185,129,0.4)] scale-[1.02] z-20'
-                                  : 'opacity-25 grayscale pointer-events-none scale-95 border-slate-900')
-                                : isCurrentTurn
-                                  ? 'border-amber-400 shadow-[0_0_22px_rgba(245,158,11,0.7)] ring-2 ring-amber-400/50 scale-[1.02] z-20'
-                                  : `${bStyle.borderClass} ${bStyle.glowClass} hover:border-slate-500`
+                              : isCurrentTurn
+                                ? 'border-amber-400 shadow-[0_0_22px_rgba(245,158,11,0.7)] ring-2 ring-amber-400/50 scale-[1.02] z-20'
+                                : `${bStyle.borderClass} ${bStyle.glowClass} hover:border-slate-500`
                       }`}
+                    style={{
+                      background: pBoardItem?.gradientStart && pBoardItem?.gradientEnd
+                        ? `linear-gradient(135deg, ${pBoardItem.gradientStart}, ${pBoardItem.gradientEnd})`
+                        : pBoardItem?.previewColor || undefined,
+                      borderColor: pBoardItem?.borderColor || undefined,
+                      boxShadow: pBoardItem?.glowColor ? `0 0 15px ${pBoardItem.glowColor}` : undefined
+                    }}
                   >
                     {/* Dynamic visual state overlays and floating indicator symbols */}
                     <AnimatePresence>
@@ -8373,11 +8554,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             <span className="truncate">{p.username.split(' ')[0]}</span>
                             {(p as any).isDisconnected && <span className="text-[7px] bg-red-500/20 text-red-400 px-1 py-0.2 rounded font-black uppercase">AFK</span>}
                             {match.settings?.gameMode === '2v2_team' && (
-                              <span className={`text-[7px] font-black px-1 py-0.2 rounded uppercase shrink-0 ${
-                                (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === 'team_blue'
+                              <span className={`text-[7px] font-black px-1 py-0.2 rounded uppercase shrink-0 ${(p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === 'team_blue'
                                   ? 'bg-blue-600/40 text-blue-300 border border-blue-400/30'
                                   : 'bg-rose-600/40 text-rose-300 border border-rose-400/30'
-                              }`}>
+                                }`}>
                                 {(p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === 'team_blue' ? '🔵 Mavi' : '🔴 Kırmızı'}
                                 {p.id !== profile.id && ((p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === (localPlayer.team || (match.players.indexOf(localPlayer) % 2 === 0 ? 'team_blue' : 'team_red'))) ? ' (Ortak)' : ''}
                               </span>
@@ -8395,33 +8575,47 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       </span>
                     </div>
 
-                    {/* Display mini active set cards */}
-                    <div className="flex items-center gap-1 overflow-x-auto py-1 mt-1.5 border-t border-white/[0.08] scrollbar-none relative z-10">
-                      {Object.keys(p.properties).map((colorKey) => {
-                        const col = colorKey as CardColor;
-                        const set = p.properties[col];
-                        if (!set || set.cards.length === 0) return null;
-                        const isCompleted = set.cards.length >= MAX_IN_SET[col];
-                        const opponentNeon = COLOR_HEX[col] || '#34d399';
-
-                        return (
-                          <div
-                            key={col}
-                            className={`flex-shrink-0 w-[22px] h-[30px] bg-slate-950 rounded-md flex flex-col justify-between p-0.5 relative overflow-hidden shadow-sm border transition-all ${isCompleted
-                                ? 'border-amber-400 ring-1 ring-amber-400/50 shadow-[0_0_6px_rgba(251,191,36,0.4)]'
-                                : 'border-white/20'
-                              }`}
-                            title={`${COLOR_LABELS[col]}: ${set.cards.length}/${MAX_IN_SET[col]}`}
-                          >
-                            <div className="h-2 w-full rounded-t-[3px] flex-shrink-0 shadow-sm" style={{ backgroundColor: opponentNeon }} />
-                            <div className="flex-1 flex items-center justify-center leading-none">
-                              <span className={`text-[6.5px] sm:text-[7px] font-black leading-none ${isCompleted ? 'text-amber-400 font-bold' : 'text-slate-200'}`}>
-                                {isCompleted ? '👑' : `${set.cards.length}/${MAX_IN_SET[col]}`}
-                              </span>
-                            </div>
-                          </div>
+                    {/* Display mini active set cards in 2 Rows */}
+                    <div className="grid grid-cols-5 gap-1 py-1 mt-1.5 border-t border-white/[0.08] relative z-10 content-start min-h-[30px]">
+                      {(() => {
+                        const activeSets = Object.keys(p.properties).filter(
+                          (colorKey) => p.properties[colorKey as CardColor]?.cards.length > 0
                         );
-                      })}
+
+                        if (activeSets.length === 0) {
+                          return (
+                            <div className="col-span-5 text-center text-[7.5px] text-slate-500 py-1 font-bold italic">
+                              {profile.settings.language === 'en' ? 'No lands yet' : 'Henüz arsa yok'}
+                            </div>
+                          );
+                        }
+
+                        return activeSets.map((colorKey) => {
+                          const col = colorKey as CardColor;
+                          const set = p.properties[col];
+                          if (!set || set.cards.length === 0) return null;
+                          const isCompleted = set.cards.length >= MAX_IN_SET[col];
+                          const opponentNeon = COLOR_HEX[col] || '#34d399';
+
+                          return (
+                            <div
+                              key={col}
+                              className={`w-full h-[26px] sm:h-[28px] bg-slate-950 rounded-md flex flex-col justify-between p-0.5 relative overflow-hidden shadow-sm border transition-all ${isCompleted
+                                ? 'border-amber-400 ring-1 ring-amber-400/50 shadow-[0_0_6px_rgba(251,191,36,0.4)] bg-amber-950/20'
+                                : 'border-white/20'
+                                }`}
+                              title={`${COLOR_LABELS[col]}: ${set.cards.length}/${MAX_IN_SET[col]}`}
+                            >
+                              <div className="h-1.5 w-full rounded-t-[2px] flex-shrink-0 shadow-xs" style={{ backgroundColor: opponentNeon }} />
+                              <div className="flex-1 flex items-center justify-center leading-none">
+                                <span className={`text-[6.5px] sm:text-[7px] font-black leading-none ${isCompleted ? 'text-amber-400 font-bold' : 'text-slate-200'}`}>
+                                  {isCompleted ? '👑' : `${set.cards.length}/${MAX_IN_SET[col]}`}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   </motion.div>
                 );
@@ -8429,109 +8623,136 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             </div>
           </div>
 
-          {/* 2. Middle area: Piles, turn indicator timer and properties collection */}
-          <div className={`flex-1 min-h-0 flex flex-col justify-around px-2 sm:px-3 transition-all ${isCompactLayout ? 'py-0.5 space-y-1' : 'py-1.5 space-y-2'
-            }`}>
-
-            {/* Horizontal Arena Grid with Mini Mode Collapse Toggle */}
+          {/* Middle Game Info Bar / Arena: Toggleable between Mini Bar and 3D Visual Arena */}
+          <div className="px-2.5 sm:px-3 pt-1 pb-0.5 flex-shrink-0">
             {isArenaCollapsed ? (
-              <div className="bg-slate-950/80 backdrop-blur border border-amber-500/30 rounded-xl px-2 sm:px-3 py-1 flex items-center justify-between text-[9px] sm:text-[10px] shadow-md transition-all gap-1.5 sm:gap-2 my-0.5">
-                {/* 1. Deste Count Badge */}
+              /* Mini Bar Version */
+              <div className="bg-slate-950/40 backdrop-blur-md border border-white/10 rounded-xl px-2 sm:px-3 py-1 flex items-center justify-between text-[8.5px] sm:text-[9.5px] shadow-lg transition-all gap-1.5 sm:gap-2">
+
+                {/* 1. Deste (Kart Sayısı) */}
                 <div
-                  className="flex items-center gap-1 text-amber-300 font-extrabold cursor-pointer hover:opacity-80 transition-all shrink-0"
+                  className="flex items-center gap-1 sm:gap-1.5 text-amber-300 font-extrabold cursor-pointer hover:opacity-80 transition-all shrink-0"
                   onClick={() => playPlaySound()}
-                  title="Kalan Deste Kart Sayısı"
+                  title={profile.settings.language === 'en' ? "Remaining Deck Cards" : "Kalan Deste Kart Sayısı"}
                 >
-                  <span className="text-xs">🎴</span>
-                  <span className="text-[8px] sm:text-[9px] text-slate-400 font-bold uppercase hidden xs:inline">DESTE:</span>
-                  <span className="bg-amber-500/20 px-1 sm:px-1.5 py-0.25 rounded text-amber-400 font-black">{match.deckCount}</span>
+                  <span className="text-xs sm:text-sm">🎴</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-[7.5px] sm:text-[8px] text-slate-400 font-bold uppercase hidden xs:inline">
+                      {profile.settings.language === 'en' ? 'DECK:' : 'DESTE:'}
+                    </span>
+                    <span className="bg-amber-500/15 px-1 sm:px-1.5 py-0.25 rounded text-amber-400 font-mono font-black text-[8.5px] sm:text-[9.5px]">
+                      {match.deckCount} <span className="hidden sm:inline">{profile.settings.language === 'en' ? 'Cards' : 'Kart'}</span>
+                    </span>
+                  </div>
                 </div>
 
-                {/* 2. Timer & Turn Status Badge */}
-                <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-900/90 border border-white/10 px-1.5 sm:px-2 py-0.5 rounded-lg shrink-0">
-                  <span className="text-amber-400 text-xs">⏱️</span>
-                  <span className="font-black text-amber-400">
+                {/* 2. Süre & Tur Durumu */}
+                <div className="flex items-center gap-1 sm:gap-1.5 bg-slate-900/40 border border-white/10 px-1.5 sm:px-2 py-0.5 rounded-lg shrink-0">
+                  <span className="text-amber-400 text-[10px] sm:text-xs">⏱️</span>
+                  <span className="font-mono font-black text-amber-400 text-[9px] sm:text-[10px]">
                     {(match.activeActionRequest || (match.activeActionRequests && match.activeActionRequests.length > 0))
                       ? (actionTimeLeft !== null ? `${actionTimeLeft}s` : '⏳')
                       : (match?.settings?.turnLimit === 'unlimited' ? '∞' : `${timeLeft}s`)}
                   </span>
-                  <span className="text-slate-500 hidden sm:inline">|</span>
-                  <span className="text-[8px] sm:text-[9px] font-black uppercase text-amber-300 truncate max-w-[50px] sm:max-w-[80px]">
+                  <span className="text-slate-600 text-[8px]">|</span>
+                  <span className="text-[8px] sm:text-[9px] font-black uppercase text-amber-300 truncate max-w-[60px] sm:max-w-[100px]">
                     {(match.activeActionRequest || activeActionCard)
-                      ? 'BEKLENİYOR'
-                      : (match.players[match.turnIndex]?.id === profile.id ? 'SIRA SENDE' : match.players[match.turnIndex]?.username.split(' ')[0])}
+                      ? (profile.settings.language === 'en' ? 'WAITING' : 'BEKLENİYOR')
+                      : (match.players[match.turnIndex]?.id === profile.id
+                        ? (profile.settings.language === 'en' ? 'YOUR TURN' : 'SIRA SENDE')
+                        : match.players[match.turnIndex]?.username.split(' ')[0])}
                   </span>
-                  {/* Mini dots */}
-                  <div className="hidden xs:flex gap-0.5 ml-0.5">
-                    {[1, 2, 3].map((num) => (
-                      <div
-                        key={num}
-                        className={`w-1 sm:w-1.5 h-1 sm:h-1.5 rounded-full ${match.actionsPlayedThisTurn >= num
-                            ? 'bg-red-500'
-                            : 'bg-emerald-400 animate-pulse'
-                          }`}
-                      />
-                    ))}
+
+                  {/* Move indicators (1/2/3) */}
+                  <div className="flex items-center gap-1 border-l border-white/10 pl-1 sm:pl-1.5 ml-0.5">
+                    <div className="flex gap-0.5">
+                      {[1, 2, 3].map((num) => (
+                        <div
+                          key={num}
+                          className={`w-1 sm:w-1.5 h-1 sm:h-1.5 rounded-full ${match.actionsPlayedThisTurn >= num
+                              ? 'bg-red-500 shadow-[0_0_4px_rgba(239,68,68,0.6)]'
+                              : 'bg-emerald-400 animate-pulse'
+                            }`}
+                        />
+                      ))}
+                    </div>
+                    <span className="text-[6.5px] sm:text-[7px] font-mono font-extrabold text-slate-400 hidden xs:inline">
+                      {3 - match.actionsPlayedThisTurn} {profile.settings.language === 'en' ? 'moves' : 'hamle'}
+                    </span>
                   </div>
                 </div>
 
-                {/* 3. Last Move Badge */}
-                <div className="flex items-center gap-1 text-slate-300 font-bold min-w-0">
-                  <span className="text-slate-400 text-[8px] sm:text-[9px] uppercase hidden md:inline">SON HAMLE:</span>
-                  {match.discardPile.length > 0 ? (
-                    <button
-                      onClick={() => {
-                        const topDiscard = match.discardPile[match.discardPile.length - 1];
-                        playPlaySound();
-                        setFocusedCard(topDiscard);
-                        setFocusedCardZoom(1.8);
-                      }}
-                      className="bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-500/40 text-indigo-300 px-1 sm:px-1.5 py-0.25 rounded text-[8px] sm:text-[9px] font-black truncate max-w-[55px] sm:max-w-[100px] cursor-pointer"
-                      title="Son Oynanan Kartı İncele"
-                    >
-                      🃏 {match.discardPile[match.discardPile.length - 1].name}
-                    </button>
-                  ) : (
-                    <span className="text-slate-500 text-[8px] sm:text-[9px]">YOK</span>
-                  )}
-                </div>
+                {/* 3. Son Hamle & Büyüt Butonu */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1 text-slate-300 font-bold min-w-0">
+                    <span className="text-slate-400 text-[7.5px] sm:text-[8px] uppercase hidden md:inline">
+                      {profile.settings.language === 'en' ? 'LAST MOVE:' : 'SON HAMLE:'}
+                    </span>
+                    {match.discardPile.length > 0 ? (
+                      <button
+                        onClick={() => {
+                          const topDiscard = match.discardPile[match.discardPile.length - 1];
+                          playPlaySound();
+                          setFocusedCard(topDiscard);
+                          setFocusedCardZoom(1.8);
+                        }}
+                        className="bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/40 text-indigo-300 px-1.5 sm:px-2 py-0.5 rounded-lg text-[8px] sm:text-[9px] font-black truncate max-w-[65px] sm:max-w-[110px] cursor-pointer active:scale-95 transition-transform flex items-center gap-1"
+                        title={profile.settings.language === 'en' ? "Inspect Last Move" : "Son Hamle Detayını İncele"}
+                      >
+                        <span>🃏</span>
+                        <span className="truncate">{match.discardPile[match.discardPile.length - 1].name}</span>
+                      </button>
+                    ) : (
+                      <span className="text-slate-500 text-[8px] font-mono px-1.5 py-0.25 bg-black/20 rounded border border-white/5">
+                        {profile.settings.language === 'en' ? 'NONE' : 'YOK'}
+                      </span>
+                    )}
+                  </div>
 
-                {/* 4. Expand Arena Button */}
-                <button
-                  onClick={() => setIsArenaCollapsed(false)}
-                  className="text-[8px] sm:text-[9px] text-indigo-300 hover:text-white bg-indigo-950/90 hover:bg-indigo-900 border border-indigo-500/40 px-2 py-0.5 rounded-lg font-black uppercase tracking-wider flex items-center gap-1 transition-all hover:scale-105 active:scale-95 shrink-0 shadow-sm cursor-pointer"
-                  title="Arena Paneli Genişlet"
-                >
-                  <span>▼</span>
-                  <span className="hidden xs:inline">ARENA'YI AÇ</span>
-                  <span className="xs:hidden">AÇ</span>
-                </button>
+                  {/* Expand Arena Button */}
+                  <button
+                    onClick={() => {
+                      playPlaySound();
+                      setIsArenaCollapsed(false);
+                    }}
+                    className="text-[8px] sm:text-[8.5px] text-indigo-300 hover:text-white bg-indigo-950/70 hover:bg-indigo-900/90 border border-indigo-500/40 px-1.5 sm:px-2 py-0.5 rounded-lg font-black uppercase tracking-wider flex items-center gap-1 transition-all hover:scale-105 active:scale-95 shrink-0 shadow-sm cursor-pointer ml-1"
+                    title={profile.settings.language === 'en' ? "Expand 3D Arena View" : "3D Arena Görünümünü Aç (Büyüt)"}
+                  >
+                    <span>▼</span>
+                    <span className="hidden xs:inline">{profile.settings.language === 'en' ? 'ARENA' : 'BÜYÜT'}</span>
+                  </button>
+                </div>
               </div>
             ) : (
-              <div className="relative group">
+              /* Full 3D Visual Arena Version */
+              <div className="relative group bg-slate-950/40 backdrop-blur-md border border-white/10 rounded-2xl p-1.5 sm:p-2 shadow-xl transition-all">
+                {/* Collapse to Mini Arena Button */}
                 <button
-                  onClick={() => setIsArenaCollapsed(true)}
-                  className="absolute -top-2 right-2 z-20 text-[8px] bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border border-white/10 px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-md transition-all hover:scale-105 active:scale-95"
-                  title="Arazilerim İçin Arenayı Mini Moda Al"
+                  onClick={() => {
+                    playPlaySound();
+                    setIsArenaCollapsed(true);
+                  }}
+                  className="absolute -top-2 right-3 z-20 text-[7.5px] sm:text-[8px] bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white border border-white/15 px-2 py-0.5 rounded-full font-bold flex items-center gap-1 shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  title={profile.settings.language === 'en' ? "Collapse to Mini Bar" : "Küçük Mini Bara Küçült"}
                 >
                   <span>▲</span>
-                  <span>MİNİ ARENA</span>
+                  <span>{profile.settings.language === 'en' ? 'MINI VIEW' : 'KÜÇÜLT'}</span>
                 </button>
 
                 {/* Horizontal Arena Grid */}
-                <div className={`grid grid-cols-3 gap-1 sm:gap-1.5 items-center bg-black/15 border border-white/[0.04] rounded-xl transition-all ${isCompactLayout ? 'p-1' : 'p-2'
-                  }`}>
-
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2 items-center">
                   {/* Draw Pile (DESTE) */}
                   <div className="text-center space-y-0.5 relative">
-                    {!isCompactLayout && <span className="text-[7px] text-slate-400 uppercase tracking-widest block font-bold">DESTE</span>}
+                    <span className="text-[7px] text-slate-400 uppercase tracking-widest block font-bold">
+                      {profile.settings.language === 'en' ? 'DECK' : 'DESTE'}
+                    </span>
                     {(() => {
                       const desteShopDetail = findShopItem(profile.settings.cardBack);
                       const desteMediaUrl = desteShopDetail?.mediaUrl;
                       const isDesteVideo = desteMediaUrl && isVideoUrl(desteMediaUrl, desteShopDetail?.mediaType);
 
                       return (
-                        <div className="relative w-8 h-11 mx-auto group cursor-pointer" onClick={() => playPlaySound()}>
+                        <div className="relative w-8.5 h-11.5 mx-auto group cursor-pointer" onClick={() => playPlaySound()}>
                           {/* 3D Stacked Deck Effect (Layer 2) */}
                           <div className="absolute inset-0 translate-x-[1.5px] translate-y-[1.5px] rounded-md bg-slate-900 border border-white/20 shadow-sm opacity-70 pointer-events-none" />
                           {/* 3D Stacked Deck Effect (Layer 1) */}
@@ -8539,14 +8760,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
                           {/* Main DESTE Front Card */}
                           <div
-                            className={`w-8 h-11 rounded-md flex flex-col justify-between p-0.5 cursor-pointer select-none active:scale-95 transition-all relative overflow-hidden z-10 ${desteShopDetail?.glowColor ? '' :
-                                profile.settings.cardBack === 'back_cosmic'
-                                  ? 'border border-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]'
-                                  : profile.settings.cardBack === 'back_gold'
-                                    ? 'border border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.75)] shadow-yellow-500/30'
-                                    : profile.settings.cardBack === 'back_neon'
-                                      ? 'border border-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.75)]'
-                                      : 'border border-red-500/50 shadow-[0_2px_5px_rgba(239,68,68,0.25)]'
+                            className={`w-8.5 h-11.5 rounded-md flex flex-col justify-between p-0.5 cursor-pointer select-none active:scale-95 transition-all relative overflow-hidden z-10 ${desteShopDetail?.glowColor ? '' :
+                              profile.settings.cardBack === 'back_cosmic'
+                                ? 'border border-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]'
+                                : profile.settings.cardBack === 'back_gold'
+                                  ? 'border border-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.75)] shadow-yellow-500/30'
+                                  : profile.settings.cardBack === 'back_neon'
+                                    ? 'border border-pink-500 shadow-[0_0_8px_rgba(236,72,153,0.75)]'
+                                    : 'border border-red-500/50 shadow-[0_2px_5px_rgba(239,68,68,0.25)]'
                               }`}
                             style={{
                               background: desteMediaUrl ? '#0f172a' : cardBackBg,
@@ -8616,7 +8837,6 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             {/* Premium Draw Pile Burst FX */}
                             {drawDeckBurst && (
                               <>
-                                {/* Shockwave expanding circle */}
                                 <motion.div
                                   className="absolute inset-0 rounded-md border border-cyan-400 bg-cyan-400/10 pointer-events-none"
                                   initial={{ scale: 0.9, opacity: 1 }}
@@ -8624,70 +8844,28 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                   transition={{ duration: 0.8, ease: "easeOut" }}
                                   style={{ zIndex: 10 }}
                                 />
-                                {/* Inner flare pulse */}
                                 <motion.div
                                   className="absolute inset-0 bg-white/40 rounded-md pointer-events-none"
                                   animate={{ opacity: [0, 1, 0] }}
                                   transition={{ duration: 0.6 }}
                                   style={{ zIndex: 20 }}
                                 />
-                                {/* Curved Motion Path Flying Cards Overlay */}
-                                {[0, 1].map((i) => (
-                                  <motion.div
-                                    key={`draw-card-fly-${i}`}
-                                    initial={{
-                                      x: 0,
-                                      y: 0,
-                                      scale: 0.7,
-                                      rotate: -15 + i * 20,
-                                      opacity: 1
-                                    }}
-                                    animate={{
-                                      x: [0, -40 - i * 30, -80 + i * 20, -10],
-                                      y: [0, -90, -10, 220],
-                                      scale: [0.7, 1.25, 1.1, 0.4],
-                                      rotate: [-15 + i * 20, 25, -15, 0],
-                                      opacity: [1, 1, 1, 0]
-                                    }}
-                                    transition={{
-                                      duration: 1.1,
-                                      delay: i * 0.16,
-                                      ease: "easeInOut"
-                                    }}
-                                    className="fixed z-50 w-8 h-11 bg-gradient-to-br from-indigo-600 via-purple-600 to-amber-500 border-2 border-white rounded-md shadow-[0_0_15px_rgba(99,102,241,0.9)] flex items-center justify-center text-white text-xs font-black pointer-events-none"
-                                  >
-                                    ✨
-                                  </motion.div>
-                                ))}
-                                {/* Sparkles shooting up */}
-                                <motion.span
-                                  className="absolute text-sm pointer-events-none text-cyan-300 select-none"
-                                  initial={{ y: 20, opacity: 0, scale: 0.5 }}
-                                  animate={{ y: -30, x: -10, opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5] }}
-                                  transition={{ duration: 1 }}
-                                  style={{ zIndex: 30, left: '20%' }}
-                                >✨</motion.span>
-                                <motion.span
-                                  className="absolute text-xs pointer-events-none text-white select-none"
-                                  initial={{ y: 20, opacity: 0, scale: 0.5 }}
-                                  animate={{ y: -25, x: 12, opacity: [0, 1, 0], scale: [0.5, 1.1, 0.5] }}
-                                  transition={{ duration: 0.9, delay: 0.15 }}
-                                  style={{ zIndex: 30, right: '20%' }}
-                                >🌟</motion.span>
                               </>
                             )}
                           </div>
                         </div>
                       );
                     })()}
-                    <span className="text-[6.5px] text-amber-300 font-black block bg-amber-500/10 px-1 py-0.25 rounded-full inline-block mt-0.5">
-                      {match.deckCount} Kart
+                    <span className="text-[7px] text-amber-300 font-black block bg-amber-500/10 px-1 py-0.25 rounded-full inline-block mt-0.5 font-mono">
+                      {match.deckCount} {profile.settings.language === 'en' ? 'Cards' : 'Kart'}
                     </span>
                   </div>
 
                   {/* Timer & Turn status block (SÜRE) */}
                   <div className="text-center space-y-0.5 flex flex-col items-center">
-                    {!isCompactLayout && <span className="text-[7px] text-slate-400 uppercase tracking-widest block font-bold">SÜRE</span>}
+                    <span className="text-[7px] text-slate-400 uppercase tracking-widest block font-bold">
+                      {profile.settings.language === 'en' ? 'TIMER' : 'SÜRE'}
+                    </span>
 
                     {/* Visual Timer ring */}
                     <div className="relative w-8.5 h-8.5 rounded-full border-2 border-slate-800 flex items-center justify-center bg-slate-950 shadow-inner">
@@ -8713,37 +8891,28 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     <span className="text-[7px] font-black uppercase text-slate-300 truncate max-w-[80px]">
                       {(match.activeActionRequest || activeActionCard)
                         ? ((profile.settings.language || 'tr') === 'en' ? 'WAITING' : 'BEKLENİYOR')
-                        : (match.players[match.turnIndex].id === profile.id 
-                            ? ((profile.settings.language || 'tr') === 'en' ? 'YOUR TURN' : 'SIRA SENDE') 
-                            : match.players[match.turnIndex].username.split(' ')[0])}
+                        : (match.players[match.turnIndex]?.id === profile.id
+                          ? ((profile.settings.language || 'tr') === 'en' ? 'YOUR TURN' : 'SIRA SENDE')
+                          : match.players[match.turnIndex]?.username.split(' ')[0])}
                     </span>
                     <div className="flex flex-col items-center gap-0.5 mt-0.5">
                       <div className="flex gap-0.5 justify-center">
                         {[1, 2, 3].map((num) => {
                           const isPlayed = match.actionsPlayedThisTurn >= num;
-                          const rem = 3 - match.actionsPlayedThisTurn;
                           return (
                             <div
                               key={num}
                               className={`w-1.25 h-1.25 rounded-full border transition-all duration-300 ${isPlayed
                                 ? 'bg-red-500/80 border-red-400 shadow-[0_0_8px_rgba(239,68,68,0.5)]'
-                                : rem === 1
-                                  ? 'bg-amber-500/20 border-amber-400 animate-pulse'
-                                  : 'bg-emerald-500/20 border-emerald-400 shadow-[0_0_4px_rgba(16,185,129,0.2)]'
+                                : 'bg-emerald-500/20 border-emerald-400 shadow-[0_0_4px_rgba(16,185,129,0.2)]'
                                 }`}
-                              title={isPlayed 
-                                ? ((profile.settings.language || 'tr') === 'en' ? 'Move Used' : 'Hamle Yapıldı') 
-                                : ((profile.settings.language || 'tr') === 'en' ? 'Remaining Move' : 'Kalan Hamle')
-                              }
                             />
                           );
                         })}
                       </div>
                       <span className={`text-[6px] font-extrabold px-1 py-0.25 rounded-full tracking-wider leading-none border transition-all ${(3 - match.actionsPlayedThisTurn) === 0
                         ? 'text-red-400 bg-red-950/60 border-red-500/30 animate-pulse'
-                        : (3 - match.actionsPlayedThisTurn) === 1
-                          ? 'text-amber-400 bg-amber-950/60 border-amber-500/30 animate-pulse font-black'
-                          : 'text-emerald-400 bg-emerald-950/60 border-emerald-500/20'
+                        : 'text-emerald-400 bg-emerald-950/60 border-emerald-500/20'
                         }`}>
                         {3 - match.actionsPlayedThisTurn} {(profile.settings.language || 'tr') === 'en' ? 'MOVES' : 'HAMLE'}
                       </span>
@@ -8752,13 +8921,15 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
                   {/* Last Action Played (SON HAMLE) */}
                   <div className="text-center space-y-0.5">
-                    {!isCompactLayout && <span className="text-[7px] text-slate-400 uppercase tracking-widest block font-bold">{t('last_move', profile)}</span>}
+                    <span className="text-[7px] text-slate-400 uppercase tracking-widest block font-bold">
+                      {profile.settings.language === 'en' ? 'LAST MOVE' : 'SON HAMLE'}
+                    </span>
                     {match.discardPile.length > 0 ? (
                       (() => {
                         const topDiscard = match.discardPile[match.discardPile.length - 1];
                         const isHidden = isCardAnimating(topDiscard.id);
                         return (
-                          <div className="w-8 h-11 flex items-center justify-center mx-auto relative overflow-visible">
+                          <div className="w-8.5 h-11.5 flex items-center justify-center mx-auto relative overflow-visible">
                             <div
                               id="discard-pile-zone"
                               className={`flex justify-center cursor-pointer hover:scale-105 transition-all duration-300 absolute scale-75 origin-center ${isHidden ? 'opacity-0 pointer-events-none' : ''}`}
@@ -8769,97 +8940,86 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                               }}
                               title={profile.settings.language === 'en' ? "Inspect Last Move" : "Son Hamle Detayını İncele"}
                             >
-                              {/* Premium Discard Burst Glow and Ring */}
-                              {discardGlow && (
-                                <>
-                                  {/* Shockwave circle ring */}
-                                  <motion.div
-                                    className="absolute inset-0 rounded-lg border-2 border-amber-400 bg-amber-400/10 pointer-events-none"
-                                    initial={{ scale: 0.9, opacity: 1 }}
-                                    animate={{ scale: 2.2, opacity: 0 }}
-                                    transition={{ duration: 0.8, ease: "easeOut" }}
-                                    style={{ zIndex: 10 }}
-                                  />
-                                  {/* Outer ambient soft glow */}
-                                  <motion.div
-                                    className="absolute inset-x-[-12px] inset-y-[-16px] rounded-xl bg-amber-500/20 blur-xl pointer-events-none"
-                                    animate={{ opacity: [0, 0.8, 0.8, 0], scale: [0.8, 1.2, 1.2, 0.8] }}
-                                    transition={{ duration: 1.5, ease: "easeInOut" }}
-                                    style={{ zIndex: 5 }}
-                                  />
-                                  {/* Shimmer overlay */}
-                                  <motion.div
-                                    className="absolute inset-0 bg-gradient-to-tr from-amber-500/30 via-white/40 to-yellow-400/30 rounded-lg pointer-events-none"
-                                    animate={{ opacity: [0, 1, 0] }}
-                                    transition={{ duration: 1 }}
-                                    style={{ zIndex: 25 }}
-                                  />
-                                  {/* Sparkles */}
-                                  <motion.span
-                                    className="absolute text-lg pointer-events-none text-yellow-300 select-none -top-4 -left-4"
-                                    initial={{ y: 10, opacity: 0 }}
-                                    animate={{ y: -15, x: -5, opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5] }}
-                                    transition={{ duration: 1.2 }}
-                                    style={{ zIndex: 30 }}
-                                  >✨</motion.span>
-                                  <motion.span
-                                    className="absolute text-base pointer-events-none text-amber-300 select-none -bottom-4 -right-4"
-                                    initial={{ y: -10, opacity: 0 }}
-                                    animate={{ y: 15, x: 5, opacity: [0, 1, 0], scale: [0.5, 1.2, 0.5] }}
-                                    transition={{ duration: 1.2, delay: 0.1 }}
-                                    style={{ zIndex: 30 }}
-                                  >🌟</motion.span>
-                                </>
-                              )}
                               <GameCard card={topDiscard} size="mini" activeEffect={cardEffects[topDiscard.id] || null} disable3D={disable3D} cardBack={profile.settings.cardBack} cardSkin={profile.settings.cardSkin || 'skin_none'} />
                             </div>
                           </div>
                         );
                       })()
                     ) : (
-                      <div className="w-8 h-11 rounded-md border border-dashed border-white/10 mx-auto flex items-center justify-center text-slate-600 text-[6.5px] font-bold">
+                      <div className="w-8.5 h-11.5 rounded-md border border-dashed border-white/10 mx-auto flex items-center justify-center text-slate-600 text-[6.5px] font-bold">
                         {profile.settings.language === 'en' ? 'NONE' : 'YOK'}
                       </div>
                     )}
-                    {!isCompactLayout && <span className="text-[6.5px] text-slate-500 block font-bold">{t('action_label', profile)}</span>}
                   </div>
-
                 </div>
               </div>
             )}
+          </div>
 
-            {/* BENİM VARLIKLARIM (My Assets - Full-Width Unified Board) */}
-            <div className={`bg-[#090C12]/40 border border-white/5 rounded-2xl flex flex-col flex-1 min-h-0 transition-all ${isCompactLayout ? 'p-1.5 sm:p-2' : 'p-2 sm:p-2.5'
+          {/* 2. Middle area: My Properties Collection */}
+          <div className="flex-1 min-h-0 flex flex-col justify-start px-2 sm:px-3 pt-0.5 pb-0.5 transition-all">
+
+            {/* BENİM VARLIKLARIM (My Assets - Full-Width Modern Luxury Board) */}
+            <div className={`bg-gradient-to-b from-[#0d1322]/40 via-[#070b14]/50 to-[#04060a]/60 border border-white/10 rounded-2xl flex flex-col flex-1 min-h-0 transition-all shadow-2xl backdrop-blur-md relative overflow-hidden ${isCompactLayout ? 'p-1 sm:p-1.5' : 'p-1 sm:p-1.5'
               }`}>
-              {/* Unified Header with Interactive Bank Vault Badge */}
+              {/* Subtle background ambient glow */}
+              <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" />
+              <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.02)_1px,transparent_1px)] [background-size:12px_12px] opacity-30 pointer-events-none" />
+
+              {/* Unified Header with Interactive Bank Vault Badge & Set Progress */}
               {(() => {
                 const bankTotal = localPlayer.bank.reduce((sum, c) => sum + c.value, 0);
+                const completedSets = countCompletedSets(localPlayer.properties);
+                const targetSets = match?.settings?.targetSets || 3;
 
                 return (
-                  <div className="flex items-center justify-between text-[9px] text-slate-400 uppercase tracking-wider font-bold mb-1.5 px-1 select-none">
-                    <div className="flex items-center gap-2">
-                      <span className="text-amber-300 font-extrabold flex items-center gap-1">🏡 {t('my_lands', profile)}</span>
-                      <span className="text-white/20 font-normal">|</span>
-                      {/* Interactive Bank Vault Button */}
-                      <button
-                        onClick={() => {
-                          playPlaySound();
-                          setShowBankVaultModal(true);
-                        }}
-                        className="flex items-center gap-1.5 bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-500/30 text-emerald-300 font-bold px-2 py-0.5 rounded-full text-[8.5px] transition-all hover:scale-105 shadow-sm active:scale-95"
-                        title={profile.settings.language === 'en' ? 'Click to inspect your Bank Vault' : 'Bankadaki paralarınızı görmek için tıklayın'}
-                      >
-                        <span className="text-[9px]">🏦</span>
-                        <span>{profile.settings.language === 'en' ? 'Bank:' : 'Kasa:'} <strong className="text-white font-mono">{bankTotal}M</strong> ({localPlayer.bank.length} {profile.settings.language === 'en' ? 'Cards' : 'Kart'})</span>
-                      </button>
+                  <div className="flex items-center justify-between text-[8px] sm:text-[9px] uppercase tracking-wider font-bold mb-1 px-0.5 select-none relative z-10 w-full gap-2 flex-shrink-0">
+                    {/* Interactive Bank Vault Button */}
+                    <button
+                      onClick={() => {
+                        playPlaySound();
+                        setShowBankVaultModal(true);
+                      }}
+                      className="flex items-center gap-2 bg-gradient-to-r from-emerald-950/50 via-slate-900/55 to-slate-950/60 hover:from-emerald-900/60 hover:to-slate-900/70 border border-emerald-500/30 hover:border-emerald-400 text-emerald-300 font-black px-2.5 sm:px-3 py-0.75 rounded-xl text-[8.5px] sm:text-[9.5px] transition-all hover:scale-105 shadow-md shadow-emerald-950/20 active:scale-95 cursor-pointer group backdrop-blur-sm"
+                      title={profile.settings.language === 'en' ? 'Click to inspect your Bank Vault' : 'Bankadaki paralarınızı görmek için tıklayın'}
+                    >
+                      <span className="text-xs sm:text-sm group-hover:scale-110 transition-transform">🏦</span>
+                      <div className="flex items-center gap-1.5 leading-none">
+                        <span className="text-emerald-400/80 text-[7.5px] sm:text-[8.5px] font-bold">
+                          {profile.settings.language === 'en' ? 'BANK:' : 'KASA:'}
+                        </span>
+                        <strong className="text-white font-mono font-black text-[9.5px] sm:text-[10.5px] drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]">
+                          {bankTotal}M
+                        </strong>
+                        <span className="bg-emerald-500/20 text-emerald-300 text-[6.5px] sm:text-[7.5px] font-mono px-1 py-0.2 rounded border border-emerald-500/30">
+                          {localPlayer.bank.length} {profile.settings.language === 'en' ? 'cards' : 'kart'}
+                        </span>
+                      </div>
+                    </button>
+
+                    {/* Set Completion Progress Badge */}
+                    <div className="flex items-center gap-2 bg-gradient-to-r from-slate-950/60 via-slate-900/55 to-amber-950/50 border border-amber-400/30 px-2.5 sm:px-3 py-0.75 rounded-xl shadow-md shadow-amber-950/20 backdrop-blur-sm">
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: targetSets }).map((_, i) => (
+                          <span key={i} className={`text-[9px] sm:text-[10px] transition-all ${i < completedSets ? 'text-amber-400 animate-bounce scale-110 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]' : 'text-slate-600 opacity-60'
+                            }`}>
+                            {i < completedSets ? '👑' : '⚪'}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-1 leading-none font-mono font-black text-[9px] sm:text-[10px] text-amber-300">
+                        <span>{completedSets}/{targetSets}</span>
+                        <span className="text-[7.5px] sm:text-[8px] font-sans text-amber-400/80 font-bold uppercase">
+                          {profile.settings.language === 'en' ? 'SETS' : 'SET'}
+                        </span>
+                      </div>
                     </div>
-                    <span className="text-amber-400 font-mono font-black text-[9.5px]">({countCompletedSets(localPlayer.properties)}/3 SET)</span>
                   </div>
                 );
               })()}
 
               {/* Content Row: Full Width Properties Drop Zone with Options Trigger */}
-              <div className="flex gap-2 sm:gap-2.5 items-stretch flex-1 min-h-0 w-full">
+              <div className="flex-1 min-h-0 flex flex-col w-full relative z-10">
                 {/* BENİM ARAZİLERİM (My Properties & Board Drop Zone) */}
                 <div
                   id="properties-drop-zone"
@@ -8870,7 +9030,6 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         alert("Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!");
                         return;
                       }
-                      // Open the full Card Options Menu for the selected card
                       setShowCardMenu(true);
                     }
                   }}
@@ -8940,15 +9099,15 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     }
                   }}
                   className={(() => {
-                    return `w-full rounded-2xl transition-all grid grid-cols-5 gap-1 sm:gap-1.5 p-1.5 select-none bg-slate-950/60 backdrop-blur-sm border border-white/10 ${isDragOverProperties
-                        ? 'ring-2 ring-amber-400 bg-amber-500/10 shadow-[inset_0_0_20px_rgba(245,158,11,0.3)] animate-pulse'
-                        : draggingCard
-                          ? 'border-dashed border-amber-500/40 bg-amber-500/[0.02]'
-                          : selectedCard
-                            ? 'ring-2 ring-amber-400 animate-pulse shadow-[0_0_18px_rgba(245,158,11,0.3)]'
-                            : playerVisualStates[localPlayer.id]?.type === 'card_gain'
-                              ? 'border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.3)] animate-pulse'
-                              : 'border-white/10'
+                    return `w-full flex-1 min-h-0 overflow-y-auto scrollbar-thin rounded-xl transition-all grid grid-cols-5 items-start content-start gap-1 sm:gap-1.5 p-1 sm:p-1.5 select-none bg-slate-950/25 border border-white/5 shadow-inner ${isDragOverProperties
+                      ? 'ring-2 ring-amber-400 bg-amber-500/10 shadow-[inset_0_0_25px_rgba(245,158,11,0.3)] animate-pulse'
+                      : draggingCard
+                        ? 'border-dashed border-amber-500/40 bg-amber-500/[0.03]'
+                        : selectedCard
+                          ? 'ring-2 ring-amber-400 animate-pulse shadow-[0_0_18px_rgba(245,158,11,0.3)]'
+                          : playerVisualStates[localPlayer.id]?.type === 'card_gain'
+                            ? 'border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.3)] animate-pulse'
+                            : 'border-white/5'
                       }`;
                   })()}
                 >
@@ -8958,14 +9117,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     const set = localPlayer.properties[col];
                     if (!set || set.cards.length === 0) return null;
                     const isCompleted = set.cards.length >= MAX_IN_SET[col];
-                    const isExpanded = expandedPropertyColor === col;
+                    const isExpanded = managedSetColor === col;
                     const rentVal = calculateSetRent(set.cards, col, set.hasHouse, set.hasHotel);
                     const neonColor = COLOR_HEX[col] || '#34d399';
 
                     return (
-                      <motion.div
+                      <div
                         key={col}
-                        layout
                         id={`property-set-${col}-${localPlayer.id}`}
                         onClick={() => {
                           if (selectedCard) {
@@ -9023,8 +9181,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           }
 
                           playPlaySound();
-                          setExpandedPropertyColor(isExpanded ? null : col);
-                          setBuildingTooltipColor(buildingTooltipColor === col ? null : col);
+                          setManagedSetColor(col);
+                          setBuildingTooltipColor(null);
                           setAnalyzedProperty(null);
                         }}
                         onDragOver={(e) => {
@@ -9081,7 +9239,6 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                 else handlePlayCardMultiplayer(draggingCard.id, 'property', col);
                               }
                             } else {
-                              // Action, Rent, or other cards dropped on a set: Open Card Options Modal!
                               playPlaySound();
                               setSelectedCard(draggingCard);
                               setShowCardMenu(true);
@@ -9106,47 +9263,68 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           handleEndPress();
                           setTimeout(() => setAnalyzedProperty(null), 1200);
                         }}
-                        className={`flex flex-col justify-between items-center rounded-xl transition-all duration-200 w-full min-w-0 max-w-full relative cursor-pointer select-none property-set-card-trigger p-1 ${draggingOverSetColor === col
-                            ? 'ring-2 ring-amber-400 scale-105 z-40 bg-slate-900 shadow-[0_0_20px_rgba(245,158,11,0.9)]'
-                            : isExpanded
-                              ? 'ring-2 ring-amber-400 bg-slate-950 shadow-[0_0_15px_rgba(245,158,11,0.5)] scale-105 z-30'
+                        className={`flex flex-col items-center rounded-2xl transition-all duration-200 w-full min-w-0 max-w-full h-auto self-start relative cursor-pointer select-none property-set-card-trigger p-1 sm:p-1.5 overflow-hidden group ${draggingOverSetColor === col
+                            ? 'ring-2 ring-amber-400 scale-105 z-40 bg-slate-900 shadow-[0_0_24px_rgba(245,158,11,0.9)]'
+                            : managedSetColor === col
+                              ? 'ring-2 ring-amber-400 bg-slate-950 shadow-[0_0_20px_rgba(245,158,11,0.6)] scale-102 z-30'
                               : isCompleted
-                                ? 'border border-amber-400/80 bg-gradient-to-b from-amber-950/40 via-slate-900/90 to-slate-950 shadow-[0_3px_12px_rgba(251,191,36,0.3)]'
-                                : 'border border-white/10 bg-gradient-to-b from-slate-900/90 via-slate-950/95 to-slate-900/90 hover:border-white/25 hover:shadow-md'
+                                ? 'border border-amber-400/90 bg-gradient-to-b from-amber-950/35 via-[#0b1120]/95 to-[#04060d]/98 shadow-[0_4px_18px_rgba(251,191,36,0.3)] hover:border-amber-300 hover:shadow-[0_6px_24px_rgba(251,191,36,0.4)] hover:-translate-y-1'
+                                : 'border border-white/10 bg-gradient-to-b from-[#131b2e]/90 via-[#0b101c]/95 to-[#04060c]/98 hover:border-white/30 hover:shadow-xl hover:-translate-y-1'
                           }`}
                         style={{
                           boxShadow: isCompleted
-                            ? `0 4px 12px -2px ${neonColor}40, inset 0 1px 0 rgba(255,255,255,0.15)`
-                            : `0 2px 6px -1px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)`
+                            ? `0 6px 20px -2px ${neonColor}40, inset 0 1px 0 rgba(255,255,255,0.25)`
+                            : `0 4px 12px -2px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.08)`
                         }}
                       >
-                        {/* Top Color Header Tab */}
-                        <div 
-                          className="w-full flex items-center justify-between px-1 py-0.5 rounded text-[8px] font-black mb-0.5 overflow-hidden" 
-                          style={{ 
-                            backgroundColor: `${neonColor}25`, 
-                            borderLeft: `2.5px solid ${neonColor}`,
-                            borderTop: '1px solid rgba(255,255,255,0.1)'
+                        {/* Top Ambient Glow & Color Bar */}
+                        <div
+                          className="absolute top-0 left-0 right-0 h-[3px] z-10 transition-all opacity-95 group-hover:opacity-100"
+                          style={{
+                            backgroundColor: neonColor,
+                            boxShadow: `0 0 10px ${neonColor}80`
+                          }}
+                        />
+                        <div
+                          className="absolute -top-7 left-1/2 -translate-x-1/2 w-24 h-12 pointer-events-none opacity-30 group-hover:opacity-60 transition-opacity rounded-full blur-md"
+                          style={{ backgroundColor: neonColor }}
+                        />
+
+                        {/* Top Color Header Banner */}
+                        <div
+                          className="w-full flex items-center justify-between px-1.5 py-0.5 rounded-lg text-[7px] sm:text-[8px] font-black mb-1 relative z-10 overflow-hidden mt-0.5 shadow-xs"
+                          style={{
+                            backgroundColor: `${neonColor}22`,
+                            borderLeft: `3px solid ${neonColor}`,
+                            borderTop: '1px solid rgba(255,255,255,0.15)',
+                            borderRight: '1px solid rgba(255,255,255,0.06)',
+                            borderBottom: '1px solid rgba(255,255,255,0.06)'
                           }}
                         >
-                          <span className="text-white truncate uppercase text-[7px] sm:text-[7.5px] leading-tight">
-                            {getTranslatedColorLabel(col, profile).slice(0, 5)}
-                          </span>
-                          <span className="font-mono text-amber-300 text-[6.5px] sm:text-[7px] font-black shrink-0">
-                            {isCompleted ? '👑' : `${set.cards.length}/${MAX_IN_SET[col]}`}
+                          <div className="flex items-center gap-1 min-w-0">
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0 shadow-[0_0_6px_currentColor]" style={{ backgroundColor: neonColor, color: neonColor }} />
+                            <span className="text-white truncate uppercase text-[6.5px] sm:text-[7.5px] font-black tracking-wider leading-tight drop-shadow">
+                              {getTranslatedColorLabel(col, profile)}
+                            </span>
+                          </div>
+                          <span className={`font-mono text-[6px] sm:text-[7px] font-black shrink-0 px-1 py-0.2 rounded-md ${isCompleted
+                              ? 'bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 font-black shadow-xs'
+                              : 'bg-slate-950/70 text-amber-300 border border-white/10'
+                            }`}>
+                            {isCompleted ? '👑 SET' : `${set.cards.length}/${MAX_IN_SET[col]}`}
                           </span>
                         </div>
 
                         {/* Completed Set Crown Badge Seal */}
                         {isCompleted && (
-                          <div className="absolute -top-1.5 -right-1 bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 text-slate-950 font-black rounded-full border border-yellow-100 shadow-md animate-bounce z-40 flex items-center justify-center px-1 py-0.2 text-[6px] leading-none">
+                          <div className="absolute -top-1 -right-1 bg-gradient-to-r from-amber-400 to-yellow-400 text-slate-950 font-black rounded-full border border-yellow-100 shadow-md animate-bounce z-40 flex items-center justify-center w-5 h-5 text-[9px]">
                             <span>👑</span>
                           </div>
                         )}
 
                         {/* Active Buildings Indicator Seal */}
                         {(set.hasHouse || set.hasHotel) && (
-                          <div className={`absolute -top-1.5 -left-1 bg-gradient-to-r ${set.hasHotel ? 'from-blue-500 to-indigo-600' : 'from-emerald-500 to-teal-600'} text-white font-black rounded-full border ${set.hasHotel ? 'border-blue-200 shadow-sm' : 'border-emerald-200 shadow-sm'} z-40 flex items-center justify-center w-3.5 h-3.5 cursor-pointer text-[7px]`}
+                          <div className={`absolute -top-1 -left-1 bg-gradient-to-r ${set.hasHotel ? 'from-blue-600 to-indigo-700 border-blue-200 shadow-blue-500/40' : 'from-emerald-600 to-teal-700 border-emerald-200 shadow-emerald-500/40'} text-white font-black rounded-full border shadow-md z-40 flex items-center justify-center w-5 h-5 cursor-pointer text-[9px]`}
                             onClick={(e) => {
                               e.stopPropagation();
                               playPlaySound();
@@ -9158,44 +9336,47 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           </div>
                         )}
 
-                        {/* Vertical Stepped Stack that NEVER causes horizontal shifts */}
-                        <div className="flex-1 flex flex-col items-center justify-center w-full my-0.5 overflow-visible relative">
+                        {/* Vertical Stepped Waterfall Stack */}
+                        <div className="flex flex-col items-center justify-center w-full my-0.5 overflow-visible relative py-0.5">
                           {set.cards.map((card, idx) => {
                             const isWild = card.isWildcard || card.type === 'wildcard';
-                            const overlapOffset = idx > 0 ? '-mt-12 sm:-mt-13.5' : '';
+                            const overlapOffset = idx > 0 ? '-mt-11 sm:-mt-12.5' : '';
 
                             return (
-                              <motion.div
+                              <div
                                 key={card.id}
-                                layout
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   playPlaySound();
-                                  setExpandedPropertyColor(isExpanded ? null : col);
+                                  setManagedSetColor(col);
                                 }}
                                 onMouseEnter={() => setHoveredCard(card)}
                                 onMouseLeave={() => setHoveredCard(null)}
-                                className={`relative cursor-pointer transition-all duration-200 hover:scale-105 hover:-translate-y-1 hover:z-40 drop-shadow-[0_4px_10px_rgba(0,0,0,0.6)] ${overlapOffset} ${isCardAnimating(card.id) ? 'opacity-0 pointer-events-none' : ''}`}
+                                className={`relative cursor-pointer transition-transform duration-150 hover:scale-108 hover:-translate-y-1 hover:z-40 drop-shadow-[0_4px_10px_rgba(0,0,0,0.7)] ${overlapOffset} ${isCardAnimating(card.id) ? 'opacity-0 pointer-events-none' : ''}`}
                                 style={{ zIndex: 10 + idx }}
-                                onDoubleClick={(e) => { e.stopPropagation(); if (isWild && isMyTurn) { handleQuickFlipWildcard(card); } }} 
+                                onDoubleClick={(e) => { e.stopPropagation(); if (isWild && isMyTurn) { handleQuickFlipWildcard(card); } }}
                                 title={isWild && isMyTurn ? (profile.settings.language === 'en' ? "Double-click to flip color instantly!" : "Renk değiştirmek için çift tıklayın!") : undefined}
                               >
                                 <GameCard card={card} size="mini" activeEffect={cardEffects[card.id] || null} disable3D={disable3D} cardBack={profile.settings.cardBack} cardSkin={profile.settings.cardSkin || 'skin_none'} />
                                 {isWild && isMyTurn && (
-                                  <div className="absolute top-1 right-1 bg-yellow-400 border border-yellow-200 text-slate-950 text-[6.5px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center animate-bounce shadow-md z-10" title="Grup Değiştirebilir">
+                                  <div className="absolute top-0.5 right-0.5 bg-yellow-400 border border-yellow-200 text-slate-950 text-[6.5px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center animate-bounce shadow-md z-10" title="Grup Değiştirebilir">
                                     🔄
                                   </div>
                                 )}
-                              </motion.div>
+                              </div>
                             );
                           })}
                         </div>
 
-                        {/* Bottom Rent Badge */}
-                        <div className="w-full bg-slate-950/90 border border-white/10 rounded px-0.5 py-0.2 text-center mt-0.5">
-                          <span className="text-[7.5px] sm:text-[8px] font-black font-mono text-emerald-400 leading-none block">
-                            ⚡{rentVal}M
+                        {/* Bottom Rent Power Badge */}
+                        <div className="w-full bg-slate-950/95 border border-emerald-500/30 rounded-lg px-1.5 py-0.5 text-center mt-1 shadow-inner relative z-10 flex items-center justify-between group-hover:border-emerald-400/60 transition-colors">
+                          <span className="text-[7.5px] sm:text-[8px] font-black font-mono text-emerald-400 leading-none flex items-center gap-0.5">
+                            ⚡ {rentVal}M
                           </span>
+                          <div className="flex items-center gap-0.5">
+                            {set.hasHouse && <span className="text-[7.5px] leading-none" title="Ev (+3M)">🏠</span>}
+                            {set.hasHotel && <span className="text-[7.5px] leading-none" title="Otel (+4M)">🏨</span>}
+                          </div>
                         </div>
 
                         {glowingProperties[`${col}-${localPlayer.id}`] && (
@@ -9272,8 +9453,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
                                 {/* House Status Section */}
                                 <div className={`flex items-center justify-between p-1.5 rounded-lg border transition-all ${set.hasHouse
-                                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                                    : 'bg-white/[0.02] border-white/5 text-slate-500'
+                                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                                  : 'bg-white/[0.02] border-white/5 text-slate-500'
                                   }`}>
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-xs">🏡</span>
@@ -9293,8 +9474,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
                                 {/* Hotel Status Section */}
                                 <div className={`flex items-center justify-between p-1.5 rounded-lg border transition-all ${set.hasHotel
-                                    ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
-                                    : 'bg-white/[0.02] border-white/5 text-slate-500'
+                                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-300'
+                                  : 'bg-white/[0.02] border-white/5 text-slate-500'
                                   }`}>
                                   <div className="flex items-center gap-1.5">
                                     <span className="text-xs">🏨</span>
@@ -9344,193 +9525,286 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             </motion.div>
                           )}
                         </AnimatePresence>
-                      </motion.div>
+                      </div>
                     );
                   })}
 
                   {Object.keys(localPlayer.properties).filter(k => localPlayer.properties[k as CardColor]!.cards.length > 0).length === 0 && (
-                    <div className="col-span-full flex-1 flex flex-col items-center justify-center border-2 border-dashed border-white/10 rounded-2xl py-5 text-slate-400 min-h-[140px] w-full bg-slate-950/40 backdrop-blur-sm shadow-inner">
-                      <div className="w-12 h-16 border-2 border-dashed border-amber-400/30 rounded-xl flex items-center justify-center text-base bg-amber-500/5 shadow-inner">
+                    <div className="col-span-full flex-1 flex flex-col items-center justify-center border border-dashed border-white/10 rounded-xl py-3 px-3 text-slate-400 min-h-[85px] w-full bg-gradient-to-b from-slate-950/60 to-slate-900/40 backdrop-blur-sm shadow-inner relative overflow-hidden group">
+                      <div className="absolute inset-0 bg-[radial-gradient(rgba(245,158,11,0.03)_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
+                      <div className="w-8 h-8 rounded-xl border border-amber-400/30 flex items-center justify-center text-lg bg-gradient-to-br from-amber-500/10 to-amber-950/30 shadow-[0_0_10px_rgba(245,158,11,0.15)] group-hover:scale-110 transition-transform mb-1">
                         🏰
                       </div>
-                      <span className="text-[10px] font-black mt-2 uppercase tracking-widest text-slate-300">
+                      <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-slate-200 drop-shadow">
                         {(profile.settings.language || 'tr') === 'en' ? 'NO PROPERTIES DEPLOYED' : 'HENÜZ MÜLK BULUNMUYOR'}
                       </span>
-                      <span className="text-[8.5px] font-semibold text-slate-500 mt-0.5">
-                        {(profile.settings.language || 'tr') === 'en' ? 'Play property cards to build sets' : 'Set oluşturmak için elinden arsa kartı oyna'}
+                      <span className="text-[7.5px] sm:text-[8px] font-semibold text-slate-400 mt-0.5 max-w-xs text-center leading-relaxed">
+                        {(profile.settings.language || 'tr') === 'en' ? 'Drag property cards here or play them from your hand to build sets' : 'Set oluşturmak için arsa kartlarını buraya sürükleyin veya elinizden oynayın'}
                       </span>
                     </div>
                   )}
                 </div>
 
-                {/* Mobile Bottom-Sheet Console Dock */}
+                {/* 🏰 SET YÖNETİM MODALİ (Set Management Modal) */}
                 <AnimatePresence>
-                  {expandedPropertyColor && (() => {
-                    const activeCol = expandedPropertyColor;
-                    const activeSet = localPlayer.properties[activeCol];
-                    if (!activeSet || activeSet.cards.length === 0) return null;
-                    const isSetComp = activeSet.cards.length >= MAX_IN_SET[activeCol];
-                    const activeRent = calculateSetRent(activeSet.cards, activeCol, activeSet.hasHouse, activeSet.hasHotel);
-                    const colorLabel = getTranslatedColorLabel(activeCol, profile);
-                    const colorHex = COLOR_HEX[activeCol] || '#ffffff';
+                  {managedSetColor && (() => {
+                    const col = managedSetColor;
+                    const set = localPlayer.properties[col];
+                    if (!set || set.cards.length === 0) return null;
+                    const isCompleted = set.cards.length >= MAX_IN_SET[col];
+                    const rentVal = calculateSetRent(set.cards, col, set.hasHouse, set.hasHotel);
+                    const colorLabel = getTranslatedColorLabel(col, profile);
+                    const neonColor = COLOR_HEX[col] || '#ffffff';
+
+                    // Find playable cards from hand for this set
+                    const houseCardInHand = localPlayer.hand.find(c => c.actionType === 'house');
+                    const hotelCardInHand = localPlayer.hand.find(c => c.actionType === 'hotel');
+                    const matchingRentCard = localPlayer.hand.find(c => {
+                      if (c.type !== 'rent') return false;
+                      if (!c.color || c.name === 'Her Renk Kira Kartı' || c.isWildcard) return true;
+                      return c.color === col || c.secondaryColor === col;
+                    });
+
+                    const canBuildHouse = isMyTurn && !isActionLocked && isCompleted && !set.hasHouse && !!houseCardInHand;
+                    const canBuildHotel = isMyTurn && !isActionLocked && isCompleted && set.hasHouse && !set.hasHotel && !!hotelCardInHand;
+                    const canDemandRent = isMyTurn && !isActionLocked && !!matchingRentCard;
 
                     return (
-                      <>
-                        {/* Mobile backdrop click overlay */}
-                        <div
-                          className="fixed inset-0 bg-slate-950/60 z-[99] sm:hidden animate-fade-in"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setExpandedPropertyColor(null);
-                          }}
-                        />
+                      <div
+                        className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 animate-fade-in select-none"
+                        onClick={() => setManagedSetColor(null)}
+                      >
                         <motion.div
-                          initial={{ opacity: 0, y: 80, scale: 0.98 }}
-                          animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 50, scale: 0.98 }}
-                          transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: 8 }}
+                          transition={{ duration: 0.15, ease: 'easeOut' }}
                           onClick={(e) => e.stopPropagation()}
-                          className="fixed bottom-0 left-0 right-0 z-[100] bg-[#0c0f16] border-t border-slate-800/80 rounded-t-3xl p-5 flex flex-col gap-3 shadow-[0_-10px_35px_rgba(0,0,0,0.9)] max-h-[85vh] overflow-y-auto sm:relative sm:bottom-auto sm:left-auto sm:right-auto sm:z-30 sm:bg-[#0c0f16] sm:border sm:border-slate-800/80 sm:rounded-xl sm:p-2.5 sm:mt-2 sm:gap-2 sm:shadow-[0_20px_50px_rgba(0,0,0,0.85)] sm:max-h-none sm:overflow-visible property-details-sheet"
+                          className="bg-gradient-to-b from-[#0e1628]/98 via-slate-950/98 to-[#060913]/98 border-2 border-white/15 rounded-3xl p-4 sm:p-6 shadow-2xl max-w-lg w-full relative overflow-hidden text-white flex flex-col gap-3.5"
+                          style={{
+                            boxShadow: `0 25px 65px -10px rgba(0,0,0,0.9), 0 0 35px -5px ${neonColor}35`
+                          }}
                         >
-                          {/* 4 Köşe Siber Braketi (Sadece Masaüstü) */}
-                          <div className="absolute top-3 left-3 w-3 h-3 border-t-2 border-l-2 border-slate-500/30 pointer-events-none sm:block hidden" />
-                          <div className="absolute top-3 right-3 w-3 h-3 border-t-2 border-r-2 border-slate-500/30 pointer-events-none sm:block hidden" />
-                          <div className="absolute bottom-3 left-3 w-3 h-3 border-b-2 border-l-2 border-slate-500/30 pointer-events-none sm:block hidden" />
-                          <div className="absolute bottom-3 right-3 w-3 h-3 border-b-2 border-r-2 border-slate-500/30 pointer-events-none sm:block hidden" />
+                          {/* Top Neon Color Bar */}
+                          <div className="absolute top-0 left-0 right-0 h-1.5" style={{ backgroundColor: neonColor }} />
 
-                          {/* Mobile Grab Handle */}
-                          <div className="w-10 h-1 bg-slate-700/60 rounded-full mx-auto mb-1 sm:hidden shrink-0" />
-
-                          {/* Subtle Color Accent Line */}
-                          <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-3xl sm:rounded-t-none" style={{ backgroundColor: colorHex }} />
-
-                          {/* Bottom Sheet Header */}
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-1.5">
-                              <div className="w-2.5 h-2.5 rounded-full border border-white/20 shadow-sm" style={{ backgroundColor: colorHex }} />
-                              <span className="text-[10px] sm:text-[9px] font-black text-white tracking-wide uppercase">
-                                {(profile.settings.language || 'tr') === 'en' ? `${colorLabel} SET DETAILS` : `${colorLabel} SETİ DETAYI`}
-                              </span>
+                          {/* Modal Header */}
+                          <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-4 h-4 rounded-full border-2 border-white/40 shadow-sm shrink-0" style={{ backgroundColor: neonColor }} />
+                              <div>
+                                <h3 className="text-sm sm:text-base font-black uppercase tracking-wide flex items-center gap-1.5 leading-tight">
+                                  <span>{colorLabel}</span>
+                                  <span className="text-slate-400 text-xs font-bold">{profile.settings.language === 'en' ? 'SET MANAGEMENT' : 'SET YÖNETİMİ'}</span>
+                                </h3>
+                                <div className="flex items-center gap-1.5 text-[8.5px] sm:text-[9px] font-mono mt-0.5">
+                                  <span className={isCompleted ? 'text-amber-400 font-extrabold flex items-center gap-0.5' : 'text-slate-400'}>
+                                    {isCompleted ? '👑 SET TAMAMLANDI' : '⏳ TAMAMLANMAMIŞ'} ({set.cards.length}/{MAX_IN_SET[col]})
+                                  </span>
+                                  <span className="text-slate-500">•</span>
+                                  <span className="text-emerald-400 font-bold">
+                                    {profile.settings.language === 'en' ? 'Rent Power:' : 'Kira Gücü:'} {rentVal}M
+                                  </span>
+                                </div>
+                              </div>
                             </div>
 
-                            {/* Close / Collapse button */}
+                            {/* Close button */}
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
+                              onClick={() => {
                                 playPlaySound();
-                                setExpandedPropertyColor(null);
+                                setManagedSetColor(null);
                               }}
-                              className="text-slate-400 hover:text-white text-xs sm:text-[9px] bg-white/5 hover:bg-white/10 w-6 h-6 sm:w-4.5 sm:h-4.5 rounded-full flex items-center justify-center transition-colors cursor-pointer"
+                              className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer text-sm font-bold active:scale-95"
                             >
                               ✕
                             </button>
                           </div>
 
-                          {/* Grid Layout of stats */}
-                          <div className="grid grid-cols-3 gap-1.5 items-center">
-                            {/* Card Count Block */}
-                            <div className="bg-white/[0.03] border border-white/5 rounded-lg p-1.5 sm:p-1 flex flex-col items-center justify-center text-center">
-                              <span className="text-xs sm:text-[10px] leading-none mb-0.5">🎴</span>
-                              <span className="text-[7px] sm:text-[6.5px] text-slate-400 uppercase font-black tracking-tight leading-none mb-0.5">
-                                {(profile.settings.language || 'tr') === 'en' ? 'CARDS' : 'KARTLAR'}
-                              </span>
-                              <span className={`text-[10px] sm:text-[9px] font-black leading-none ${isSetComp ? 'text-amber-400' : 'text-slate-200'}`}>
-                                {activeSet.cards.length}/{MAX_IN_SET[activeCol]} {isSetComp && '👑'}
-                              </span>
-                            </div>
-
-                            {/* Rent Value Block */}
-                            <div className="bg-white/[0.03] border border-white/5 rounded-lg p-1.5 sm:p-1 flex flex-col items-center justify-center text-center relative overflow-hidden">
-                              <span className="text-xs sm:text-[10px] leading-none mb-0.5 animate-pulse">💰</span>
-                              <span className="text-[7px] sm:text-[6.5px] text-slate-400 uppercase font-black tracking-tight leading-none mb-0.5">
-                                {(profile.settings.language || 'tr') === 'en' ? 'RENT POWER' : 'KİRA GÜCÜ'}
-                              </span>
-                              <motion.span
-                                key={activeRent}
-                                initial={{ scale: 1.3, y: -2 }}
-                                animate={{ scale: 1, y: 0 }}
-                                className="text-xs sm:text-[10px] font-black text-emerald-400 leading-none font-mono drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]"
-                              >
-                                {activeRent}M
-                              </motion.span>
-                            </div>
-
-                            {/* House/Hotel count Block */}
-                            <div className="bg-white/[0.03] border border-white/5 rounded-lg p-1.5 sm:p-1 flex flex-col items-center justify-center text-center">
-                              <span className="text-xs sm:text-[10px] leading-none mb-0.5">🏠</span>
-                              <span className="text-[7px] sm:text-[6.5px] text-slate-400 uppercase font-black tracking-tight leading-none mb-0.5">
-                                {(profile.settings.language || 'tr') === 'en' ? 'BUILDINGS' : 'BİNALAR'}
-                              </span>
-                              <span className="text-[9px] sm:text-[8.5px] font-black text-amber-300 leading-none truncate w-full">
-                                {activeSet.hasHotel 
-                                  ? ((profile.settings.language || 'tr') === 'en' ? '🏨 Hotel' : '🏨 Otel') 
-                                  : activeSet.hasHouse 
-                                    ? ((profile.settings.language || 'tr') === 'en' ? '🏠 House' : '🏠 Ev') 
-                                    : ((profile.settings.language || 'tr') === 'en' ? 'None' : 'Yok')}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Integrated Rent Scales Grid */}
-                          <div className="bg-white/[0.02] border border-white/5 p-1.5 rounded-lg flex flex-col gap-1.5">
-                            <span className="text-[8px] sm:text-[7.5px] font-black text-slate-400 uppercase tracking-wide block text-left">
-                              {profile.settings.language === 'en' ? 'Rent Scales' : 'Kira Baremleri'}
+                          {/* Cards Showcase in this Set */}
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 text-left">
+                              {profile.settings.language === 'en' ? 'CARDS IN THIS SET' : 'BU SETTEKİ KARTLAR'} ({set.cards.length})
                             </span>
-                            <div className="flex gap-1.5 justify-around">
-                              {(RENT_VALUES[activeCol] || []).map((r, idx) => {
-                                const isActive = activeSet.cards.length === (idx + 1);
+                            <div className="flex gap-2 items-center overflow-x-auto pb-1.5 pt-0.5 px-0.5 scrollbar-thin scrollbar-thumb-slate-700">
+                              {set.cards.map((c, idx) => {
+                                const isWild = c.isWildcard || c.type === 'wildcard';
                                 return (
-                                  <div
-                                    key={idx}
-                                    className={`flex-1 p-1 rounded-lg text-center transition-all border ${isActive
-                                      ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-400 font-extrabold shadow-[inset_0_1px_3px_rgba(16,185,129,0.1)]'
-                                      : 'bg-black/10 border-transparent text-slate-500 text-[8px]'
-                                      }`}
-                                  >
-                                    <div className="text-[7px] sm:text-[6.5px] uppercase font-extrabold leading-none mb-0.5">
-                                      {idx + 1}{(profile.settings.language || 'tr') === 'en' ? 'C' : 'K'}
-                                    </div>
-                                    <div className="text-[9px] sm:text-[8px] font-black font-mono leading-none">{r}M</div>
+                                  <div key={c.id || idx} className="flex flex-col items-center gap-1 shrink-0 p-1.5 rounded-xl bg-slate-900/80 border border-white/10 hover:border-white/20 transition-all">
+                                    <GameCard card={c} size="mini" disable3D={disable3D} cardBack={profile.settings.cardBack} cardSkin={profile.settings.cardSkin || 'skin_none'} />
+                                    <span className="text-[7.5px] font-bold text-slate-300 max-w-[55px] truncate text-center">
+                                      {c.name}
+                                    </span>
+                                    {isWild && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          if (isMyTurn) {
+                                            handleQuickFlipWildcard(c);
+                                            setManagedSetColor(null);
+                                          }
+                                        }}
+                                        disabled={!isMyTurn || isActionLocked}
+                                        className={`text-[7px] font-black px-1.5 py-0.5 rounded flex items-center gap-0.5 transition-all ${isMyTurn && !isActionLocked
+                                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer shadow-xs active:scale-95'
+                                            : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                                          }`}
+                                        title="Rengini/Grubunu değiştir"
+                                      >
+                                        🔄 {profile.settings.language === 'en' ? 'Flip' : 'Değiştir'}
+                                      </button>
+                                    )}
                                   </div>
                                 );
                               })}
                             </div>
                           </div>
 
-                          {/* Large Action Button */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              playPlaySound();
-                              setManagedSetColor(activeCol);
-                            }}
-                            className={`w-full py-2.5 sm:py-1.5 rounded-lg font-black text-[10px] sm:text-[9px] flex items-center justify-center gap-1 transition-all border uppercase tracking-wider select-none ${isMyTurn
-                              ? 'bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 border-amber-300 shadow-[0_4px_12px_rgba(245,158,11,0.2)] active:scale-95 cursor-pointer'
-                              : 'bg-slate-900 text-slate-500 border-white/5 cursor-not-allowed opacity-50'
-                              }`}
-                          >
-                            <span>⚙️ {(profile.settings.language || 'tr') === 'en' ? 'MANAGE SET / BUILD' : 'SETİ DÜZENLE / BİNA YAP'}</span>
-                          </button>
+                          {/* Rent Breakdown Scales */}
+                          <div className="bg-slate-900/60 border border-white/10 p-2 sm:p-2.5 rounded-xl flex flex-col gap-1.5">
+                            <div className="flex justify-between items-center text-[8.5px] font-black uppercase text-slate-400">
+                              <span>{profile.settings.language === 'en' ? 'Rent Scales' : 'Kira Baremleri'}</span>
+                              <span className="text-emerald-400 font-mono font-black">{profile.settings.language === 'en' ? 'Current Rent:' : 'Mevcut Kira:'} {rentVal}M</span>
+                            </div>
+                            <div className="flex gap-1.5 justify-around">
+                              {(RENT_VALUES[col] || []).map((r, idx) => {
+                                const isActive = set.cards.length === (idx + 1);
+                                return (
+                                  <div
+                                    key={idx}
+                                    className={`flex-1 py-1 px-0.5 rounded-lg text-center transition-all border ${isActive
+                                        ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-300 font-black shadow-[inset_0_1px_3px_rgba(16,185,129,0.15)]'
+                                        : 'bg-black/20 border-transparent text-slate-500 text-[8px]'
+                                      }`}
+                                  >
+                                    <div className="text-[7px] uppercase font-extrabold leading-none mb-0.5">
+                                      {idx + 1} {profile.settings.language === 'en' ? 'Card' : 'Kart'}
+                                    </div>
+                                    <div className="text-[9px] font-black font-mono leading-none">{r}M</div>
+                                  </div>
+                                );
+                              })}
+                              {/* House & Hotel Tiers */}
+                              <div className={`flex-1 py-1 px-0.5 rounded-lg text-center transition-all border ${set.hasHouse
+                                  ? 'bg-blue-500/15 border-blue-500/30 text-blue-300 font-black'
+                                  : 'bg-black/20 border-transparent text-slate-600 text-[8px]'
+                                }`}>
+                                <div className="text-[7px] font-extrabold leading-none mb-0.5">🏠 Ev</div>
+                                <div className="text-[9px] font-black font-mono leading-none">+3M</div>
+                              </div>
+                              <div className={`flex-1 py-1 px-0.5 rounded-lg text-center transition-all border ${set.hasHotel
+                                  ? 'bg-purple-500/15 border-purple-500/30 text-purple-300 font-black'
+                                  : 'bg-black/20 border-transparent text-slate-600 text-[8px]'
+                                }`}>
+                                <div className="text-[7px] font-extrabold leading-none mb-0.5">🏨 Otel</div>
+                                <div className="text-[9px] font-black font-mono leading-none">+4M</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Quick Action Buttons Grid */}
+                          <div className="flex flex-col gap-1.5 pt-1">
+                            <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 text-left">
+                              {profile.settings.language === 'en' ? 'SET ACTIONS' : 'SET HAMLELERİ VE AKSİYONLARI'}
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {/* Build House */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (canBuildHouse && houseCardInHand) {
+                                    playPlaySound(houseCardInHand);
+                                    if (isOffline) handleOfflinePlayCard(houseCardInHand.id, 'property', col);
+                                    else handlePlayCardMultiplayer(houseCardInHand.id, 'property', col);
+                                    setManagedSetColor(null);
+                                  }
+                                }}
+                                disabled={!canBuildHouse && !set.hasHouse}
+                                className={`py-2 px-2.5 rounded-xl font-bold text-[8.5px] sm:text-[9px] flex items-center justify-between transition-all border ${set.hasHouse
+                                    ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-400 cursor-default'
+                                    : canBuildHouse
+                                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400 shadow-md active:scale-95 cursor-pointer'
+                                      : 'bg-slate-900/60 border-white/5 text-slate-500 cursor-not-allowed opacity-60'
+                                  }`}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-base">🏠</span>
+                                  <span className="text-left font-black">
+                                    {set.hasHouse ? (profile.settings.language === 'en' ? 'House Built' : 'Ev Kurulu') : (profile.settings.language === 'en' ? 'Build House' : 'Ev Kur')}
+                                  </span>
+                                </div>
+                                <span className="text-[8px] font-mono font-extrabold text-amber-300">+3M Kira</span>
+                              </button>
+
+                              {/* Build Hotel */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (canBuildHotel && hotelCardInHand) {
+                                    playPlaySound(hotelCardInHand);
+                                    if (isOffline) handleOfflinePlayCard(hotelCardInHand.id, 'property', col);
+                                    else handlePlayCardMultiplayer(hotelCardInHand.id, 'property', col);
+                                    setManagedSetColor(null);
+                                  }
+                                }}
+                                disabled={!canBuildHotel && !set.hasHotel}
+                                className={`py-2 px-2.5 rounded-xl font-bold text-[8.5px] sm:text-[9px] flex items-center justify-between transition-all border ${set.hasHotel
+                                    ? 'bg-blue-950/40 border-blue-500/30 text-blue-400 cursor-default'
+                                    : canBuildHotel
+                                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white border-blue-400 shadow-md active:scale-95 cursor-pointer'
+                                      : 'bg-slate-900/60 border-white/5 text-slate-500 cursor-not-allowed opacity-60'
+                                  }`}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-base">🏨</span>
+                                  <span className="text-left font-black">
+                                    {set.hasHotel ? (profile.settings.language === 'en' ? 'Hotel Built' : 'Otel Kurulu') : (profile.settings.language === 'en' ? 'Build Hotel' : 'Otel Kur')}
+                                  </span>
+                                </div>
+                                <span className="text-[8px] font-mono font-extrabold text-blue-300">+4M Kira</span>
+                              </button>
+
+                              {/* Quick Demand Rent */}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (canDemandRent && matchingRentCard) {
+                                    playPlaySound(matchingRentCard);
+                                    if (matchingRentCard.name === 'Her Renk Kira Kartı' || !matchingRentCard.color) {
+                                      setRentColorPick(matchingRentCard);
+                                    } else {
+                                      if (isOffline) handleOfflinePlayCard(matchingRentCard.id, 'action', col);
+                                      else handlePlayCardMultiplayer(matchingRentCard.id, 'action', col);
+                                    }
+                                    setManagedSetColor(null);
+                                  }
+                                }}
+                                disabled={!canDemandRent}
+                                className={`col-span-full py-2 px-3 rounded-xl font-bold text-[9px] sm:text-[9.5px] flex items-center justify-between transition-all border ${canDemandRent
+                                    ? 'bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 border-amber-300 shadow-lg active:scale-95 cursor-pointer font-black'
+                                    : 'bg-slate-900/60 border-white/5 text-slate-500 cursor-not-allowed opacity-60'
+                                  }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="text-base">💰</span>
+                                  <span className="text-left font-black uppercase">
+                                    {profile.settings.language === 'en' ? `Demand Rent (${rentVal}M)` : `Bu Setin Kirasını İste (${rentVal}M)`}
+                                  </span>
+                                </div>
+                                <span className="text-[8px] font-mono font-black text-slate-900 bg-amber-300/80 px-2 py-0.5 rounded">
+                                  {canDemandRent ? (profile.settings.language === 'en' ? 'Play Card' : 'Kartı Oyna') : (profile.settings.language === 'en' ? 'No Rent Card' : 'Elde Kira Kartı Yok')}
+                                </span>
+                              </button>
+                            </div>
+                          </div>
                         </motion.div>
-                      </>
+                      </div>
                     );
                   })()}
                 </AnimatePresence>
               </div>
             </div>
           </div>
-
-          {/* Dynamic Spacer/Gap between properties and hand cards in Compact Mode to prevent overlaps on mobile */}
-          {isCompactLayout && (
-            <div
-              className="w-full bg-transparent flex-shrink-0 transition-all pointer-events-none"
-              style={{
-                height: isHandExpanded
-                  ? `${Math.max(4, 16 - (localPlayer.hand.length * 1.2))}px`
-                  : '4px'
-              }}
-            />
-          )}
 
           {(() => {
             const hasActiveAction = match.activeActionRequest || (match.activeActionRequests && match.activeActionRequests.length > 0);
@@ -9639,8 +9913,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     toggleCompactLayout();
                   }}
                   className={`px-2 py-1 rounded-lg text-[9px] font-black flex items-center gap-1 shadow-sm transition-all cursor-pointer select-none ${isCompactLayout
-                      ? 'bg-amber-500 text-slate-950 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10'
+                    ? 'bg-amber-500 text-slate-950 shadow-[0_0_10px_rgba(245,158,11,0.3)]'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-white/10'
                     }`}
                   title={profile.settings.language === 'en' ? "Compact Layout Toggle" : "Sıkışık Düzen Aç/Kapat"}
                 >
@@ -9658,11 +9932,11 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           <div
                             key={num}
                             className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${isSpent
-                                ? 'bg-purple-950 border border-purple-800/40 opacity-40 scale-90'
-                                : 'bg-amber-400 border border-amber-200 shadow-[0_0_8px_rgba(251,191,36,0.9)] animate-pulse scale-105'
+                              ? 'bg-purple-950 border border-purple-800/40 opacity-40 scale-90'
+                              : 'bg-amber-400 border border-amber-200 shadow-[0_0_8px_rgba(251,191,36,0.9)] animate-pulse scale-105'
                               }`}
-                            title={isSpent 
-                              ? ((profile.settings.language || 'tr') === 'en' ? 'Move Used' : 'Hamle Kullanıldı') 
+                            title={isSpent
+                              ? ((profile.settings.language || 'tr') === 'en' ? 'Move Used' : 'Hamle Kullanıldı')
                               : ((profile.settings.language || 'tr') === 'en' ? 'Remaining Move' : 'Kalan Hamle')}
                           />
                         );
@@ -9823,19 +10097,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       })();
 
                       return (
-                        <motion.div
+                        <div
                           key={card.id}
                           id={`hand-card-${card.id}`}
-                          variants={CARD_VARIANTS}
-                          initial="initialDraw"
-                          animate="draw"
-                          whileHover="hover"
-                          whileTap="tap"
                           style={{
                             zIndex: draggingCard?.id === card.id ? 100 : hoveredCard?.id === card.id ? 50 : isSelected ? 40 : 1,
                             transform: `scale(${isCompactLayout
-                                ? (adminSettings?.compactHandCardSize ?? 100) / 100
-                                : (adminSettings?.normalHandCardSize ?? 100) / 100
+                              ? (adminSettings?.compactHandCardSize ?? 100) / 100
+                              : (adminSettings?.normalHandCardSize ?? 100) / 100
                               })`,
                             transformOrigin: 'bottom center',
                             width: isCompactLayout
@@ -9873,7 +10142,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             setHoveredCard(card);
                           }}
                           onMouseLeave={() => setHoveredCard(null)}
-                          className={`cursor-grab active:cursor-grabbing select-none flex-shrink-0 touch-pan-x transition-all duration-300 ${draggingCard?.id === card.id ? 'opacity-40 scale-95' : ''
+                          className={`cursor-grab active:cursor-grabbing select-none flex-shrink-0 touch-pan-x will-change-transform transition-transform duration-150 ${draggingCard?.id === card.id ? 'opacity-30 scale-95 pointer-events-none' : ''
                             } ${isCardAnimating(card.id) ? 'opacity-0 pointer-events-none' : ''}`}
                         >
                           <GameCard
@@ -9893,7 +10162,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                               playPlaySound();
                             }}
                           />
-                        </motion.div>
+                        </div>
                       );
                     });
                   })()}
@@ -9932,8 +10201,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       setChatFilter(tab.id as any);
                     }}
                     className={`flex-1 py-1 rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1 cursor-pointer ${chatFilter === tab.id
-                        ? 'bg-purple-600 text-white shadow-md shadow-purple-900/40'
-                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                      ? 'bg-purple-600 text-white shadow-md shadow-purple-900/40'
+                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                       }`}
                   >
                     <span>{tab.icon}</span>
@@ -10157,8 +10426,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       }
                     </h2>
                     <div className="flex items-center justify-center gap-2 mt-1">
-                      <span className={`py-1 px-4 rounded-full text-xs font-black tracking-widest uppercase border shadow-lg ${
-                        (match.settings?.gameMode === '2v2_team' ? (match.winnerTeam === (localPlayer.team || (match.players.indexOf(localPlayer) % 2 === 0 ? 'team_blue' : 'team_red'))) : isWinner)
+                      <span className={`py-1 px-4 rounded-full text-xs font-black tracking-widest uppercase border shadow-lg ${(match.settings?.gameMode === '2v2_team' ? (match.winnerTeam === (localPlayer.team || (match.players.indexOf(localPlayer) % 2 === 0 ? 'team_blue' : 'team_red'))) : isWinner)
                           ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30 shadow-emerald-500/10'
                           : 'bg-rose-500/15 text-rose-400 border-rose-500/30 shadow-rose-500/10'
                         }`}>
@@ -10219,10 +10487,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         <div
                           key={item.playerId || idx}
                           className={`p-2.5 rounded-2xl border flex items-center justify-between gap-2 transition-all ${isChampion
-                              ? 'bg-amber-500/10 border-amber-500/40 shadow-sm'
-                              : isLocal
-                                ? 'bg-indigo-950/40 border-indigo-500/40'
-                                : 'bg-slate-950/50 border-white/5'
+                            ? 'bg-amber-500/10 border-amber-500/40 shadow-sm'
+                            : isLocal
+                              ? 'bg-indigo-950/40 border-indigo-500/40'
+                              : 'bg-slate-950/50 border-white/5'
                             }`}
                         >
                           {/* Rank & User Info */}
@@ -10529,8 +10797,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       onClick={() => {
                         if (isActionLocked) {
                           playAlertSound();
-                          alert((profile.settings.language || 'tr') === 'en' 
-                            ? "An action request is currently active. You cannot play a new card until it resolves!" 
+                          alert((profile.settings.language || 'tr') === 'en'
+                            ? "An action request is currently active. You cannot play a new card until it resolves!"
                             : "Şu an aktif bir ödeme veya hamle talebi var. Bu talep çözülene kadar yeni kart oynayamazsınız!");
                           return;
                         }
@@ -10543,8 +10811,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         🪙 {(profile.settings.language || 'tr') === 'en' ? `Deposit in Bank (+${selectedCard.value}M)` : `Bankaya Koy (+${selectedCard.value}M)`}
                       </div>
                       <div className="text-[10px] text-slate-300 font-medium">
-                        {(profile.settings.language || 'tr') === 'en' 
-                          ? 'Increases bank balance, pays debts, and cannot be stolen by opponents.' 
+                        {(profile.settings.language || 'tr') === 'en'
+                          ? 'Increases bank balance, pays debts, and cannot be stolen by opponents.'
                           : 'Kasa değerini artırır, ödemelerde kullanılır ve rakipler tarafından çalınamaz.'}
                       </div>
                     </button>
@@ -10575,17 +10843,16 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             else handlePlayCardMultiplayer(selectedCard.id, 'property');
                           }
                         }}
-                        className={`w-full p-3.5 rounded-2xl border text-white transition-all text-left flex flex-col gap-0.5 shadow-md ${
-                          isPropertyOptionDisabled
+                        className={`w-full p-3.5 rounded-2xl border text-white transition-all text-left flex flex-col gap-0.5 shadow-md ${isPropertyOptionDisabled
                             ? 'opacity-40 cursor-not-allowed grayscale bg-slate-900/60 border-slate-800 text-slate-500'
                             : 'active:scale-[0.98] cursor-pointer group'
-                        }`}
+                          }`}
                         style={
                           !isPropertyOptionDisabled
                             ? {
-                                borderColor: `${cardColorHex}50`,
-                                background: `linear-gradient(135deg, ${cardColorHex}15, rgba(15, 23, 42, 0.6))`,
-                              }
+                              borderColor: `${cardColorHex}50`,
+                              background: `linear-gradient(135deg, ${cardColorHex}15, rgba(15, 23, 42, 0.6))`,
+                            }
                             : undefined
                         }
                       >
@@ -10641,16 +10908,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                           setSelectedCard(null);
                           setShowCardMenu(false);
                         }}
-                        className={`w-full p-3.5 rounded-2xl border text-white transition-all text-left flex flex-col gap-0.5 shadow-md ${
-                          isActionOptionDisabled
+                        className={`w-full p-3.5 rounded-2xl border text-white transition-all text-left flex flex-col gap-0.5 shadow-md ${isActionOptionDisabled
                             ? 'opacity-40 cursor-not-allowed grayscale bg-slate-900/60 border-slate-800 text-slate-500'
                             : 'border-amber-500/30 bg-gradient-to-r from-amber-950/30 to-slate-900 hover:from-amber-950/50 hover:to-slate-850 hover:border-amber-500/60 active:scale-[0.98] cursor-pointer group'
-                        }`}
+                          }`}
                       >
                         <div
-                          className={`flex items-center gap-2 font-black text-xs transition-colors ${
-                            isActionOptionDisabled ? 'text-slate-500' : 'text-amber-400 group-hover:text-amber-300'
-                          }`}
+                          className={`flex items-center gap-2 font-black text-xs transition-colors ${isActionOptionDisabled ? 'text-slate-500' : 'text-amber-400 group-hover:text-amber-300'
+                            }`}
                         >
                           ⚡ {isActionOptionDisabled
                             ? ((profile.settings.language || 'tr') === 'en' ? 'Trigger Action (Unavailable)' : 'Aksiyonu Tetikle (Pasif)')
@@ -10836,10 +11101,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                 : 'bg-slate-800 text-slate-400'
                               }`}>
-                              {isComplete 
-                                ? ((profile.settings.language || 'tr') === 'en' ? 'Complete' : 'Tamamlandı') 
-                                : count > 0 
-                                  ? `${count}/${max} ${(profile.settings.language || 'tr') === 'en' ? 'Props' : 'Mülk'}` 
+                              {isComplete
+                                ? ((profile.settings.language || 'tr') === 'en' ? 'Complete' : 'Tamamlandı')
+                                : count > 0
+                                  ? `${count}/${max} ${(profile.settings.language || 'tr') === 'en' ? 'Props' : 'Mülk'}`
                                   : ((profile.settings.language || 'tr') === 'en' ? `Empty (${max})` : `Boş (${max})`)
                               }
                             </span>
@@ -12732,8 +12997,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                   key={stepIdx}
                   onClick={() => setTutorialStep(stepIdx)}
                   className={`h-2 rounded-full transition-all duration-300 cursor-pointer ${tutorialStep === stepIdx
-                      ? 'w-8 bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]'
-                      : 'w-2 bg-slate-700 hover:bg-slate-500'
+                    ? 'w-8 bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]'
+                    : 'w-2 bg-slate-700 hover:bg-slate-500'
                     }`}
                 />
               ))}
@@ -12821,8 +13086,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 disabled={tutorialStep === 0}
                 onClick={() => setTutorialStep((prev) => Math.max(0, prev - 1))}
                 className={`px-3 py-2 rounded-xl text-xs font-black transition-all ${tutorialStep === 0
-                    ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
-                    : 'bg-slate-800 hover:bg-slate-700 text-white cursor-pointer'
+                  ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
+                  : 'bg-slate-800 hover:bg-slate-700 text-white cursor-pointer'
                   }`}
               >
                 ◄ Önceki
@@ -13164,8 +13429,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                     setChatFilter(tab.id as any);
                   }}
                   className={`flex-1 py-1 rounded-lg text-[9px] font-black uppercase transition-all flex items-center justify-center gap-1 cursor-pointer ${chatFilter === tab.id
-                      ? 'bg-purple-600 text-white shadow-md shadow-purple-900/40'
-                      : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                    ? 'bg-purple-600 text-white shadow-md shadow-purple-900/40'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                     }`}
                 >
                   <span>{tab.icon}</span>
@@ -13607,17 +13872,17 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         </div>
       )}
 
-      {/* Mobile Touch Drag Card Floating Preview */}
-      {isTouchDragging && touchPosition && touchDragCard && (
+      {/* Mobile Touch Drag Card Floating Preview - GPU Accelerated 120Hz Layer */}
+      {isTouchDragging && touchDragCard && (
         <div
+          ref={touchDragPreviewRef}
           id={`touch-drag-preview-${touchDragCard.id}`}
-          className="fixed pointer-events-none z-[9999] opacity-90 scale-105 shadow-2xl"
+          className="fixed top-0 left-0 pointer-events-none z-[9999] opacity-95 scale-105 shadow-2xl will-change-transform"
           style={{
-            left: touchPosition.x - 57,
-            top: touchPosition.y - 85,
+            transform: `translate3d(${touchPosRef.current ? touchPosRef.current.x - 57 : -200}px, ${touchPosRef.current ? touchPosRef.current.y - 85 : -200}px, 0)`,
           }}
         >
-          <GameCard card={touchDragCard} size="normal" />
+          <GameCard card={touchDragCard} size="normal" disable3D={true} />
         </div>
       )}
 
@@ -13692,7 +13957,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
       {/* 5. Floating Rent Analysis Panel (Kira Analiz Penceresi - Follows Mouse) */}
       <AnimatePresence>
-        {analyzedProperty && !expandedPropertyColor && (() => {
+        {analyzedProperty && !managedSetColor && (() => {
           const { color, ownerName, cardsCount, hasHouse, hasHotel, currentRent } = analyzedProperty;
           const rents = RENT_VALUES[color] || [];
           const maxInSet = MAX_IN_SET[color] || 0;
@@ -14165,11 +14430,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             const holder = match.players.find(p => p.id === match.chaosState!.hotPotatoHolderId);
             const isMe = match.chaosState.hotPotatoHolderId === profile.id;
             return (
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black border shadow-lg backdrop-blur-sm ${
-                isMe
+              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black border shadow-lg backdrop-blur-sm ${isMe
                   ? 'bg-rose-500/30 border-rose-500/50 text-rose-200 animate-pulse shadow-rose-500/30'
                   : 'bg-black/60 border-rose-500/20 text-rose-300'
-              }`}>
+                }`}>
                 💣 {isMe
                   ? (profile.settings.language === 'en' ? 'YOU have the Bomb!' : 'Bombayı SEN tutuyorsun!')
                   : `${holder?.username || '?'} 💣`}
@@ -14182,11 +14446,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
             const king = match.players.find(p => p.id === match.chaosState!.kingHillHolderId);
             const isMe = match.chaosState.kingHillHolderId === profile.id;
             return (
-              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black border shadow-lg backdrop-blur-sm ${
-                isMe
+              <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[9px] font-black border shadow-lg backdrop-blur-sm ${isMe
                   ? 'bg-amber-500/30 border-amber-500/50 text-amber-200'
                   : 'bg-black/60 border-amber-500/20 text-amber-300'
-              }`}>
+                }`}>
                 👑 {isMe
                   ? (profile.settings.language === 'en' ? 'YOU are King! +2M/turn' : 'SEN Kralsın! +2M/tur')
                   : `${king?.username || '?'} ${profile.settings.language === 'en' ? 'is King +2M/turn' : 'Kral +2M/tur'}`}

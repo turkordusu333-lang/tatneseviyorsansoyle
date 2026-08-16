@@ -315,6 +315,10 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   const [shopSearch, setShopSearch] = useState<string>('');
   const [isShopModalOpen, setIsShopModalOpen] = useState<boolean>(false);
   const [editingShopItem, setEditingShopItem] = useState<StoreItem | null>(null);
+  const [shopModalTab, setShopModalTab] = useState<'basic' | 'design' | 'media' | 'locks'>('basic');
+  const [isPlayingShopAudio, setIsPlayingShopAudio] = useState<boolean>(false);
+  const [shopAudioPlayer, setShopAudioPlayer] = useState<HTMLAudioElement | null>(null);
+
   const [shopForm, setShopForm] = useState<{
     name: string;
     category: StoreItem['category'];
@@ -329,6 +333,21 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     glowColor: string;
     particleEffect: 'none' | 'sparkles' | 'fire' | 'snow' | 'matrix' | 'bubbles' | 'stars';
     discountPercent: number;
+    // New Advanced Customizations
+    gradientStart: string;
+    gradientEnd: string;
+    gradientDirection: 'to-r' | 'to-br' | 'to-b' | 'to-tr' | 'radial';
+    borderStyle: 'solid' | 'gold_ornate' | 'cyber_dashed' | 'neon_glow' | 'fiery' | 'none';
+    borderWidth: number;
+    borderColor: string;
+    animType: 'none' | 'pulse' | 'floating' | 'shimmer' | 'rainbow_wave' | 'spin_glow';
+    badgeText: string;
+    badgeColor: string;
+    badgeBg: string;
+    audioUrl: string;
+    requiredLevel: number;
+    requiredLeague: string;
+    stockLimit: number | '';
   }>({
     name: '',
     category: 'avatar',
@@ -342,7 +361,21 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     overlayOpacity: 0.5,
     glowColor: '#6366f1',
     particleEffect: 'none',
-    discountPercent: 0
+    discountPercent: 0,
+    gradientStart: '',
+    gradientEnd: '',
+    gradientDirection: 'to-br',
+    borderStyle: 'solid',
+    borderWidth: 1,
+    borderColor: '#334155',
+    animType: 'none',
+    badgeText: '',
+    badgeColor: '#ffffff',
+    badgeBg: '#ef4444',
+    audioUrl: '',
+    requiredLevel: 0,
+    requiredLeague: '',
+    stockLimit: ''
   });
   const [shopMediaUploading, setShopMediaUploading] = useState<boolean>(false);
 
@@ -359,6 +392,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
 
   const handleOpenAddShopModal = () => {
     setEditingShopItem(null);
+    setShopModalTab('basic');
     setShopForm({
       name: '',
       category: 'avatar',
@@ -372,13 +406,28 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
       overlayOpacity: 0.5,
       glowColor: '#6366f1',
       particleEffect: 'none',
-      discountPercent: 0
+      discountPercent: 0,
+      gradientStart: '',
+      gradientEnd: '',
+      gradientDirection: 'to-br',
+      borderStyle: 'solid',
+      borderWidth: 1,
+      borderColor: '#334155',
+      animType: 'none',
+      badgeText: '',
+      badgeColor: '#ffffff',
+      badgeBg: '#ef4444',
+      audioUrl: '',
+      requiredLevel: 0,
+      requiredLeague: '',
+      stockLimit: ''
     });
     setIsShopModalOpen(true);
   };
 
   const handleOpenEditShopModal = (item: StoreItem) => {
     setEditingShopItem(item);
+    setShopModalTab('basic');
     setShopForm({
       name: item.name,
       category: item.category,
@@ -392,9 +441,49 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
       overlayOpacity: item.overlayOpacity ?? 0.5,
       glowColor: item.glowColor || '#6366f1',
       particleEffect: item.particleEffect || 'none',
-      discountPercent: item.discountPercent || 0
+      discountPercent: item.discountPercent || 0,
+      gradientStart: item.gradientStart || '',
+      gradientEnd: item.gradientEnd || '',
+      gradientDirection: item.gradientDirection || 'to-br',
+      borderStyle: item.borderStyle || 'solid',
+      borderWidth: item.borderWidth ?? 1,
+      borderColor: item.borderColor || '#334155',
+      animType: item.animType || 'none',
+      badgeText: item.badgeText || '',
+      badgeColor: item.badgeColor || '#ffffff',
+      badgeBg: item.badgeBg || '#ef4444',
+      audioUrl: item.audioUrl || '',
+      requiredLevel: item.requiredLevel || 0,
+      requiredLeague: item.requiredLeague || '',
+      stockLimit: item.stockLimit !== undefined ? item.stockLimit : ''
     });
     setIsShopModalOpen(true);
+  };
+
+  const toggleShopAudioPreview = (url?: string) => {
+    const targetUrl = url || shopForm.audioUrl;
+    if (!targetUrl) return;
+
+    if (isPlayingShopAudio && shopAudioPlayer) {
+      shopAudioPlayer.pause();
+      setIsPlayingShopAudio(false);
+      return;
+    }
+
+    const fullUrl = targetUrl.startsWith('http') ? targetUrl : `${API_BASE_URL}${targetUrl}`;
+    const audio = new Audio(fullUrl);
+    audio.volume = 0.8;
+    audio.onended = () => setIsPlayingShopAudio(false);
+    audio.onerror = () => {
+      setIsPlayingShopAudio(false);
+      setNotification({ message: 'Ses dosyası oynatılamadı veya bulunamadı.', type: 'error' });
+    };
+    audio.play().then(() => {
+      setShopAudioPlayer(audio);
+      setIsPlayingShopAudio(true);
+    }).catch(() => {
+      setIsPlayingShopAudio(false);
+    });
   };
 
   const handleSaveShopItem = (e: React.FormEvent) => {
@@ -407,7 +496,8 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     const isVideo = isVideoUrl(shopForm.mediaUrl, shopForm.mediaType);
     const finalForm = {
       ...shopForm,
-      mediaType: isVideo ? ('video' as const) : shopForm.mediaType
+      mediaType: isVideo ? ('video' as const) : shopForm.mediaType,
+      stockLimit: shopForm.stockLimit === '' ? undefined : Number(shopForm.stockLimit)
     };
 
     const endpoint = editingShopItem ? '/api/admin/shop/update' : '/api/admin/shop/add';
@@ -457,7 +547,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
       .catch((err) => console.error(err));
   };
 
-  const handleShopFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleShopFileUpload = (e: React.ChangeEvent<HTMLInputElement>, isAudioUpload = false) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -481,16 +571,24 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
         .then((res) => res.json())
         .then((data) => {
           if (data.success) {
-            let autoType: 'image' | 'gif' | 'video' = 'image';
-            if (file.type.includes('gif') || file.name.toLowerCase().endsWith('.gif')) autoType = 'gif';
-            else if (file.type.includes('video') || isVideoUrl(file.name)) autoType = 'video';
+            if (isAudioUpload || file.type.includes('audio') || file.name.endsWith('.mp3') || file.name.endsWith('.wav') || file.name.endsWith('.ogg')) {
+              setShopForm((prev) => ({
+                ...prev,
+                audioUrl: data.url
+              }));
+              setNotification({ message: 'Ses dosyası başarıyla yüklendi!', type: 'success' });
+            } else {
+              let autoType: 'image' | 'gif' | 'video' = 'image';
+              if (file.type.includes('gif') || file.name.toLowerCase().endsWith('.gif')) autoType = 'gif';
+              else if (file.type.includes('video') || isVideoUrl(file.name)) autoType = 'video';
 
-            setShopForm((prev) => ({
-              ...prev,
-              mediaUrl: data.url,
-              mediaType: autoType
-            }));
-            setNotification({ message: 'Medya dosyası başarıyla yüklendi!', type: 'success' });
+              setShopForm((prev) => ({
+                ...prev,
+                mediaUrl: data.url,
+                mediaType: autoType
+              }));
+              setNotification({ message: 'Medya dosyası başarıyla yüklendi!', type: 'success' });
+            }
           } else {
             alert('Yükleme başarısız: ' + (data.error || 'Bilinmeyen hata'));
           }
@@ -2946,405 +3044,823 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
 
                 {/* ADD / EDIT PRODUCT MODAL */}
                 {isShopModalOpen && (
-                  <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-                    <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 relative shadow-2xl overflow-y-auto max-h-[90vh]">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
-                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                          <span>{editingShopItem ? '✏️' : '➕'}</span>
-                          {editingShopItem ? 'Mağaza Ürününü Düzenle' : 'Yeni Mağaza Ürünü Ekle'}
-                        </h3>
+                  <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-[100] p-4">
+                    <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl p-6 relative shadow-2xl overflow-y-auto max-h-[92vh] space-y-5">
+                      {/* Modal Header */}
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-xl">
+                            {editingShopItem ? '✏️' : '✨'}
+                          </div>
+                          <div>
+                            <h3 className="text-base font-extrabold text-white">
+                              {editingShopItem ? 'Mağaza Ürününü Düzenle' : 'Yeni Mağaza Ürünü Ekle'}
+                            </h3>
+                            <p className="text-[11px] text-slate-400">
+                              Oyun içinde anında canlı görünecek tüm görsel, gradyan, efekt ve kilit ayarlarını belirleyin.
+                            </p>
+                          </div>
+                        </div>
                         <button
-                          onClick={() => setIsShopModalOpen(false)}
-                          className="text-slate-400 hover:text-white bg-slate-800 p-1.5 rounded-lg text-xs"
+                          onClick={() => {
+                            if (isPlayingShopAudio && shopAudioPlayer) shopAudioPlayer.pause();
+                            setIsShopModalOpen(false);
+                          }}
+                          className="text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 w-8 h-8 rounded-xl flex items-center justify-center text-xs transition-all cursor-pointer"
                         >
                           ✕
                         </button>
                       </div>
 
+                      {/* Sub-Tabs Selector */}
+                      <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-950/80 rounded-2xl border border-slate-800">
+                        {[
+                          { id: 'basic', label: '📌 Temel Bilgi', desc: 'İsim, Kategori, Fiyat' },
+                          { id: 'design', label: '🎨 Tasarım & FX', desc: 'Gradyan, Kenarlık, Glow' },
+                          { id: 'media', label: '🎬 Medya & Ses', desc: 'Görsel, Video, MP3' },
+                          { id: 'locks', label: '🔒 Kilit & Rozet', desc: 'Seviye, Lig, Rozet' },
+                        ].map((tab) => (
+                          <button
+                            key={tab.id}
+                            type="button"
+                            onClick={() => setShopModalTab(tab.id as any)}
+                            className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
+                              shopModalTab === tab.id
+                                ? 'bg-indigo-600 text-white font-extrabold shadow-md shadow-indigo-600/30'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-900 font-medium'
+                            }`}
+                          >
+                            <span className="text-xs">{tab.label}</span>
+                            <span className="text-[8.5px] opacity-70 hidden sm:inline">{tab.desc}</span>
+                          </button>
+                        ))}
+                      </div>
+
                       <form onSubmit={handleSaveShopItem} className="space-y-4">
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">
-                            Ürün Adı *
-                          </label>
-                          <input
-                            type="text"
-                            required
-                            placeholder="Örn: Efsanevi Siber Ejderha Avatarı"
-                            value={shopForm.name}
-                            onChange={(e) => setShopForm({ ...shopForm, name: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-300 mb-1">
-                              Kategori *
-                            </label>
-                            <select
-                              value={shopForm.category}
-                              onChange={(e) => setShopForm({ ...shopForm, category: e.target.value as any })}
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
-                            >
-                              <option value="avatar">👑 Avatar</option>
-                              <option value="card_back">🃏 Kart Görünümü (Arkası)</option>
-                              <option value="board_theme">🎨 Masa Teması</option>
-                              <option value="card_skin">✨ Kart Kaplaması</option>
-                              <option value="player_board">🏆 Oyuncu Tahtası</option>
-                              <option value="profile_frame">🖼️ Profil Çerçevesi</option>
-                              <option value="celebration_sound">🎵 Zafer Sesi</option>
-                              <option value="action_vfx">💥 Efekt (VFX)</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-300 mb-1">
-                              Fiyat (Altın Miktarı) *
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              required
-                              value={shopForm.price}
-                              onChange={(e) => setShopForm({ ...shopForm, price: Number(e.target.value) })}
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-300 mb-1">
-                              Enderlik Seviyesi (Rarity) *
-                            </label>
-                            <select
-                              value={shopForm.rarity}
-                              onChange={(e) => setShopForm({ ...shopForm, rarity: e.target.value as any })}
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-bold"
-                            >
-                              <option value="common">⚪ Yaygın (Common)</option>
-                              <option value="rare">🔵 Nadir (Rare)</option>
-                              <option value="epic">🟣 Epik (Epic)</option>
-                              <option value="legendary">🟡 Efsanevi (Legendary)</option>
-                              <option value="mythic">🔥 Mistik (Mythic)</option>
-                            </select>
-                          </div>
-
-                          <div>
-                            <label className="block text-xs font-semibold text-slate-300 mb-1">
-                              İndirim Yüzdesi (%)
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              max="90"
-                              value={shopForm.discountPercent}
-                              onChange={(e) => setShopForm({ ...shopForm, discountPercent: Number(e.target.value) })}
-                              placeholder="0 (İndirim yok)"
-                              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Overlay Katmanı ve Görsel Özelleştirmeler */}
-                        <div className="border-t border-slate-800/80 pt-3 space-y-3">
-                          <label className="block text-xs font-bold text-cyan-400 flex items-center gap-1.5">
-                            <span>✨</span> Overlay Katmanı & Görsel Efekt Özelleştirme
-                          </label>
-
-                          <div className="grid grid-cols-2 gap-3">
+                        {/* ──────────────────────────────────────────────────────────
+                            TAB 1: TEMEL BİLGİLER
+                        ────────────────────────────────────────────────────────── */}
+                        {shopModalTab === 'basic' && (
+                          <div className="space-y-4 animate-fadeIn">
                             <div>
-                              <span className="block text-[11px] text-slate-400 mb-1">Harmanlama Modu (Blend Mode)</span>
-                              <select
-                                value={shopForm.overlayMode}
-                                onChange={(e) => setShopForm({ ...shopForm, overlayMode: e.target.value as any })}
-                                className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                              >
-                                <option value="normal">Normale Uydur (Normal)</option>
-                                <option value="overlay">Üst Üste Bindir (Overlay)</option>
-                                <option value="screen">Işıklandır / Parlat (Screen)</option>
-                                <option value="multiply">Çarp / Koyu Ton (Multiply)</option>
-                                <option value="color-dodge">Renk Soldurma (Color Dodge)</option>
-                                <option value="soft-light">Yumuşak Işık (Soft Light)</option>
-                                <option value="hard-light">Sert Işık (Hard Light)</option>
-                              </select>
-                            </div>
-
-                            <div>
-                              <span className="block text-[11px] text-slate-400 mb-1">
-                                Opaklık: %{Math.round(shopForm.overlayOpacity * 100)}
-                              </span>
+                              <label className="block text-xs font-bold text-slate-300 mb-1">
+                                Ürün Adı *
+                              </label>
                               <input
-                                type="range"
-                                min="0.1"
-                                max="1.0"
-                                step="0.05"
-                                value={shopForm.overlayOpacity}
-                                onChange={(e) => setShopForm({ ...shopForm, overlayOpacity: parseFloat(e.target.value) })}
-                                className="w-full h-2 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-indigo-500 mt-2"
+                                type="text"
+                                required
+                                placeholder="Örn: Efsanevi Siber Ejderha Avatarı"
+                                value={shopForm.name}
+                                onChange={(e) => setShopForm({ ...shopForm, name: e.target.value })}
+                                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-medium"
                               />
                             </div>
-                          </div>
 
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <span className="block text-[11px] text-slate-400 mb-1">Işıldama / Glow Rengi</span>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="color"
-                                  value={shopForm.glowColor}
-                                  onChange={(e) => setShopForm({ ...shopForm, glowColor: e.target.value })}
-                                  className="w-8 h-8 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer p-0.5"
-                                />
-                                <input
-                                  type="text"
-                                  value={shopForm.glowColor}
-                                  onChange={(e) => setShopForm({ ...shopForm, glowColor: e.target.value })}
-                                  placeholder="#6366f1"
-                                  className="w-full px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-white"
-                                />
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-300 mb-1">
+                                  Kategori *
+                                </label>
+                                <select
+                                  value={shopForm.category}
+                                  onChange={(e) => setShopForm({ ...shopForm, category: e.target.value as any })}
+                                  className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-semibold"
+                                >
+                                  <option value="avatar">👑 Avatar</option>
+                                  <option value="card_back">🃏 Kart Görünümü (Arkası)</option>
+                                  <option value="board_theme">🎨 Masa Teması</option>
+                                  <option value="card_skin">✨ Kart Kaplaması</option>
+                                  <option value="player_board">🏆 Oyuncu Tahtası</option>
+                                  <option value="profile_frame">🖼️ Profil Çerçevesi</option>
+                                  <option value="celebration_sound">🎵 Zafer Sesi</option>
+                                  <option value="action_vfx">💥 Efekt (VFX)</option>
+                                  <option value="game_music">🎶 Maç Fon Müziği</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-bold text-slate-300 mb-1">
+                                  Fiyat (Altın Miktarı) *
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    required
+                                    value={shopForm.price}
+                                    onChange={(e) => setShopForm({ ...shopForm, price: Number(e.target.value) })}
+                                    className="w-full px-3.5 py-2.5 pl-8 bg-slate-950 border border-slate-800 rounded-xl text-xs text-amber-300 font-black focus:outline-none focus:border-indigo-500"
+                                  />
+                                  <span className="absolute left-2.5 top-2.5 text-xs">💰</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-300 mb-1">
+                                  Enderlik Seviyesi (Rarity) *
+                                </label>
+                                <select
+                                  value={shopForm.rarity}
+                                  onChange={(e) => setShopForm({ ...shopForm, rarity: e.target.value as any })}
+                                  className="w-full px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-bold"
+                                >
+                                  <option value="common">⚪ Yaygın (Common)</option>
+                                  <option value="rare">🔵 Nadir (Rare)</option>
+                                  <option value="epic">🟣 Epik (Epic)</option>
+                                  <option value="legendary">🟡 Efsanevi (Legendary)</option>
+                                  <option value="mythic">🔥 Mistik (Mythic)</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-bold text-slate-300 mb-1">
+                                  İndirim Yüzdesi (%)
+                                </label>
+                                <div className="relative">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max="90"
+                                    value={shopForm.discountPercent}
+                                    onChange={(e) => setShopForm({ ...shopForm, discountPercent: Number(e.target.value) })}
+                                    placeholder="0 (İndirim yok)"
+                                    className="w-full px-3.5 py-2.5 pr-7 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-bold"
+                                  />
+                                  <span className="absolute right-3 top-2.5 text-xs text-slate-500">%</span>
+                                </div>
                               </div>
                             </div>
 
                             <div>
-                              <span className="block text-[11px] text-slate-400 mb-1">Parçacık Efekti (Particle FX)</span>
-                              <select
-                                value={shopForm.particleEffect}
-                                onChange={(e) => setShopForm({ ...shopForm, particleEffect: e.target.value as any })}
-                                className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                              >
-                                <option value="none">Yok (None)</option>
-                                <option value="sparkles">✨ Işıltı Sparkles</option>
-                                <option value="fire">🔥 Alev Embers</option>
-                                <option value="snow">❄️ Kar Taneleri</option>
-                                <option value="matrix">🟢 Matrix Kod Yağmuru</option>
-                                <option value="bubbles">🫧 Sualtı Baloncukları</option>
-                                <option value="stars">⭐ Yıldız Parlamaları</option>
-                              </select>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <label className="block text-xs font-semibold text-slate-300 mb-1">
-                            Açıklama
-                          </label>
-                          <textarea
-                            rows={2}
-                            placeholder="Ürünün özelliklerini ve görünümünü açıklayın..."
-                            value={shopForm.description}
-                            onChange={(e) => setShopForm({ ...shopForm, description: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 resize-none"
-                          />
-                        </div>
-
-                        <div className="border-t border-slate-800 pt-3">
-                          <label className="block text-xs font-semibold text-amber-400 mb-1 flex items-center gap-1">
-                            <span>🎬</span> Medya İçeriği (GIF, Resim veya Video)
-                          </label>
-
-                          <div className="grid grid-cols-3 gap-2 mb-3">
-                            {[
-                              { id: 'image', label: '🖼️ Resim' },
-                              { id: 'gif', label: '✨ GIF' },
-                              { id: 'video', label: '🎬 Video' },
-                            ].map((mt) => (
-                              <button
-                                type="button"
-                                key={mt.id}
-                                onClick={() => setShopForm({ ...shopForm, mediaType: mt.id as any })}
-                                className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all border ${
-                                  shopForm.mediaType === mt.id
-                                    ? 'bg-amber-500/20 border-amber-500 text-amber-300'
-                                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
-                                }`}
-                              >
-                                {mt.label}
-                              </button>
-                            ))}
-                          </div>
-
-                          <div className="space-y-3">
-                            <div>
-                              <span className="block text-[11px] text-slate-400 mb-1">Dosya Yükle (Resim, GIF veya Video)</span>
-                              <label className="w-full py-2.5 px-4 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 font-bold border border-indigo-500/40 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2">
-                                {shopMediaUploading ? (
-                                  <>
-                                    <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-indigo-300 border-t-transparent rounded-full" />
-                                    Yükleniyor...
-                                  </>
-                                ) : (
-                                  <>
-                                    <span>📤</span> Cihazdan Dosya Seç (GIF / Resim / MP4 / M3U8 Video)
-                                  </>
-                                )}
-                                <input
-                                  type="file"
-                                  accept="image/*,video/mp4,video/webm,application/x-mpegURL,application/vnd.apple.mpegurl,.m3u8"
-                                  onChange={handleShopFileUpload}
-                                  className="hidden"
-                                  disabled={shopMediaUploading}
-                                />
+                              <label className="block text-xs font-bold text-slate-300 mb-1">
+                                Açıklama & Hikaye
                               </label>
-                            </div>
-
-                            <div className="relative">
-                              <span className="block text-[11px] text-slate-400 mb-1">veya Doğrudan Medya URL Adresi Girin</span>
-                              <input
-                                type="text"
-                                placeholder="https://domain.com/media.gif veya /assets/uploads/file.mp4"
-                                value={shopForm.mediaUrl}
-                                onChange={(e) => {
-                                  const url = e.target.value;
-                                  let autoType = shopForm.mediaType;
-                                  if (isVideoUrl(url)) {
-                                    autoType = 'video';
-                                  } else if (url.toLowerCase().includes('.gif')) {
-                                    autoType = 'gif';
-                                  }
-                                  setShopForm({ ...shopForm, mediaUrl: url, mediaType: autoType });
-                                }}
-                                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                              <textarea
+                                rows={2}
+                                placeholder="Ürünün özelliklerini ve görünümünü açıklayın..."
+                                value={shopForm.description}
+                                onChange={(e) => setShopForm({ ...shopForm, description: e.target.value })}
+                                className="w-full px-3.5 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 resize-none font-normal"
                               />
                             </div>
                           </div>
+                        )}
 
-                          {/* Live Preview in Modal */}
-                          <div className="mt-3 p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="block text-[11px] font-mono text-emerald-400 font-bold flex items-center gap-1.5">
-                                <span>👁️</span> Canlı Önizleme:
+                        {/* ──────────────────────────────────────────────────────────
+                            TAB 2: TASARIM & GÖRSEL EFEKTLER
+                        ────────────────────────────────────────────────────────── */}
+                        {shopModalTab === 'design' && (
+                          <div className="space-y-4 animate-fadeIn">
+                            {/* Gradient Background Controls */}
+                            <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-3">
+                              <span className="text-[11px] font-black text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span>🌈</span> Arka Plan Gradyan & Renkleri (CSS Gradient)
                               </span>
+                              <div className="grid grid-cols-3 gap-2.5">
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-1">Başlangıç Rengi</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="color"
+                                      value={shopForm.gradientStart || '#3b82f6'}
+                                      onChange={(e) => setShopForm({ ...shopForm, gradientStart: e.target.value })}
+                                      className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer p-0.5"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={shopForm.gradientStart}
+                                      onChange={(e) => setShopForm({ ...shopForm, gradientStart: e.target.value })}
+                                      placeholder="#3b82f6"
+                                      className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-[10px] font-mono text-white"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-1">Bitiş Rengi</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="color"
+                                      value={shopForm.gradientEnd || '#ec4899'}
+                                      onChange={(e) => setShopForm({ ...shopForm, gradientEnd: e.target.value })}
+                                      className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer p-0.5"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={shopForm.gradientEnd}
+                                      onChange={(e) => setShopForm({ ...shopForm, gradientEnd: e.target.value })}
+                                      placeholder="#ec4899"
+                                      className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-[10px] font-mono text-white"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-1">Gradyan Yönü</span>
+                                  <select
+                                    value={shopForm.gradientDirection}
+                                    onChange={(e) => setShopForm({ ...shopForm, gradientDirection: e.target.value as any })}
+                                    className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-[11px] text-white focus:outline-none"
+                                  >
+                                    <option value="to-br">↘️ Çapraz (Sağ-Alt)</option>
+                                    <option value="to-r">➡️ Sağa (Yatay)</option>
+                                    <option value="to-b">⬇️ Aşağı (Dikey)</option>
+                                    <option value="to-tr">↗️ Çapraz (Sağ-Üst)</option>
+                                    <option value="radial">🔘 Radyal (Merkezden)</option>
+                                  </select>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Border & Outline Controls */}
+                            <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-3">
+                              <span className="text-[11px] font-black text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span>🔲</span> Kenarlık Stili & Işıltısı (Border FX)
+                              </span>
+                              <div className="grid grid-cols-3 gap-2.5">
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-1">Kenarlık Tipi</span>
+                                  <select
+                                    value={shopForm.borderStyle}
+                                    onChange={(e) => setShopForm({ ...shopForm, borderStyle: e.target.value as any })}
+                                    className="w-full px-2 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-[11px] text-white focus:outline-none font-medium"
+                                  >
+                                    <option value="solid">Düz Çizgi (Solid)</option>
+                                    <option value="gold_ornate">👑 Altın İşlemeli</option>
+                                    <option value="cyber_dashed">⚡ Siber Kesikli</option>
+                                    <option value="neon_glow">💡 Neon Işıltılı</option>
+                                    <option value="fiery">🔥 Alevli Kor</option>
+                                    <option value="none">Kenarlık Yok</option>
+                                  </select>
+                                </div>
+
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-1">Kalınlık: {shopForm.borderWidth}px</span>
+                                  <input
+                                    type="range"
+                                    min="1"
+                                    max="5"
+                                    value={shopForm.borderWidth}
+                                    onChange={(e) => setShopForm({ ...shopForm, borderWidth: Number(e.target.value) })}
+                                    className="w-full h-2 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-amber-500 mt-2"
+                                  />
+                                </div>
+
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-1">Kenarlık Rengi</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="color"
+                                      value={shopForm.borderColor || '#334155'}
+                                      onChange={(e) => setShopForm({ ...shopForm, borderColor: e.target.value })}
+                                      className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer p-0.5"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={shopForm.borderColor}
+                                      onChange={(e) => setShopForm({ ...shopForm, borderColor: e.target.value })}
+                                      placeholder="#334155"
+                                      className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-[10px] font-mono text-white"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Glow, Animation & Particles */}
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <span className="block text-xs font-bold text-slate-300 mb-1">Animasyon Tipi</span>
+                                <select
+                                  value={shopForm.animType}
+                                  onChange={(e) => setShopForm({ ...shopForm, animType: e.target.value as any })}
+                                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none font-semibold"
+                                >
+                                  <option value="none">Yok (Statik)</option>
+                                  <option value="pulse">💓 Nefes Alma (Pulse)</option>
+                                  <option value="floating">🌊 Yüzen / Dalgalanan (Floating)</option>
+                                  <option value="shimmer">✨ Hologram Işıltısı (Shimmer)</option>
+                                  <option value="rainbow_wave">🌈 RGB Gökkuşağı Dalgası</option>
+                                  <option value="spin_glow">🌀 Dönen Parıltı (Spin Glow)</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <span className="block text-xs font-bold text-slate-300 mb-1">Parçacık Efekti (Particle FX)</span>
+                                <select
+                                  value={shopForm.particleEffect}
+                                  onChange={(e) => setShopForm({ ...shopForm, particleEffect: e.target.value as any })}
+                                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none font-semibold"
+                                >
+                                  <option value="none">Yok (None)</option>
+                                  <option value="sparkles">✨ Işıltı Sparkles</option>
+                                  <option value="fire">🔥 Alev Embers</option>
+                                  <option value="snow">❄️ Kar Taneleri</option>
+                                  <option value="matrix">🟢 Matrix Kod Yağmuru</option>
+                                  <option value="bubbles">🫧 Sualtı Baloncukları</option>
+                                  <option value="stars">⭐ Yıldız Parlamaları</option>
+                                </select>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <span className="block text-xs font-bold text-slate-300 mb-1">Işıldama / Glow Rengi</span>
+                                <div className="flex items-center gap-2">
+                                  <input
+                                    type="color"
+                                    value={shopForm.glowColor || '#6366f1'}
+                                    onChange={(e) => setShopForm({ ...shopForm, glowColor: e.target.value })}
+                                    className="w-8 h-8 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer p-0.5"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={shopForm.glowColor}
+                                    onChange={(e) => setShopForm({ ...shopForm, glowColor: e.target.value })}
+                                    placeholder="#6366f1"
+                                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-white"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <span className="block text-xs font-bold text-slate-300 mb-1">
+                                  Overlay Opaklık: %{Math.round(shopForm.overlayOpacity * 100)}
+                                </span>
+                                <input
+                                  type="range"
+                                  min="0.1"
+                                  max="1.0"
+                                  step="0.05"
+                                  value={shopForm.overlayOpacity}
+                                  onChange={(e) => setShopForm({ ...shopForm, overlayOpacity: parseFloat(e.target.value) })}
+                                  className="w-full h-2 bg-slate-950 rounded-lg appearance-none cursor-pointer accent-indigo-500 mt-3"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ──────────────────────────────────────────────────────────
+                            TAB 3: MEDYA & SES
+                        ────────────────────────────────────────────────────────── */}
+                        {shopModalTab === 'media' && (
+                          <div className="space-y-4 animate-fadeIn">
+                            {/* Visual Media Upload */}
+                            <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-3">
+                              <label className="block text-xs font-black text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <span>🎬</span> Görsel / GIF / Video Dosyası
+                              </label>
+
+                              <div className="grid grid-cols-3 gap-2">
+                                {[
+                                  { id: 'image', label: '🖼️ Resim' },
+                                  { id: 'gif', label: '✨ GIF' },
+                                  { id: 'video', label: '🎬 Video' },
+                                ].map((mt) => (
+                                  <button
+                                    type="button"
+                                    key={mt.id}
+                                    onClick={() => setShopForm({ ...shopForm, mediaType: mt.id as any })}
+                                    className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all border ${
+                                      shopForm.mediaType === mt.id
+                                        ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-sm'
+                                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                    }`}
+                                  >
+                                    {mt.label}
+                                  </button>
+                                ))}
+                              </div>
+
+                              <div className="space-y-2">
+                                <label className="w-full py-2.5 px-4 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 font-bold border border-indigo-500/40 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2">
+                                  {shopMediaUploading ? (
+                                    <>
+                                      <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-indigo-300 border-t-transparent rounded-full" />
+                                      Yükleniyor...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>📤</span> Cihazdan Görsel / GIF / Video Seç
+                                    </>
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept="image/*,video/mp4,video/webm,application/x-mpegURL,application/vnd.apple.mpegurl,.m3u8"
+                                    onChange={(e) => handleShopFileUpload(e, false)}
+                                    className="hidden"
+                                    disabled={shopMediaUploading}
+                                  />
+                                </label>
+
+                                <input
+                                  type="text"
+                                  placeholder="veya Medya URL: https://domain.com/media.gif veya /assets/uploads/..."
+                                  value={shopForm.mediaUrl}
+                                  onChange={(e) => {
+                                    const url = e.target.value;
+                                    let autoType = shopForm.mediaType;
+                                    if (isVideoUrl(url)) autoType = 'video';
+                                    else if (url.toLowerCase().includes('.gif')) autoType = 'gif';
+                                    setShopForm({ ...shopForm, mediaUrl: url, mediaType: autoType });
+                                  }}
+                                  className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-indigo-500 font-mono"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Audio / Music Upload */}
+                            <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-3">
+                              <label className="block text-xs font-black text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                                <span>🎵</span> Özel Zafer Sesi / Fon Müziği (MP3 / WAV / OGG)
+                              </label>
+
+                              <div className="space-y-2">
+                                <label className="w-full py-2.5 px-4 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 font-bold border border-emerald-500/40 rounded-xl text-xs transition-all cursor-pointer flex items-center justify-center gap-2">
+                                  {shopMediaUploading ? (
+                                    <>
+                                      <span className="animate-spin inline-block w-3.5 h-3.5 border-2 border-emerald-300 border-t-transparent rounded-full" />
+                                      Yükleniyor...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <span>🎙️</span> Cihazdan Ses / Müzik Dosyası Seç (MP3/WAV/OGG)
+                                    </>
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept="audio/*,.mp3,.wav,.ogg"
+                                    onChange={(e) => handleShopFileUpload(e, true)}
+                                    className="hidden"
+                                    disabled={shopMediaUploading}
+                                  />
+                                </label>
+
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    placeholder="Ses URL: /assets/sounds/voices/tr/victory.mp3 veya online URL"
+                                    value={shopForm.audioUrl}
+                                    onChange={(e) => setShopForm({ ...shopForm, audioUrl: e.target.value })}
+                                    className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
+                                  />
+                                  {shopForm.audioUrl && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleShopAudioPreview()}
+                                      className={`px-3 py-2 rounded-xl text-xs font-black shrink-0 transition-all flex items-center gap-1.5 cursor-pointer ${
+                                        isPlayingShopAudio
+                                          ? 'bg-rose-600 text-white animate-pulse'
+                                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
+                                      }`}
+                                    >
+                                      <span>{isPlayingShopAudio ? '⏸️ Durdur' : '▶️ Dinle'}</span>
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ──────────────────────────────────────────────────────────
+                            TAB 4: KİLİT & ÖZEL ROZET ŞARTLARI
+                        ────────────────────────────────────────────────────────── */}
+                        {shopModalTab === 'locks' && (
+                          <div className="space-y-4 animate-fadeIn">
+                            {/* Custom Badge Creator */}
+                            <div className="p-3.5 bg-slate-950/70 border border-slate-800 rounded-2xl space-y-3">
+                              <span className="text-[11px] font-black text-pink-300 uppercase tracking-wider flex items-center gap-1.5">
+                                <span>🏷️</span> Ürün Köşe Rozeti (Custom Badge)
+                              </span>
+                              <div className="grid grid-cols-3 gap-2.5">
+                                <div className="col-span-1">
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-1">Rozet Metni</span>
+                                  <input
+                                    type="text"
+                                    placeholder="Örn: 🔥 YENİ"
+                                    value={shopForm.badgeText}
+                                    onChange={(e) => setShopForm({ ...shopForm, badgeText: e.target.value })}
+                                    className="w-full px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white"
+                                  />
+                                </div>
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-1">Rozet Arka Planı</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="color"
+                                      value={shopForm.badgeBg || '#ef4444'}
+                                      onChange={(e) => setShopForm({ ...shopForm, badgeBg: e.target.value })}
+                                      className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer p-0.5"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={shopForm.badgeBg}
+                                      onChange={(e) => setShopForm({ ...shopForm, badgeBg: e.target.value })}
+                                      placeholder="#ef4444"
+                                      className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-[10px] font-mono text-white"
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <span className="block text-[10px] text-slate-400 font-semibold mb-1">Rozet Yazı Rengi</span>
+                                  <div className="flex items-center gap-1.5">
+                                    <input
+                                      type="color"
+                                      value={shopForm.badgeColor || '#ffffff'}
+                                      onChange={(e) => setShopForm({ ...shopForm, badgeColor: e.target.value })}
+                                      className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 cursor-pointer p-0.5"
+                                    />
+                                    <input
+                                      type="text"
+                                      value={shopForm.badgeColor}
+                                      onChange={(e) => setShopForm({ ...shopForm, badgeColor: e.target.value })}
+                                      placeholder="#ffffff"
+                                      className="w-full px-2 py-1 bg-slate-900 border border-slate-800 rounded-lg text-[10px] font-mono text-white"
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Unlock Restrictions & Stock */}
+                            <div className="grid grid-cols-3 gap-3">
+                              <div>
+                                <label className="block text-xs font-bold text-slate-300 mb-1">
+                                  Kilit Seviyesi (Level)
+                                </label>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="100"
+                                  placeholder="0 (Kilit Yok)"
+                                  value={shopForm.requiredLevel || ''}
+                                  onChange={(e) => setShopForm({ ...shopForm, requiredLevel: Number(e.target.value) })}
+                                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none"
+                                />
+                                <span className="text-[9px] text-slate-500 mt-0.5 block">Örn: 10 = Sadece Seviye 10+</span>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-bold text-slate-300 mb-1">
+                                  Kilit Ligi
+                                </label>
+                                <select
+                                  value={shopForm.requiredLeague}
+                                  onChange={(e) => setShopForm({ ...shopForm, requiredLeague: e.target.value })}
+                                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none"
+                                >
+                                  <option value="">Kilit Yok (Tüm Ligler)</option>
+                                  <option value="bronze">🥉 Bronz ve Üzeri</option>
+                                  <option value="silver">🥈 Gümüş ve Üzeri</option>
+                                  <option value="gold">🥇 Altın ve Üzeri</option>
+                                  <option value="platinum">💎 Platin ve Üzeri</option>
+                                  <option value="diamond">💠 Elmas ve Üzeri</option>
+                                  <option value="champion">🏆 Şampiyon Ligi</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="block text-xs font-bold text-slate-300 mb-1">
+                                  Sınırlı Stok Limiti
+                                </label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  placeholder="Boş = Sınırsız"
+                                  value={shopForm.stockLimit}
+                                  onChange={(e) => setShopForm({ ...shopForm, stockLimit: e.target.value === '' ? '' : Number(e.target.value) })}
+                                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none"
+                                />
+                                <span className="text-[9px] text-slate-500 mt-0.5 block">Örn: 50 = Toplam 50 adet</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* ──────────────────────────────────────────────────────────
+                            CANLI İNTERAKTİF ÖNİZLEME KUTUSU (ALL TABS)
+                        ────────────────────────────────────────────────────────── */}
+                        <div className="p-3.5 bg-slate-950 border border-slate-800/90 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-mono text-emerald-400 font-bold flex items-center gap-1.5">
+                              <span>👁️</span> Canlı Önizleme (Oyunda Böyle Görünecek):
+                            </span>
+                            <div className="flex items-center gap-1.5">
                               {shopForm.discountPercent > 0 && (
                                 <span className="bg-rose-600 text-white font-black text-[9px] px-2 py-0.5 rounded-full shadow-md animate-bounce">
                                   %{shopForm.discountPercent} İNDİRİM
                                 </span>
                               )}
+                              {shopForm.requiredLevel > 0 && (
+                                <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-[9px] font-bold px-2 py-0.5 rounded-full">
+                                  Lv.{shopForm.requiredLevel}+
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Dynamic Card Container */}
+                          <div
+                            className={`relative w-full h-44 rounded-2xl overflow-hidden flex items-center justify-center transition-all ${
+                              shopForm.animType === 'pulse' ? 'animate-pulse' :
+                              shopForm.animType === 'floating' ? 'animate-bounce' :
+                              shopForm.animType === 'shimmer' ? 'shadow-[inset_0_0_30px_rgba(255,255,255,0.3)]' :
+                              ''
+                            }`}
+                            style={{
+                              background: shopForm.gradientStart && shopForm.gradientEnd
+                                ? shopForm.gradientDirection === 'radial'
+                                  ? `radial-gradient(circle, ${shopForm.gradientStart}, ${shopForm.gradientEnd})`
+                                  : `linear-gradient(${
+                                      shopForm.gradientDirection === 'to-r' ? '90deg' :
+                                      shopForm.gradientDirection === 'to-b' ? '180deg' :
+                                      shopForm.gradientDirection === 'to-tr' ? '45deg' : '135deg'
+                                    }, ${shopForm.gradientStart}, ${shopForm.gradientEnd})`
+                                : shopForm.previewColor || '#090d16',
+                              borderColor: shopForm.borderColor || shopForm.glowColor || '#334155',
+                              borderWidth: `${shopForm.borderWidth || 1}px`,
+                              borderStyle: shopForm.borderStyle === 'cyber_dashed' ? 'dashed' : shopForm.borderStyle === 'none' ? 'none' : 'solid',
+                              boxShadow: shopForm.glowColor
+                                ? `0 0 25px ${shopForm.glowColor}66, inset 0 0 15px ${shopForm.glowColor}33`
+                                : '0 4px 15px rgba(0,0,0,0.6)'
+                            }}
+                          >
+                            {/* Rarity Badge Overlay (Top-Left) */}
+                            <div className="absolute top-2.5 left-2.5 z-30 pointer-events-none flex flex-col gap-1">
+                              <span className={`px-2.5 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider shadow-md backdrop-blur-md ${
+                                shopForm.rarity === 'mythic' ? 'bg-gradient-to-r from-red-600/90 via-pink-600/90 to-purple-600/90 text-white border-pink-400 animate-pulse' :
+                                shopForm.rarity === 'legendary' ? 'bg-amber-500/90 text-amber-100 border-amber-300 animate-pulse' :
+                                shopForm.rarity === 'epic' ? 'bg-purple-600/90 text-purple-100 border-purple-400' :
+                                shopForm.rarity === 'rare' ? 'bg-blue-600/90 text-blue-100 border-blue-400' :
+                                'bg-slate-800/80 text-slate-300 border-slate-600'
+                              }`}>
+                                {shopForm.rarity === 'mythic' ? '🔥 MİSTİK' :
+                                 shopForm.rarity === 'legendary' ? '🟡 EFSANEVİ' :
+                                 shopForm.rarity === 'epic' ? '🟣 EPİK' :
+                                 shopForm.rarity === 'rare' ? '🔵 NADİR' : '⚪ YAYGIN'}
+                              </span>
+
+                              {/* Custom Badge Text if defined */}
+                              {shopForm.badgeText && (
+                                <span
+                                  className="px-2 py-0.5 rounded-md text-[8.5px] font-black shadow uppercase tracking-wider self-start"
+                                  style={{
+                                    backgroundColor: shopForm.badgeBg || '#ef4444',
+                                    color: shopForm.badgeColor || '#ffffff'
+                                  }}
+                                >
+                                  {shopForm.badgeText}
+                                </span>
+                              )}
                             </div>
 
-                            <div
-                              className="relative w-full h-44 rounded-xl overflow-hidden flex items-center justify-center transition-all border"
-                              style={{
-                                backgroundColor: shopForm.previewColor || '#090d16',
-                                borderColor: shopForm.glowColor || '#334155',
-                                boxShadow: shopForm.glowColor ? `0 0 20px ${shopForm.glowColor}55` : '0 4px 12px rgba(0,0,0,0.5)'
-                              }}
-                            >
-                              {/* Rarity Badge Overlay */}
-                              <div className="absolute top-2.5 left-2.5 z-30 pointer-events-none">
-                                <span className={`px-2.5 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider shadow-md backdrop-blur-md ${
-                                  shopForm.rarity === 'mythic' ? 'bg-gradient-to-r from-red-600/90 via-pink-600/90 to-purple-600/90 text-white border-pink-400 animate-pulse' :
-                                  shopForm.rarity === 'legendary' ? 'bg-amber-500/90 text-amber-100 border-amber-300 animate-pulse' :
-                                  shopForm.rarity === 'epic' ? 'bg-purple-600/90 text-purple-100 border-purple-400' :
-                                  shopForm.rarity === 'rare' ? 'bg-blue-600/90 text-blue-100 border-blue-400' :
-                                  'bg-slate-800/80 text-slate-300 border-slate-600'
-                                }`}>
-                                  {shopForm.rarity === 'mythic' ? '🔥 MİSTİK' :
-                                   shopForm.rarity === 'legendary' ? '🟡 EFSANEVİ' :
-                                   shopForm.rarity === 'epic' ? '🟣 EPİK' :
-                                   shopForm.rarity === 'rare' ? '🔵 NADİR' : '⚪ YAYGIN'}
+                            {/* Media / Video / Image with Overlay Opacity and Blend Mode */}
+                            {shopForm.mediaUrl ? (
+                              isVideoUrl(shopForm.mediaUrl, shopForm.mediaType) ? (
+                                <HlsVideoPlayer
+                                  src={shopForm.mediaUrl}
+                                  style={{
+                                    opacity: shopForm.overlayOpacity,
+                                    mixBlendMode: (shopForm.overlayMode as any) || 'normal'
+                                  }}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <img
+                                  src={shopForm.mediaUrl}
+                                  alt="Önizleme"
+                                  style={{
+                                    opacity: shopForm.overlayOpacity,
+                                    mixBlendMode: (shopForm.overlayMode as any) || 'normal'
+                                  }}
+                                  className="w-full h-full object-cover"
+                                  referrerPolicy="no-referrer"
+                                />
+                              )
+                            ) : (
+                              <div className="flex flex-col items-center justify-center gap-1 text-slate-400">
+                                <span className="text-3xl">
+                                  {shopForm.category === 'avatar' ? '👑' :
+                                   shopForm.category === 'card_back' ? '🃏' :
+                                   shopForm.category === 'board_theme' ? '🎨' :
+                                   shopForm.category === 'player_board' ? '🏆' :
+                                   shopForm.category === 'celebration_sound' ? '🎵' : '✨'}
+                                </span>
+                                <span className="text-[10px] font-mono text-slate-400 font-bold">
+                                  {shopForm.name || 'Özel Tema Görünümü'}
                                 </span>
                               </div>
+                            )}
 
-                              {/* Media / Video / Image with Overlay Opacity and Blend Mode */}
-                              {shopForm.mediaUrl ? (
-                                isVideoUrl(shopForm.mediaUrl, shopForm.mediaType) ? (
-                                  <HlsVideoPlayer
-                                    src={shopForm.mediaUrl}
-                                    style={{
-                                      opacity: shopForm.overlayOpacity,
-                                      mixBlendMode: (shopForm.overlayMode as any) || 'normal'
-                                    }}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <img
-                                    src={shopForm.mediaUrl}
-                                    alt="Önizleme"
-                                    style={{
-                                      opacity: shopForm.overlayOpacity,
-                                      mixBlendMode: (shopForm.overlayMode as any) || 'normal'
-                                    }}
-                                    className="w-full h-full object-cover"
-                                    referrerPolicy="no-referrer"
-                                  />
-                                )
-                              ) : (
-                                <div className="text-center text-slate-500 text-xs px-4">
-                                  Medya veya Gif Yüklenmedi (Arka Plan Rengi Görünecek)
-                                </div>
-                              )}
-
-                              {/* Simulated Particle Effect Overlay */}
-                              {shopForm.particleEffect && shopForm.particleEffect !== 'none' && (
-                                <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
-                                  {shopForm.particleEffect === 'sparkles' && (
-                                    <div className="absolute inset-0 flex items-center justify-around text-amber-300 text-lg">
-                                      <span className="animate-bounce">✨</span>
-                                      <span className="animate-pulse delay-100">🌟</span>
-                                      <span className="animate-bounce delay-200">✨</span>
-                                    </div>
-                                  )}
-                                  {shopForm.particleEffect === 'fire' && (
-                                    <div className="absolute inset-x-0 bottom-1 flex justify-around text-rose-500 text-xl animate-bounce">
-                                      <span>🔥</span>
-                                      <span className="delay-75">💥</span>
-                                      <span className="delay-150">🔥</span>
-                                    </div>
-                                  )}
-                                  {shopForm.particleEffect === 'snow' && (
-                                    <div className="absolute inset-0 flex justify-around items-center text-blue-200 text-sm">
-                                      <span className="animate-bounce">❄️</span>
-                                      <span>🌨️</span>
-                                      <span className="animate-bounce delay-100">❄️</span>
-                                    </div>
-                                  )}
-                                  {shopForm.particleEffect === 'matrix' && (
-                                    <div className="absolute inset-0 font-mono text-[10px] text-emerald-400 opacity-80 flex justify-between p-2">
-                                      <span>01010</span>
-                                      <span>11001</span>
-                                      <span>00110</span>
-                                    </div>
-                                  )}
-                                  {shopForm.particleEffect === 'bubbles' && (
-                                    <div className="absolute inset-0 flex justify-around items-center text-cyan-300 text-base">
-                                      <span>🫧</span>
-                                      <span className="animate-bounce">🫧</span>
-                                      <span>🫧</span>
-                                    </div>
-                                  )}
-                                  {shopForm.particleEffect === 'stars' && (
-                                    <div className="absolute inset-0 flex justify-around items-center text-yellow-300 text-sm">
-                                      <span className="animate-ping">⭐</span>
-                                      <span className="animate-pulse delay-150">⭐</span>
-                                      <span className="animate-ping delay-300">⭐</span>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Contextual HUD label inside preview */}
-                              <div className="absolute bottom-2 right-2 z-30 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] text-white font-bold border border-white/10">
-                                {shopForm.name || 'Ürün Adı'}
+                            {/* Simulated Particle Effect Overlay */}
+                            {shopForm.particleEffect && shopForm.particleEffect !== 'none' && (
+                              <div className="absolute inset-0 pointer-events-none z-20 overflow-hidden">
+                                {shopForm.particleEffect === 'sparkles' && (
+                                  <div className="absolute inset-0 flex items-center justify-around text-amber-300 text-lg">
+                                    <span className="animate-bounce">✨</span>
+                                    <span className="animate-pulse delay-100">🌟</span>
+                                    <span className="animate-bounce delay-200">✨</span>
+                                  </div>
+                                )}
+                                {shopForm.particleEffect === 'fire' && (
+                                  <div className="absolute inset-x-0 bottom-1 flex justify-around text-rose-500 text-xl animate-bounce">
+                                    <span>🔥</span>
+                                    <span className="delay-75">💥</span>
+                                    <span className="delay-150">🔥</span>
+                                  </div>
+                                )}
+                                {shopForm.particleEffect === 'snow' && (
+                                  <div className="absolute inset-0 flex justify-around items-center text-blue-200 text-sm">
+                                    <span className="animate-bounce">❄️</span>
+                                    <span>🌨️</span>
+                                    <span className="animate-bounce delay-100">❄️</span>
+                                  </div>
+                                )}
+                                {shopForm.particleEffect === 'matrix' && (
+                                  <div className="absolute inset-0 font-mono text-[10px] text-emerald-400 opacity-80 flex justify-between p-2">
+                                    <span>01010</span>
+                                    <span>11001</span>
+                                    <span>00110</span>
+                                  </div>
+                                )}
+                                {shopForm.particleEffect === 'bubbles' && (
+                                  <div className="absolute inset-0 flex justify-around items-center text-cyan-300 text-base">
+                                    <span>🫧</span>
+                                    <span className="animate-bounce">🫧</span>
+                                    <span>🫧</span>
+                                  </div>
+                                )}
+                                {shopForm.particleEffect === 'stars' && (
+                                  <div className="absolute inset-0 flex justify-around items-center text-yellow-300 text-sm">
+                                    <span className="animate-ping">⭐</span>
+                                    <span className="animate-pulse delay-150">⭐</span>
+                                    <span className="animate-ping delay-300">⭐</span>
+                                  </div>
+                                )}
                               </div>
+                            )}
+
+                            {/* Contextual HUD label inside preview */}
+                            <div className="absolute bottom-2 right-2 z-30 bg-black/80 backdrop-blur-md px-2.5 py-1 rounded-lg text-[10px] text-white font-bold border border-white/10 flex items-center gap-1.5">
+                              {shopForm.audioUrl && <span>🎵</span>}
+                              <span>{shopForm.name || 'Ürün Adı'}</span>
+                              <span className="text-amber-300 font-black">💰 {shopForm.price}</span>
                             </div>
                           </div>
                         </div>
 
-                        <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-800">
-                          <button
-                            type="button"
-                            onClick={() => setIsShopModalOpen(false)}
-                            className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
-                          >
-                            İptal
-                          </button>
-                          <button
-                            type="submit"
-                            className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition-all cursor-pointer"
-                          >
-                            {editingShopItem ? 'Güncelle' : 'Ekle ve Kaydet'}
-                          </button>
+                        {/* Modal Footer Actions */}
+                        <div className="flex items-center justify-between pt-4 border-t border-slate-800">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const tabs: ('basic' | 'design' | 'media' | 'locks')[] = ['basic', 'design', 'media', 'locks'];
+                                const currIdx = tabs.indexOf(shopModalTab);
+                                if (currIdx > 0) setShopModalTab(tabs[currIdx - 1]);
+                              }}
+                              disabled={shopModalTab === 'basic'}
+                              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                            >
+                              ← Önceki Sekme
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const tabs: ('basic' | 'design' | 'media' | 'locks')[] = ['basic', 'design', 'media', 'locks'];
+                                const currIdx = tabs.indexOf(shopModalTab);
+                                if (currIdx < tabs.length - 1) setShopModalTab(tabs[currIdx + 1]);
+                              }}
+                              disabled={shopModalTab === 'locks'}
+                              className="px-3 py-2 bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                            >
+                              Sonraki Sekme →
+                            </button>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (isPlayingShopAudio && shopAudioPlayer) shopAudioPlayer.pause();
+                                setIsShopModalOpen(false);
+                              }}
+                              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                            >
+                              İptal
+                            </button>
+                            <button
+                              type="submit"
+                              className="px-6 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-black text-xs rounded-xl shadow-lg shadow-indigo-600/30 transition-all cursor-pointer flex items-center gap-1.5"
+                            >
+                              <span>💾</span>
+                              <span>{editingShopItem ? 'Değişiklikleri Kaydet' : 'Ürünü Mağazaya Ekle'}</span>
+                            </button>
+                          </div>
                         </div>
                       </form>
                     </div>

@@ -461,7 +461,17 @@ export const CustomizationPanel: React.FC<Props> = ({ profile, onUpdateProfile }
     const list: any[] = [...THEME_OPTIONS];
     shopItems.filter(i => i.category === 'board_theme').forEach(item => {
       if (!list.some(x => x.id === item.id)) {
-        list.push({ id: item.id, name: item.name, color: item.previewColor || '#1E293B', description: item.description, mediaUrl: item.mediaUrl, mediaType: item.mediaType });
+        list.push({
+          id: item.id,
+          name: item.name,
+          color: item.previewColor || item.gradientStart || '#1E293B',
+          description: item.description,
+          mediaUrl: item.mediaUrl,
+          mediaType: item.mediaType,
+          gradientStart: item.gradientStart,
+          gradientEnd: item.gradientEnd,
+          glowColor: item.glowColor
+        });
       }
     });
     return list;
@@ -471,7 +481,18 @@ export const CustomizationPanel: React.FC<Props> = ({ profile, onUpdateProfile }
     const list: any[] = [...CARD_BACKS];
     shopItems.filter(i => i.category === 'card_back').forEach(item => {
       if (!list.some(x => x.id === item.id)) {
-        list.push({ id: item.id, name: item.name, color: item.previewColor || '#EF5350', pattern: '★', mediaUrl: item.mediaUrl, mediaType: item.mediaType });
+        list.push({
+          id: item.id,
+          name: item.name,
+          color: item.previewColor || item.gradientStart || '#EF5350',
+          pattern: '★',
+          mediaUrl: item.mediaUrl,
+          mediaType: item.mediaType,
+          gradientStart: item.gradientStart,
+          gradientEnd: item.gradientEnd,
+          glowColor: item.glowColor,
+          borderStyle: item.borderStyle
+        });
       }
     });
     return list;
@@ -481,7 +502,16 @@ export const CustomizationPanel: React.FC<Props> = ({ profile, onUpdateProfile }
     const list: any[] = [...PROFILE_FRAMES];
     shopItems.filter(i => i.category === 'profile_frame').forEach(item => {
       if (!list.some(x => x.id === item.id)) {
-        list.push({ id: item.id, name: item.name, description: item.description, mediaUrl: item.mediaUrl, mediaType: item.mediaType });
+        list.push({
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          mediaUrl: item.mediaUrl,
+          mediaType: item.mediaType,
+          gradientStart: item.gradientStart,
+          gradientEnd: item.gradientEnd,
+          glowColor: item.glowColor
+        });
       }
     });
     return list;
@@ -491,7 +521,12 @@ export const CustomizationPanel: React.FC<Props> = ({ profile, onUpdateProfile }
     const list: any[] = [...CELEBRATION_SOUNDS];
     shopItems.filter(i => i.category === 'celebration_sound').forEach(item => {
       if (!list.some(x => x.id === item.id)) {
-        list.push({ id: item.id, name: item.name, description: item.description });
+        list.push({
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          audioUrl: item.audioUrl
+        });
       }
     });
     return list;
@@ -501,7 +536,16 @@ export const CustomizationPanel: React.FC<Props> = ({ profile, onUpdateProfile }
     const list: any[] = [...PLAYER_BOARDS];
     shopItems.filter(i => i.category === 'player_board').forEach(item => {
       if (!list.some(x => x.id === item.id)) {
-        list.push({ id: item.id, name: item.name, description: item.description, mediaUrl: item.mediaUrl, mediaType: item.mediaType });
+        list.push({
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          mediaUrl: item.mediaUrl,
+          mediaType: item.mediaType,
+          gradientStart: item.gradientStart,
+          gradientEnd: item.gradientEnd,
+          glowColor: item.glowColor
+        });
       }
     });
     return list;
@@ -511,7 +555,15 @@ export const CustomizationPanel: React.FC<Props> = ({ profile, onUpdateProfile }
     const list: any[] = [...CARD_SKINS];
     shopItems.filter(i => i.category === 'card_skin').forEach(item => {
       if (!list.some(x => x.id === item.id)) {
-        list.push({ id: item.id, name: item.name, description: item.description, mediaUrl: item.mediaUrl, mediaType: item.mediaType });
+        list.push({
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          mediaUrl: item.mediaUrl,
+          mediaType: item.mediaType,
+          gradientStart: item.gradientStart,
+          gradientEnd: item.gradientEnd
+        });
       }
     });
     return list;

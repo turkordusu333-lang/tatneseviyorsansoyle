@@ -1,0 +1,21 @@
+[
+  {
+    "id": "t-gold",
+    "name": "🥇 Şampiyonlar Kupası",
+    "description": "Zorlu taktikçi botlara karşı 8 kişilik büyük şampiyona. Büyük ödül sizi bekliyor!",
+    "tier": "gold",
+    "format": "1v1",
+    "botDifficulty": "medium",
+    "allowBots": true,
+    "entryFee": 500,
+    "prizeCoins": 1200,
+    "prizeXp": 500,
+    "maxParticipants": 8,
+    "targetSets": 3,
+    "turnDurationSeconds": 30,
+    "icon": "🥇",
+    "participants": [],
+    "rounds": [],
+    "status": "registration"
+  }
+]

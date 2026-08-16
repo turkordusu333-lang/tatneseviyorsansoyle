@@ -150,28 +150,30 @@ const TURKISH_COLOR_LABELS: Record<CardColor, string> = {
 
 const getSkinStyles = (cardBack?: string) => {
   const shopItem = findShopItem(cardBack);
-  if (shopItem?.mediaUrl) {
+  if (shopItem) {
+    const hasGradient = shopItem.gradientStart && shopItem.gradientEnd;
     return {
-      borderClass: 'border-amber-400/80 bg-slate-950 text-amber-200 font-sans shadow-[0_4px_16px_rgba(245,158,11,0.4)]',
-      fontClass: 'font-sans font-extrabold text-amber-300',
-      cardBg: 'bg-slate-950',
-      bgOverlay: '',
-      borderColor: 'border-amber-400/30',
-      symbol: '🌟',
-      mediaUrl: shopItem.mediaUrl,
-      mediaType: shopItem.mediaType || 'image',
-      previewColor: shopItem.previewColor
-    };
-  }
-  if (shopItem?.previewColor) {
-    return {
-      borderClass: 'border-amber-400/80 bg-slate-950 text-white font-sans shadow-[0_4px_16px_rgba(245,158,11,0.4)]',
+      borderClass: `bg-slate-950 font-sans shadow-2xl ${shopItem.animType === 'pulse' ? 'animate-pulse' : shopItem.animType === 'floating' ? 'animate-bounce' : ''}`,
       fontClass: 'font-sans font-extrabold text-white',
       cardBg: 'bg-slate-950',
       bgOverlay: '',
       borderColor: 'border-white/20',
-      symbol: '🎴',
-      previewColor: shopItem.previewColor
+      symbol: '🌟',
+      mediaUrl: shopItem.mediaUrl,
+      mediaType: shopItem.mediaType || 'image',
+      previewColor: shopItem.previewColor,
+      customStyle: {
+        background: hasGradient
+          ? `linear-gradient(${
+              shopItem.gradientDirection === 'to-r' ? '90deg' :
+              shopItem.gradientDirection === 'to-b' ? '180deg' :
+              shopItem.gradientDirection === 'to-tr' ? '45deg' : '135deg'
+            }, ${shopItem.gradientStart}, ${shopItem.gradientEnd})`
+          : (shopItem.previewColor || undefined),
+        borderColor: shopItem.borderColor || shopItem.glowColor || undefined,
+        borderWidth: shopItem.borderWidth ? `${shopItem.borderWidth}px` : undefined,
+        boxShadow: shopItem.glowColor ? `0 0 20px ${shopItem.glowColor}66` : undefined
+      }
     };
   }
 
@@ -353,15 +355,32 @@ const GameCardComponent: React.FC<GameCardProps> = ({
         isSkinVideo ? (
           <HlsVideoPlayer
             src={skinItem.mediaUrl}
-            className={`absolute inset-0 w-full h-full object-cover pointer-events-none opacity-40 mix-blend-overlay z-35 ${getSkinOverlayClass()}`}
+            style={{
+              opacity: skinItem.overlayOpacity ?? 0.4,
+              mixBlendMode: (skinItem.overlayMode as any) || 'overlay'
+            }}
+            className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-35 ${getSkinOverlayClass()}`}
           />
         ) : (
           <img
             src={skinItem.mediaUrl}
             alt="Card Skin"
-            className={`absolute inset-0 w-full h-full object-cover pointer-events-none opacity-40 mix-blend-overlay z-35 ${getSkinOverlayClass()}`}
+            style={{
+              opacity: skinItem.overlayOpacity ?? 0.4,
+              mixBlendMode: (skinItem.overlayMode as any) || 'overlay'
+            }}
+            className={`absolute inset-0 w-full h-full object-cover pointer-events-none z-35 ${getSkinOverlayClass()}`}
           />
         )
+      ) : skinItem?.gradientStart && skinItem?.gradientEnd ? (
+        <div
+          style={{
+            background: `linear-gradient(135deg, ${skinItem.gradientStart}, ${skinItem.gradientEnd})`,
+            opacity: skinItem.overlayOpacity ?? 0.35,
+            mixBlendMode: (skinItem.overlayMode as any) || 'overlay'
+          }}
+          className={`absolute inset-0 pointer-events-none z-35 ${getSkinOverlayClass()}`}
+        />
       ) : null}
       {cardSkin === 'skin_holographic' && (
         <div className={`skin-holographic-overlay absolute inset-0 pointer-events-none z-35 skin-holographic-hover ${getSkinOverlayClass()}`} />
@@ -400,6 +419,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
     return (
       <div
         onClick={onClick}
+        style={(skin as any).customStyle}
         className={`relative select-none flex flex-col justify-between overflow-hidden shadow-2xl transition-all duration-200 border-2 ${skin.borderClass} ${
           size === 'normal' ? 'w-24 h-36 sm:w-28 sm:h-44 p-2 sm:p-2.5 rounded-2xl' :
           size === 'medium' ? 'w-14 h-20 sm:w-16 sm:h-24 p-1 sm:p-1.5 rounded-md' :

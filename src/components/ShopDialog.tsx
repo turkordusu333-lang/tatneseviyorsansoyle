@@ -751,6 +751,22 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile, adminSet
                                item.rarity === 'rare' ? '🔵 NADİR' : '⚪ YAYGIN'}
                             </div>
                           )}
+                          {item.badgeText && (
+                            <div
+                              className="px-2 py-0.5 rounded-md text-[8px] font-black uppercase tracking-wider shadow-md"
+                              style={{
+                                backgroundColor: item.badgeBg || '#ef4444',
+                                color: item.badgeColor || '#ffffff'
+                              }}
+                            >
+                              {item.badgeText}
+                            </div>
+                          )}
+                          {item.requiredLevel && item.requiredLevel > 0 && (
+                            <div className="bg-indigo-600/40 border border-indigo-400/40 text-indigo-200 font-bold text-[8px] px-1.5 py-0.5 rounded-md">
+                              Lv.{item.requiredLevel}+
+                            </div>
+                          )}
                           {item.discountPercent && item.discountPercent > 0 ? (
                             <div className="bg-rose-600 text-white font-black text-[8px] px-2 py-0.5 rounded-full border border-rose-400 shadow-md animate-bounce">
                               %{item.discountPercent} İNDİRİM
@@ -789,6 +805,20 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile, adminSet
                               </div>
                             </div>
                           )
+                        ) : item.gradientStart && item.gradientEnd ? (
+                          <div
+                            className="w-full h-full rounded-xl flex items-center justify-center relative overflow-hidden"
+                            style={{
+                              background: `linear-gradient(135deg, ${item.gradientStart}, ${item.gradientEnd})`
+                            }}
+                          >
+                            <span className="text-3xl filter drop-shadow">
+                              {item.category === 'avatar' ? '👑' :
+                               item.category === 'card_back' ? '🃏' :
+                               item.category === 'board_theme' ? '🎨' :
+                               item.category === 'player_board' ? '🏆' : '✨'}
+                            </span>
+                          </div>
                         ) : (
                           item.category === 'avatar' && (
                             <div className="w-18 h-18 rounded-full border-4 border-red-500/80 flex items-center justify-center text-4xl bg-gradient-to-br from-slate-800 to-slate-900 shadow-xl shadow-red-950/40 group-hover:scale-110 group-hover:rotate-6 transition-all duration-300 relative overflow-hidden">
@@ -959,6 +989,13 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile, adminSet
                             <span>⚡</span> AKTİFLEŞTİR
                           </button>
                         )
+                      ) : item.requiredLevel && (profile.level || 1) < item.requiredLevel ? (
+                        <button
+                          disabled
+                          className="w-full py-2 bg-slate-800/80 border border-slate-700 text-slate-400 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 cursor-not-allowed uppercase tracking-wider"
+                        >
+                          <span>🔒</span> Seviye {item.requiredLevel}+ Gerekli
+                        </button>
                       ) : (
                         <button
                           onClick={() => handleBuy(item.id, item.price)}

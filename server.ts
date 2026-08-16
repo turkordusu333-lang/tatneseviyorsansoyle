@@ -27,31 +27,66 @@ if (supabaseUrl && supabaseAnonKey) {
   console.log('[Database] Supabase credentials not found, using local fallback.');
 }
 
-function checkWinnerForMatch(match: MatchState, player: GamePlayer): boolean {
-  if (match.settings?.gameMode === '2v2_team') {
-    const playerTeam = player.team || (match.players.indexOf(player) % 2 === 0 ? 'team_blue' : 'team_red');
-    const teamPlayers = match.players.filter((p) => (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === playerTeam);
-    
-    // Count total completed sets across the 2 teammates
-    let totalCompletedSets = 0;
-    teamPlayers.forEach((tp) => {
-      Object.keys(tp.properties).forEach((colKey) => {
-        const col = colKey as CardColor;
-        const set = tp.properties[col];
-        if (set && set.cards.length >= MAX_IN_SET[col]) {
-          totalCompletedSets++;
-        }
-      });
-    });
+function countTeamCompletedSets(players: GamePlayer[], team: 'team_blue' | 'team_red'): number {
+  if (!players || players.length === 0) return 0;
+  const teamPlayers = players.filter((p, idx) => (p.team || (idx % 2 === 0 ? 'team_blue' : 'team_red')) === team);
+  if (teamPlayers.length === 0) return 0;
 
-    const targetSets = match.settings?.targetSets || 4;
-    if (totalCompletedSets >= targetSets) {
-      match.winnerTeam = playerTeam;
+  // Combine property cards of each color across teammates
+  const combinedCardsByColor: Record<string, number> = {};
+  teamPlayers.forEach((tp) => {
+    if (tp.properties) {
+      for (const colorKey in tp.properties) {
+        const col = colorKey as CardColor;
+        const set = tp.properties[col];
+        if (set && set.cards) {
+          combinedCardsByColor[col] = (combinedCardsByColor[col] || 0) + set.cards.length;
+        }
+      }
+    }
+  });
+
+  let totalCompletedSets = 0;
+  for (const colorKey in combinedCardsByColor) {
+    const col = colorKey as CardColor;
+    const count = combinedCardsByColor[col];
+    const required = MAX_IN_SET[col];
+    if (required && required > 0) {
+      totalCompletedSets += Math.floor(count / required);
+    }
+  }
+
+  return totalCompletedSets;
+}
+
+function checkWinnerForMatch(match: MatchState, player?: GamePlayer): boolean {
+  const targetSets = match.settings?.targetSets || (match.settings?.gameMode === '2v2_team' ? 4 : 3);
+
+  if (match.settings?.gameMode === '2v2_team') {
+    const blueSets = countTeamCompletedSets(match.players, 'team_blue');
+    const redSets = countTeamCompletedSets(match.players, 'team_red');
+
+    if (blueSets >= targetSets) {
+      match.winnerTeam = 'team_blue';
+      return true;
+    }
+    if (redSets >= targetSets) {
+      match.winnerTeam = 'team_red';
       return true;
     }
     return false;
   }
-  return checkWinner(player.properties, match.settings?.targetSets || 3);
+
+  if (player) {
+    return checkWinner(player.properties, targetSets);
+  }
+
+  for (const p of match.players) {
+    if (checkWinner(p.properties, targetSets)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // Create data directory if not exists
@@ -1106,7 +1141,14 @@ async function startServer() {
   });
 
   app.post('/api/admin/shop/add', async (req, res) => {
-    const { name, category, price, description, mediaUrl, mediaType, previewColor, previewUrl, rarity, overlayMode, overlayOpacity, glowColor, particleEffect, discountPercent } = req.body;
+    const {
+      name, category, price, description, mediaUrl, mediaType, previewColor, previewUrl,
+      rarity, overlayMode, overlayOpacity, glowColor, particleEffect, discountPercent,
+      gradientStart, gradientEnd, gradientDirection, borderStyle, borderWidth, borderColor,
+      animType, badgeText, badgeColor, badgeBg, audioUrl, requiredLevel, requiredLeague,
+      limitedTimeEnd, stockLimit, stockRemaining
+    } = req.body;
+
     if (!name || !category || price === undefined) {
       return res.status(400).json({ error: 'Ürün adı, kategori ve fiyat zorunludur.' });
     }
@@ -1127,6 +1169,22 @@ async function startServer() {
       glowColor: glowColor ? glowColor.trim() : undefined,
       particleEffect: particleEffect || 'none',
       discountPercent: discountPercent !== undefined ? Number(discountPercent) : 0,
+      gradientStart: gradientStart ? gradientStart.trim() : undefined,
+      gradientEnd: gradientEnd ? gradientEnd.trim() : undefined,
+      gradientDirection: gradientDirection || 'to-br',
+      borderStyle: borderStyle || 'solid',
+      borderWidth: borderWidth !== undefined ? Number(borderWidth) : 1,
+      borderColor: borderColor ? borderColor.trim() : undefined,
+      animType: animType || 'none',
+      badgeText: badgeText ? badgeText.trim() : undefined,
+      badgeColor: badgeColor ? badgeColor.trim() : undefined,
+      badgeBg: badgeBg ? badgeBg.trim() : undefined,
+      audioUrl: audioUrl ? audioUrl.trim() : undefined,
+      requiredLevel: requiredLevel !== undefined ? Number(requiredLevel) : 0,
+      requiredLeague: requiredLeague ? requiredLeague.trim() : undefined,
+      limitedTimeEnd: limitedTimeEnd ? limitedTimeEnd.trim() : undefined,
+      stockLimit: stockLimit !== undefined ? Number(stockLimit) : undefined,
+      stockRemaining: stockRemaining !== undefined ? Number(stockRemaining) : (stockLimit !== undefined ? Number(stockLimit) : undefined),
       isUnlocked: false
     };
 
@@ -1137,7 +1195,14 @@ async function startServer() {
   });
 
   app.post('/api/admin/shop/update', async (req, res) => {
-    const { id, name, category, price, description, mediaUrl, mediaType, previewColor, previewUrl, rarity, overlayMode, overlayOpacity, glowColor, particleEffect, discountPercent } = req.body;
+    const {
+      id, name, category, price, description, mediaUrl, mediaType, previewColor, previewUrl,
+      rarity, overlayMode, overlayOpacity, glowColor, particleEffect, discountPercent,
+      gradientStart, gradientEnd, gradientDirection, borderStyle, borderWidth, borderColor,
+      animType, badgeText, badgeColor, badgeBg, audioUrl, requiredLevel, requiredLeague,
+      limitedTimeEnd, stockLimit, stockRemaining
+    } = req.body;
+
     if (!id) {
       return res.status(400).json({ error: 'Ürün ID belirtilmelidir.' });
     }
@@ -1163,6 +1228,22 @@ async function startServer() {
       glowColor: glowColor !== undefined ? glowColor.trim() : globalStoreItems[index].glowColor,
       particleEffect: particleEffect !== undefined ? particleEffect : (globalStoreItems[index].particleEffect || 'none'),
       discountPercent: discountPercent !== undefined ? Number(discountPercent) : (globalStoreItems[index].discountPercent || 0),
+      gradientStart: gradientStart !== undefined ? gradientStart.trim() : globalStoreItems[index].gradientStart,
+      gradientEnd: gradientEnd !== undefined ? gradientEnd.trim() : globalStoreItems[index].gradientEnd,
+      gradientDirection: gradientDirection !== undefined ? gradientDirection : (globalStoreItems[index].gradientDirection || 'to-br'),
+      borderStyle: borderStyle !== undefined ? borderStyle : (globalStoreItems[index].borderStyle || 'solid'),
+      borderWidth: borderWidth !== undefined ? Number(borderWidth) : (globalStoreItems[index].borderWidth ?? 1),
+      borderColor: borderColor !== undefined ? borderColor.trim() : globalStoreItems[index].borderColor,
+      animType: animType !== undefined ? animType : (globalStoreItems[index].animType || 'none'),
+      badgeText: badgeText !== undefined ? badgeText.trim() : globalStoreItems[index].badgeText,
+      badgeColor: badgeColor !== undefined ? badgeColor.trim() : globalStoreItems[index].badgeColor,
+      badgeBg: badgeBg !== undefined ? badgeBg.trim() : globalStoreItems[index].badgeBg,
+      audioUrl: audioUrl !== undefined ? audioUrl.trim() : globalStoreItems[index].audioUrl,
+      requiredLevel: requiredLevel !== undefined ? Number(requiredLevel) : (globalStoreItems[index].requiredLevel || 0),
+      requiredLeague: requiredLeague !== undefined ? requiredLeague.trim() : globalStoreItems[index].requiredLeague,
+      limitedTimeEnd: limitedTimeEnd !== undefined ? limitedTimeEnd.trim() : globalStoreItems[index].limitedTimeEnd,
+      stockLimit: stockLimit !== undefined ? Number(stockLimit) : globalStoreItems[index].stockLimit,
+      stockRemaining: stockRemaining !== undefined ? Number(stockRemaining) : globalStoreItems[index].stockRemaining,
     };
 
     await saveGlobalStoreItems();
@@ -2148,7 +2229,7 @@ async function startServer() {
 
   // Custom profile updater endpoint
   app.post('/api/profile/update', async (req, res) => {
-    const { userId, avatarUrl, gamesHistory, coins, xp, stats, dailyQuests, achievements, password, country, lastLuckyWheelSpin } = req.body;
+    const { userId, avatarId, avatarUrl, gamesHistory, coins, xp, stats, dailyQuests, achievements, password, country, lastLuckyWheelSpin, settings, unlockedItems } = req.body;
     const users = await loadUsers();
     const user = users[userId];
 
@@ -2156,6 +2237,7 @@ async function startServer() {
       return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
     }
 
+    if (avatarId !== undefined) user.avatarId = avatarId;
     if (avatarUrl !== undefined) user.avatarUrl = avatarUrl;
     if (gamesHistory !== undefined) user.gamesHistory = gamesHistory;
     if (coins !== undefined) user.coins = coins;
@@ -2169,9 +2251,29 @@ async function startServer() {
     if (password !== undefined) user.password = password;
     if (country !== undefined) user.country = country;
     if (lastLuckyWheelSpin !== undefined) user.lastLuckyWheelSpin = lastLuckyWheelSpin;
+    if (settings !== undefined) user.settings = { ...user.settings, ...settings };
+    if (unlockedItems !== undefined && Array.isArray(unlockedItems)) {
+      user.unlockedItems = Array.from(new Set([...user.unlockedItems, ...unlockedItems]));
+    }
 
     users[userId] = user;
     await saveUsers(users);
+
+    // Live update active matches if player is in a room
+    Object.values(activeMatches).forEach((match) => {
+      const p = match.players?.find((player) => player.id === userId);
+      if (p) {
+        p.avatarId = user.avatarId;
+        p.avatarUrl = user.avatarUrl;
+        if (user.settings) {
+          p.profileFrame = user.settings.profileFrame || 'frame_none';
+          p.playerBoard = user.settings.playerBoard || 'board_classic';
+          p.cardBack = user.settings.cardBack || 'back_classic';
+          p.cardSkin = user.settings.cardSkin || 'skin_none';
+          p.actionVfx = user.settings.actionVfx || 'vfx_none';
+        }
+      }
+    });
 
     res.json(user);
   });
@@ -2732,10 +2834,11 @@ async function startServer() {
         if (roomId && activeMatches[roomId] && userId) {
           const m = activeMatches[roomId];
           if (m.players) {
-            const sender = m.players.find((p: any) => p.id === userId);
-            if (sender && sender.isDisconnected && !sender.isBot) {
+            const sender = m.players.find((p: any) => p.id === userId || p.username === payload.username);
+            if (sender && (sender.isDisconnected || (sender as any).isAfk) && !sender.isBot) {
               sender.isDisconnected = false;
               (sender as any).isAfk = false;
+              (sender as any).hasAbandoned = false;
               (sender as any).consecutiveAfkTurns = 0;
               if (m.players[m.turnIndex]?.id === sender.id) {
                 clearBotTurnTimeout(roomId);
@@ -4212,20 +4315,21 @@ async function startServer() {
           case 'reset_afk':
           case 'return_from_afk': {
             const match = activeMatches[roomId!];
-            if (match && match.status === 'playing') {
-              const player = match.players.find(p => p.id === userId);
+            if (match) {
+              const player = match.players.find(p => p.id === userId || (p as any).username === payload.username);
               if (player) {
                 player.isDisconnected = false;
                 (player as any).isAfk = false;
+                (player as any).hasAbandoned = false;
                 (player as any).consecutiveAfkTurns = 0;
                 if (match.players[match.turnIndex]?.id === player.id) {
                   clearBotTurnTimeout(roomId!);
                   match.turnStartedAt = Date.now();
                 }
-                if (match.activeActionRequest && match.activeActionRequest.targetPlayerId === userId) {
+                if (match.activeActionRequest && match.activeActionRequest.targetPlayerId === player.id) {
                   match.actionRequestStartedAt = Date.now();
                 } else if (match.activeActionRequests) {
-                  const myReq = match.activeActionRequests.find(r => r.targetPlayerId === userId);
+                  const myReq = match.activeActionRequests.find(r => r.targetPlayerId === player.id);
                   if (myReq) {
                     match.actionRequestStartedAt = Date.now();
                   }
@@ -4531,9 +4635,8 @@ async function startServer() {
       }
     }
 
-    // Drawing rule: if player has 0 cards, draw 5, else draw 2 (or 4 in Chaos mode).
-    const isChaos = match.settings?.gameMode === 'chaos';
-    const drawCount = activePlayer.hand.length === 0 ? 5 : (isChaos ? 4 : 2);
+    // Drawing rule: if player has 0 cards, draw 5, else draw 2.
+    const drawCount = activePlayer.hand.length === 0 ? 5 : 2;
     const drawn = serverDeck.splice(0, drawCount);
     activePlayer.hand.push(...drawn);
 
@@ -4573,8 +4676,12 @@ async function startServer() {
         timestamp: Date.now(),
       });
     } else if (card.actionType === 'birthday') {
-      // Demand 2M from all other players
-      const targetPlayers = match.players.filter((p) => p.id !== player.id);
+      // Demand 2M from all other opponent players (exclude teammate in 2v2)
+      const is2v2 = match.settings?.gameMode === '2v2_team';
+      const playerTeam = player.team || (match.players.indexOf(player) % 2 === 0 ? 'team_blue' : 'team_red');
+      const isTeammate = (p: GamePlayer) => (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === playerTeam;
+      const targetPlayers = match.players.filter((p) => p.id !== player.id && (!is2v2 || !isTeammate(p)));
+
       const pending: ActionRequest[] = [];
       targetPlayers.forEach((tp) => {
         // Create action request
@@ -4599,16 +4706,22 @@ async function startServer() {
       }
       match.logs.push({
         id: `birthday-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-        message: `${player.username} Bugün Benim Doğum Günüm kartını oynadı! Herkesten 2M talep ediyor.`,
+        message: `${player.username} Bugün Benim Doğum Günüm kartını oynadı! ${is2v2 ? 'Rakiplerden' : 'Herkesten'} 2M talep ediyor.`,
         timestamp: Date.now(),
       });
     } else if (card.actionType === 'debt-collector') {
-      // Demand 5M from a specific player
-      const targetId = payload.targetPlayerId || match.players.find((p) => p.id !== player.id)?.id;
+      // Demand 5M from a specific player (must not be teammate)
+      const is2v2 = match.settings?.gameMode === '2v2_team';
+      const playerTeam = player.team || (match.players.indexOf(player) % 2 === 0 ? 'team_blue' : 'team_red');
+      const isTeammate = (p: GamePlayer) => (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === playerTeam;
+
+      const targetId = payload.targetPlayerId || match.players.find((p) => p.id !== player.id && (!is2v2 || !isTeammate(p)))?.id;
       if (!targetId) return;
 
       const targetPlayer = match.players.find((p) => p.id === targetId);
       if (targetPlayer) {
+        if (is2v2 && isTeammate(targetPlayer)) return; // Prevent friendly fire
+
         if (targetPlayer.isBot || targetPlayer.isDisconnected) {
           processBotPayment(match, targetPlayer, player, 5);
         } else {
@@ -4630,6 +4743,10 @@ async function startServer() {
       }
     } else if (card.type === 'rent') {
       // Charge Rent
+      const is2v2 = match.settings?.gameMode === '2v2_team';
+      const playerTeam = player.team || (match.players.indexOf(player) % 2 === 0 ? 'team_blue' : 'team_red');
+      const isTeammate = (p: GamePlayer) => (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === playerTeam;
+
       const chosenColor = payload.extraColor || payload.color || card.color || 'brown';
       // Find rent value based on property count
       const propSet = player.properties[chosenColor];
@@ -4647,11 +4764,11 @@ async function startServer() {
 
         const isWildRent = card.name === 'Her Renk Kira Kartı' || !card.color;
         if (isWildRent) {
-          // Collect from ONLY one player
-          const targetId = payload.targetPlayerId || match.players.find((p) => p.id !== player.id)?.id;
+          // Collect from ONLY one opponent player
+          const targetId = payload.targetPlayerId || match.players.find((p) => p.id !== player.id && (!is2v2 || !isTeammate(p)))?.id;
           if (targetId) {
             const tp = match.players.find((p) => p.id === targetId);
-            if (tp) {
+            if (tp && (!is2v2 || !isTeammate(tp))) {
               if (tp.isBot || tp.isDisconnected) {
                 processBotPayment(match, tp, player, rentVal);
                 match.activeActionRequest = undefined;
@@ -4675,8 +4792,8 @@ async function startServer() {
             }
           }
         } else {
-          // Collect from EVERYONE (standard dual-color rent)
-          const targetPlayers = match.players.filter((p) => p.id !== player.id);
+          // Collect from OPPONENTS (in 2v2, teammates are excluded!)
+          const targetPlayers = match.players.filter((p) => p.id !== player.id && (!is2v2 || !isTeammate(p)));
           const pending: ActionRequest[] = [];
           targetPlayers.forEach((tp) => {
             if (tp.isBot || tp.isDisconnected) {
@@ -4700,7 +4817,7 @@ async function startServer() {
           }
           match.logs.push({
             id: `rent-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-            message: `${player.username}, ${COLOR_LABELS[chosenColor]} mülkleri için herkesten ${rentVal}M kira talep etti!`,
+            message: `${player.username}, ${COLOR_LABELS[chosenColor]} mülkleri için ${is2v2 ? 'rakip takımdan' : 'herkesten'} ${rentVal}M kira talep etti!`,
             timestamp: Date.now(),
           });
         }

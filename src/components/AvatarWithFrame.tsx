@@ -1,5 +1,6 @@
 import React from 'react';
 import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
+import { findShopItem } from '../lib/shopItemsStore';
 
 interface AvatarWithFrameProps {
   avatarId: string;
@@ -117,11 +118,29 @@ const AvatarWithFrameComponent: React.FC<AvatarWithFrameProps> = ({
       boxShadow: '0 0 18px #e0f2fe, inset 0 0 8px #bae6fd'
     };
   } else if (frameId && frameId !== 'frame_none') {
-    // Dynamic fallback for custom shop frames
-    frameClass = 'border-[3px] border-amber-400 bg-gradient-to-r from-amber-500 via-purple-500 to-indigo-500 animate-pulse';
-    glowStyle = {
-      boxShadow: '0 0 18px rgba(245,158,11,0.6), inset 0 0 10px rgba(168,85,247,0.4)'
-    };
+    // Dynamic fallback for custom shop frames from Admin Panel
+    const dynamicFrame = findShopItem(frameId);
+    if (dynamicFrame) {
+      const hasGrad = dynamicFrame.gradientStart && dynamicFrame.gradientEnd;
+      frameClass = `border-[3px] ${
+        dynamicFrame.animType === 'pulse' ? 'animate-pulse' :
+        dynamicFrame.animType === 'floating' ? 'animate-bounce' : ''
+      }`;
+      glowStyle = {
+        background: hasGrad
+          ? `linear-gradient(135deg, ${dynamicFrame.gradientStart}, ${dynamicFrame.gradientEnd})`
+          : undefined,
+        borderColor: dynamicFrame.borderColor || dynamicFrame.glowColor || '#f59e0b',
+        boxShadow: dynamicFrame.glowColor
+          ? `0 0 18px ${dynamicFrame.glowColor}, inset 0 0 10px ${dynamicFrame.glowColor}`
+          : '0 0 18px rgba(245,158,11,0.6), inset 0 0 10px rgba(168,85,247,0.4)'
+      };
+    } else {
+      frameClass = 'border-[3px] border-amber-400 bg-gradient-to-r from-amber-500 via-purple-500 to-indigo-500 animate-pulse';
+      glowStyle = {
+        boxShadow: '0 0 18px rgba(245,158,11,0.6), inset 0 0 10px rgba(168,85,247,0.4)'
+      };
+    }
   }
   
   return (

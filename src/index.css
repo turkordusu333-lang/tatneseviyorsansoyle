@@ -6,6 +6,30 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
 
+/* SAFE AREA SUPPORT (Çentik ve Sistem Çubukları Desteği) */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+.safe-area-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top, 0px)) !important;
+}
+
+.safe-area-bottom {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.safe-area-left {
+  padding-left: max(0.5rem, env(safe-area-inset-left, 0px)) !important;
+}
+
+.safe-area-right {
+  padding-right: max(0.5rem, env(safe-area-inset-right, 0px)) !important;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: #0A0C10;
@@ -149,8 +173,47 @@ body::before {
   box-sizing: border-box !important;
   transform: translate3d(0, 0, 0);
   backface-visibility: hidden;
-  will-change: transform;
-  touch-action: manipulation;
+  -webkit-backface-visibility: hidden;
+}
+
+/* 🚀 ULTRA-HIGH PERFORMANCE MOBILE OPTIMIZATION
+   Disables heavy GPU rasterization and gaussian pixel blur passes on high-DPI (Retina 3x) mobile screens.
+   Prevents 10 FPS throttling in DevTools device emulation and native mobile apps. */
+@media (max-width: 768px), (pointer: coarse) {
+  [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  .game-card-3d {
+    transform: none !important;
+    perspective: none !important;
+  }
+
+  * {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* ⚡ ULTRA-FAST HARDWARE ACCELERATED MODAL ANIMATIONS */
+@keyframes fastFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fastScaleUp {
+  from { opacity: 0; transform: scale3d(0.96, 0.96, 1); }
+  to { opacity: 1; transform: scale3d(1, 1, 1); }
+}
+
+.animate-fade-in {
+  animation: fastFadeIn 0.12s ease-out forwards !important;
+  will-change: opacity;
+}
+
+.animate-scale-up {
+  animation: fastScaleUp 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+  will-change: transform, opacity;
 }
 
 @keyframes play-card-animation {

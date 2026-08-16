@@ -27,12 +27,10 @@ const HoloComponent: React.FC<HoloProps> = ({ children, rarity, className = '', 
   };
 
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    updateCoords(e.clientX, e.clientY);
-  };
-
-  const handleTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
-    if (e.touches.length === 0) return;
-    updateCoords(e.touches[0].clientX, e.touches[0].clientY);
+    // Only on desktop fine pointer
+    if (window.matchMedia('(pointer: fine)').matches) {
+      updateCoords(e.clientX, e.clientY);
+    }
   };
 
   const isPremium = rarity !== 'SIRADAN';
@@ -41,8 +39,11 @@ const HoloComponent: React.FC<HoloProps> = ({ children, rarity, className = '', 
     <div
       ref={containerRef}
       onMouseMove={handleMouseMove}
-      onTouchMove={handleTouchMove}
-      onMouseEnter={() => setIsHovered(true)}
+      onMouseEnter={() => {
+        if (window.matchMedia('(pointer: fine)').matches) {
+          setIsHovered(true);
+        }
+      }}
       onMouseLeave={() => {
         setIsHovered(false);
         setCoords({ x: 50, y: 50 });

@@ -100,6 +100,23 @@ export interface StoreItem {
   glowColor?: string; // CSS color string e.g. #f59e0b
   particleEffect?: 'none' | 'sparkles' | 'fire' | 'snow' | 'matrix' | 'bubbles' | 'stars';
   discountPercent?: number;
+  // ✨ New Advanced Customization Options
+  gradientStart?: string; // e.g. '#6366f1'
+  gradientEnd?: string; // e.g. '#ec4899'
+  gradientDirection?: 'to-r' | 'to-br' | 'to-b' | 'to-tr' | 'radial';
+  borderStyle?: 'solid' | 'gold_ornate' | 'cyber_dashed' | 'neon_glow' | 'fiery' | 'none';
+  borderWidth?: number; // 1 to 5 px
+  borderColor?: string;
+  animType?: 'none' | 'pulse' | 'floating' | 'shimmer' | 'rainbow_wave' | 'spin_glow';
+  badgeText?: string; // e.g. '🔥 SEZON 1', '👑 V.I.P'
+  badgeColor?: string;
+  badgeBg?: string;
+  audioUrl?: string; // for custom celebration sound or background music
+  requiredLevel?: number; // Level lock e.g. Level 10+
+  requiredLeague?: string; // League lock e.g. 'diamond'
+  limitedTimeEnd?: string; // ISO date string for countdown
+  stockLimit?: number; // max units available
+  stockRemaining?: number; // current remaining stock
 }
 
 export interface UserSettings {
