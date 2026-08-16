@@ -1,0 +1,67 @@
+{
+  "hash": "0ad4873e",
+  "configHash": "16d03c81",
+  "lockfileHash": "5583027f",
+  "browserHash": "62134993",
+  "optimized": {
+    "react": {
+      "src": "../../node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "23623498",
+      "needsInterop": true
+    },
+    "motion/react": {
+      "src": "../../node_modules/motion/dist/es/react.mjs",
+      "file": "motion_react.js",
+      "fileHash": "122209af",
+      "needsInterop": false
+    },
+    "lucide-react": {
+      "src": "../../node_modules/lucide-react/dist/esm/lucide-react.js",
+      "file": "lucide-react.js",
+      "fileHash": "c2213e6d",
+      "needsInterop": false
+    },
+    "@capacitor/core": {
+      "src": "../../node_modules/@capacitor/core/dist/index.js",
+      "file": "@capacitor_core.js",
+      "fileHash": "eae330bf",
+      "needsInterop": false
+    },
+    "@capacitor-community/admob": {
+      "src": "../../node_modules/@capacitor-community/admob/dist/esm/index.js",
+      "file": "@capacitor-community_admob.js",
+      "fileHash": "91c95cd9",
+      "needsInterop": false
+    },
+    "hls.js": {
+      "src": "../../node_modules/hls.js/dist/hls.mjs",
+      "file": "hls__js.js",
+      "fileHash": "7851bcb4",
+      "needsInterop": false
+    },
+    "d3": {
+      "src": "../../node_modules/d3/src/index.js",
+      "file": "d3.js",
+      "fileHash": "b49db965",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-JCOLI5TX": {
+      "file": "chunk-JCOLI5TX.js"
+    },
+    "web-W6HVS34C": {
+      "file": "web-W6HVS34C.js"
+    },
+    "chunk-RQGAL5EH": {
+      "file": "chunk-RQGAL5EH.js"
+    },
+    "chunk-RR6CKJYS": {
+      "file": "chunk-RR6CKJYS.js"
+    },
+    "chunk-PR4QN5HX": {
+      "file": "chunk-PR4QN5HX.js"
+    }
+  }
+}

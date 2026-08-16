@@ -48,62 +48,62 @@ export function useCompactLayout(initialValue = true) {
       isExpanded: boolean,
       hasBuilding: boolean = false
     ): DynamicSetDimensions => {
-      // Unified compact-sized dimensions for both normal and compact layout to look clean and structured
-      let cardWidth = 40;
-      let cardHeight = 58;
+      // Premium physical card dimensions for property sets
+      let cardWidth = 46;
+      let cardHeight = 66;
 
       // Auto-Resize logic based on content density (card count / house / hotel)
       if (cardCount >= 4) {
-        cardWidth = 44;
-        cardHeight = 62;
+        cardWidth = 50;
+        cardHeight = 72;
       } else if (cardCount >= 3 || hasBuilding) {
-        cardWidth = 42;
-        cardHeight = 60;
+        cardWidth = 48;
+        cardHeight = 68;
       }
 
       // Dynamic Container Column Width Class
       let containerWidthClass = '';
       if (cardCount >= 4) {
-        containerWidthClass = 'w-[48px] sm:w-[56px] md:w-[66px] p-0.5 sm:p-1';
+        containerWidthClass = 'w-[52px] sm:w-[62px] md:w-[72px] p-1 sm:p-1.5';
       } else if (cardCount >= 3 || hasBuilding) {
-        containerWidthClass = 'w-[46px] sm:w-[54px] md:w-[64px] p-0.5 sm:p-1';
+        containerWidthClass = 'w-[50px] sm:w-[60px] md:w-[70px] p-1 sm:p-1.5';
       } else {
-        containerWidthClass = 'w-[44px] sm:w-[52px] md:w-[62px] p-0.5 sm:p-1';
+        containerWidthClass = 'w-[48px] sm:w-[58px] md:w-[68px] p-1 sm:p-1.5';
       }
 
-      // Dynamic Accordion Height Class (carefully synchronized with card dimensions)
+      // Dynamic Accordion Height Class (synchronized with card dimensions)
       let minAccordionHeightClass = '';
       if (isExpanded) {
         minAccordionHeightClass = cardCount >= 4
-          ? 'min-h-[115px] sm:min-h-[135px] md:min-h-[155px]'
-          : 'min-h-[95px] sm:min-h-[115px] md:min-h-[135px]';
+          ? 'min-h-[135px] sm:min-h-[155px] md:min-h-[175px]'
+          : 'min-h-[110px] sm:min-h-[130px] md:min-h-[150px]';
       } else {
         minAccordionHeightClass = cardCount >= 4
-          ? 'min-h-[82px] sm:min-h-[90px] md:min-h-[98px]'
+          ? 'min-h-[96px] sm:min-h-[106px] md:min-h-[116px]'
           : cardCount === 3
-            ? 'min-h-[72px] sm:min-h-[80px] md:min-h-[88px]'
+            ? 'min-h-[84px] sm:min-h-[94px] md:min-h-[104px]'
             : cardCount === 2
-              ? 'min-h-[62px] sm:min-h-[70px] md:min-h-[78px]'
-              : 'min-h-[58px]';
+              ? 'min-h-[72px] sm:min-h-[82px] md:min-h-[92px]'
+              : 'min-h-[66px]';
       }
 
-      // Stack Overlap Margin Class (beautifully calibrated to ensure headers/banners are always visible and tight across mobile & desktop)
+      // Stack Overlap Margin Class (calibrated so each card's colored top banner and title remain clearly visible)
       let stackOverlapClass = '';
       if (cardCount >= 4) {
-        stackOverlapClass = '-mt-[48px] sm:-mt-[49px] md:-mt-[50px]';
+        stackOverlapClass = '-mt-[48px] sm:-mt-[50px] md:-mt-[52px]';
       } else if (cardCount >= 3) {
-        stackOverlapClass = '-mt-[46px] sm:-mt-[47px] md:-mt-[48px]';
+        stackOverlapClass = '-mt-[47px] sm:-mt-[49px] md:-mt-[51px]';
       } else {
-        stackOverlapClass = '-mt-[45px] sm:-mt-[46px] md:-mt-[47px]';
+        stackOverlapClass = '-mt-[46px] sm:-mt-[48px] md:-mt-[50px]';
       }
 
-      const fanOffsetY = cardCount >= 4 ? 16 : 14;
+      const fanOffsetY = cardCount >= 4 ? 20 : 16;
 
-      const badgeSizeClass = 'text-[6.5px] px-1 py-0.5 leading-none';
+      const badgeSizeClass = 'text-[7.5px] px-1.5 py-0.5 leading-none';
 
-      const rentBadgeClass = 'text-[7px] sm:text-[8px] px-1 py-0.5 gap-0.5 justify-center';
+      const rentBadgeClass = 'text-[8px] sm:text-[9px] px-1.5 py-0.5 gap-1 justify-center';
 
-      const fontScaleClass = 'text-[7px] sm:text-[8px] leading-tight font-black';
+      const fontScaleClass = 'text-[8px] sm:text-[9px] leading-tight font-black';
 
       return {
         cardWidth,

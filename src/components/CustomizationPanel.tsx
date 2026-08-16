@@ -2,7 +2,7 @@ import React from 'react';
 import { UserProfile, UserSettings, StoreItem } from '../types';
 import { sounds } from '../lib/SoundSystem';
 import { AvatarWithFrame } from './AvatarWithFrame';
-import { t } from '../lib/TranslationSystem';
+import { t, changeLanguage } from '../lib/TranslationSystem';
 import { API_BASE_URL } from '../lib/apiConfig';
 import { setShopItemsCache } from '../lib/shopItemsStore';
 
@@ -539,6 +539,7 @@ export const CustomizationPanel: React.FC<Props> = ({ profile, onUpdateProfile }
 
     if (key === 'language') {
       localStorage.setItem('language', value);
+      changeLanguage(value);
     }
 
     let updatedAvatarUrl = profile.avatarUrl;

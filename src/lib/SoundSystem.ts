@@ -87,37 +87,57 @@ class SoundSystem {
     });
   }
 
-  playDraw(settings: UserSettings) {
-    const volume = settings.soundVolume / 100;
-    const pitch = settings.soundPitch;
-    const type = settings.synthType;
+  private getDefaultSettings(): UserSettings {
+    return {
+      soundVolume: 50,
+      soundPitch: 1.0,
+      synthType: 'sine',
+      celebrationSound: 'sound_classic',
+      boardTheme: 'theme_slate',
+      cardBack: 'back_classic',
+      avatarId: 'avatar_classic',
+      clothesId: 'clothes_classic',
+      profileFrame: 'frame_none',
+      language: 'tr',
+    };
+  }
+
+  playDraw(settings?: UserSettings) {
+    const s = settings || this.getDefaultSettings();
+    const volume = s.soundVolume / 100;
+    const pitch = s.soundPitch;
+    const type = s.synthType;
     this.playTone([261.63, 329.63], [0.08, 0.12], type, volume, pitch);
   }
 
-  playPlay(settings: UserSettings, pitchModifier: number = 1.0) {
-    const volume = settings.soundVolume / 100;
-    const pitch = settings.soundPitch * pitchModifier;
-    const type = settings.synthType;
+  playPlay(settings?: UserSettings, pitchModifier: number = 1.0) {
+    const s = settings || this.getDefaultSettings();
+    const volume = s.soundVolume / 100;
+    const pitch = s.soundPitch * pitchModifier;
+    const type = s.synthType;
     this.playTone([392.00, 523.25], [0.08, 0.15], type, volume, pitch);
   }
 
-  playCoin(settings: UserSettings, pitchModifier: number = 1.0) {
-    const volume = settings.soundVolume / 100;
-    const pitch = settings.soundPitch * pitchModifier;
-    const type = settings.synthType;
+  playCoin(settings?: UserSettings, pitchModifier: number = 1.0) {
+    const s = settings || this.getDefaultSettings();
+    const volume = s.soundVolume / 100;
+    const pitch = s.soundPitch * pitchModifier;
+    const type = s.synthType;
     this.playTone([523.25, 659.25, 783.99, 1046.50], [0.05, 0.05, 0.05, 0.2], type, volume, pitch);
   }
 
-  playAction(settings: UserSettings, pitchModifier: number = 1.0) {
-    const volume = settings.soundVolume / 100;
-    const pitch = settings.soundPitch * pitchModifier;
-    const type = settings.synthType;
+  playAction(settings?: UserSettings, pitchModifier: number = 1.0) {
+    const s = settings || this.getDefaultSettings();
+    const volume = s.soundVolume / 100;
+    const pitch = s.soundPitch * pitchModifier;
+    const type = s.synthType;
     this.playTone([440.00, 349.23, 440.00, 523.25], [0.1, 0.1, 0.1, 0.25], type, volume, pitch);
   }
 
-  playSteal(settings: UserSettings) {
-    const volume = settings.soundVolume / 100;
-    const pitch = settings.soundPitch;
+  playSteal(settings?: UserSettings) {
+    const s = settings || this.getDefaultSettings();
+    const volume = s.soundVolume / 100;
+    const pitch = s.soundPitch;
     const type = settings.synthType;
     this.playTone([587.33, 493.88, 392.00], [0.1, 0.1, 0.2], type, volume, pitch);
   }

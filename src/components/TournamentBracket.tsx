@@ -1,34 +1,73 @@
 import React from 'react';
 import { Tournament, TournamentMatch, UserProfile } from '../types';
-import { Trophy, Swords, Crown, Sparkles, User, CheckCircle2, Shield, Flame, ArrowRight, Zap } from 'lucide-react';
+import { Trophy, Swords, Crown, Sparkles, User, CheckCircle2, Shield, Flame, ArrowRight, Zap, RefreshCw } from 'lucide-react';
 import { sounds } from '../lib/SoundSystem';
 import { t } from '../lib/TranslationSystem';
 
 interface TournamentBracketProps {
   tournament: Tournament;
   profile: UserProfile;
-  onPlayMatch: (tournamentId: string, matchId: string, opponentName: string) => void;
-  onJoinTournament: (tournamentId: string) => void;
+  onPlayMatch: (tournamentId: string, matchId: string, opponentName: string, format?: string, botDifficulty?: string, targetSets?: number, turnDurationSeconds?: number) => void;
+  onStartTournament: (tournamentId: string) => void;
 }
 
 export const TournamentBracket: React.FC<TournamentBracketProps> = ({
   tournament,
   profile,
   onPlayMatch,
-  onJoinTournament,
+  onStartTournament,
 }) => {
-  const isUserRegistered = tournament.participants.includes(profile.username);
+  const isRegistered = tournament.status === 'active' || tournament.status === 'completed';
   const rounds = tournament.rounds || [];
 
-  // Helper to get round title
+  // Helper to get round title for any depth (up to 64 players)
   const getRoundTitle = (roundNum: number, totalRounds: number) => {
-    if (roundNum === totalRounds) return t('grand_final', profile);
-    if (roundNum === totalRounds - 1) return t('semi_final', profile);
-    if (roundNum === 1) return t('quarter_final', profile);
+    const diffFromFinal = totalRounds - roundNum;
+    if (diffFromFinal === 0) return tournament.format === '4player' ? '👑 Büyük Final Masası' : t('grand_final', profile);
+    if (diffFromFinal === 1) return tournament.format === '4player' ? '🥈 Yarı Final Masaları' : t('semi_final', profile);
+    if (diffFromFinal === 2) return tournament.format === '4player' ? '🥉 Çeyrek Final Masaları' : t('quarter_final', profile);
+    if (diffFromFinal === 3) return '⚡ Son 16 Turu';
+    if (diffFromFinal === 4) return '🔥 Son 32 Turu';
+    if (diffFromFinal === 5) return '⚔️ Son 64 Turu';
     return t('round_n_title', profile, roundNum);
   };
 
-  const totalRounds = rounds.length;
+  // Find user's active pending match
+  const userActiveMatch = React.useMemo(() => {
+    if (tournament.status !== 'active' || !rounds.length) return null;
+    const currentRound = rounds[rounds.length - 1];
+    if (!currentRound) return null;
+
+    for (const m of currentRound.matches) {
+      if (m.status === 'pending') {
+        const isFormat4P = tournament.format === '4player';
+        const isFormat2v2 = tournament.format === '2v2_team';
+
+        if (isFormat4P) {
+          const seats = m.tablePlayers || [m.player1, m.player2, m.player3 || '', m.player4 || ''];
+          if (seats.some((s) => s === profile.username || s === 'Sen')) {
+            return { match: m, opponentName: 'Masa Rakipleri', roundNum: currentRound.roundNumber };
+          }
+        } else if (isFormat2v2) {
+          const teamA = m.team1 || [m.player1, m.player3 || ''];
+          const teamB = m.team2 || [m.player2, m.player4 || ''];
+          if ([...teamA, ...teamB].some((s) => s === profile.username || s === 'Sen')) {
+            return { match: m, opponentName: 'Rakip Takım', roundNum: currentRound.roundNumber };
+          }
+        } else {
+          const isP1Me = m.player1 === profile.username || m.player1 === 'Sen';
+          const isP2Me = m.player2 === profile.username || m.player2 === 'Sen';
+          if (isP1Me || isP2Me) {
+            return { match: m, opponentName: isP1Me ? m.player2 : m.player1, roundNum: currentRound.roundNumber };
+          }
+        }
+      }
+    }
+    return null;
+  }, [rounds, tournament.status, tournament.format, profile.username]);
+
+  const isUserChampion = tournament.status === 'completed' && (tournament.winner === profile.username || tournament.winner === 'Sen');
+  const isUserEliminated = tournament.status === 'completed' && !isUserChampion;
 
   return (
     <div className="space-y-6 animate-fadeIn">
@@ -39,11 +78,25 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
         <div className="absolute -bottom-16 -left-16 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2.5">
+          <div className="space-y-2.5">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 font-extrabold text-[10px] uppercase tracking-widest shadow-sm">
-                <Trophy className="w-3.5 h-3.5" />
-                <span>{t('official_elim_tournament', profile)}</span>
+                <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                <span>
+                  {tournament.format === '4player'
+                    ? '👥 4 KİŞİLİK MASA'
+                    : tournament.format === '2v2_team'
+                    ? '⚔️ 2v2 TAKIM ŞAMPİYONASI'
+                    : '🤺 1v1 RESMİ DÜELLO'}
+                </span>
+              </span>
+
+              <span className="px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-bold text-[10px] uppercase tracking-widest">
+                🤖 Bot: {tournament.botDifficulty === 'easy' ? 'Kolay' : tournament.botDifficulty === 'hard' ? 'Zor' : tournament.botDifficulty === 'expert' ? 'Efsane' : 'Orta'}
+              </span>
+
+              <span className="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[10px]">
+                🎯 {tournament.targetSets || 3} Set
               </span>
 
               {tournament.status === 'registration' && (
@@ -52,13 +105,15 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
                 </span>
               )}
               {tournament.status === 'active' && (
-                <span className="px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-extrabold text-[10px] uppercase tracking-widest animate-pulse">
-                  {t('live_ongoing', profile)}
+                <span className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-extrabold text-[10px] uppercase tracking-widest animate-pulse">
+                  {t('live_ongoing', profile)} (Tur {rounds.length})
                 </span>
               )}
               {tournament.status === 'completed' && (
-                <span className="px-3 py-1 rounded-full bg-purple-500/15 border border-purple-500/30 text-purple-300 font-extrabold text-[10px] uppercase tracking-widest">
-                  {t('completed_word', profile)}
+                <span className={`px-3 py-1 rounded-full font-extrabold text-[10px] uppercase tracking-widest ${
+                  isUserChampion ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                }`}>
+                  {isUserChampion ? '👑 ŞAMPİYON' : 'ELENDİ'}
                 </span>
               )}
             </div>
@@ -68,61 +123,110 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
             </h2>
 
             <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
-              {t('tournament_rules_desc', profile)}
+              {tournament.description || t('tournament_rules_desc', profile)}
             </p>
           </div>
 
           {/* Stats Badges */}
           <div className="flex flex-wrap md:flex-col gap-2 shrink-0 justify-start md:justify-end">
-            <div className="bg-black/50 border border-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-3">
+            <div className="bg-black/50 border border-amber-500/30 rounded-2xl px-4 py-2.5 flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
                 💰
               </div>
               <div>
                 <span className="text-[9px] text-slate-400 font-bold uppercase block">{t('grand_prize_pool', profile)}</span>
-                <span className="text-xs font-black text-amber-300 font-mono">{t('grand_prize_value', profile)}</span>
+                <span className="text-xs font-black text-amber-300 font-mono">
+                  {tournament.prizeCoins ? `${tournament.prizeCoins.toLocaleString()} 🪙 + ${tournament.prizeXp} XP` : t('grand_prize_value', profile)}
+                </span>
               </div>
             </div>
 
-            <div className="bg-black/50 border border-white/10 rounded-2xl px-4 py-2.5 flex items-center gap-3">
+            <div className="bg-black/50 border border-indigo-500/30 rounded-2xl px-4 py-2.5 flex items-center gap-3">
               <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
                 👥
               </div>
               <div>
-                <span className="text-[9px] text-slate-400 font-bold uppercase block">{t('participants_count', profile)}</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase block">Katılımcı & Giriş</span>
                 <span className="text-xs font-black text-indigo-200 font-mono">
-                  {t('participants_limit', profile, tournament.participants?.length || 0)}
+                  {tournament.entryFee ? `${tournament.entryFee} 🪙 Giriş | ` : 'Ücretsiz | '}{tournament.maxParticipants || 8} Oyuncu
                 </span>
               </div>
             </div>
           </div>
         </div>
 
+        {/* Ready Match Next Round Action Banner */}
+        {userActiveMatch && (
+          <div className="mt-6 p-5 rounded-2xl bg-gradient-to-r from-indigo-950 via-slate-900 to-indigo-950 border-2 border-indigo-500/60 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-2xl shadow-inner">
+                ⚔️
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider">
+                  Tur {userActiveMatch.roundNum}: {getRoundTitle(userActiveMatch.roundNum, rounds.length)}
+                </span>
+                <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <span>Rakip:</span>
+                  <span className="text-amber-300">{userActiveMatch.opponentName}</span>
+                </h4>
+                <p className="text-[11px] text-slate-300">
+                  {tournament.format === '2v2_team'
+                    ? 'Takımınız hazır! Sadık bot partnerinizle birlikte zafere koşun.'
+                    : 'Karşılaşmanız hazır! Başlamak için butona tıklayın.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <button
+                onClick={() => {
+                  sounds.playPlay(profile.settings);
+                  onPlayMatch(
+                    tournament.id,
+                    userActiveMatch.match.id,
+                    userActiveMatch.opponentName,
+                    tournament.format,
+                    tournament.botDifficulty,
+                    tournament.targetSets,
+                    tournament.turnDurationSeconds
+                  );
+                }}
+                className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-red-600/30 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Swords className="w-4 h-4" />
+                <span>⚔️ Maça Başla</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Action button if registration is open */}
         {tournament.status === 'registration' && (
           <div className="mt-6 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-xs text-slate-300 font-medium">
-              {!isUserRegistered
-                ? t('tournament_reg_info', profile)
-                : t('tournament_reg_joined_info', profile)}
+              <span>
+                {tournament.entryFee ? `Turnuva giriş ücreti: ${tournament.entryFee} 🪙 Altın. ` : 'Katılım ücretsizdir. '}
+                Şampiyon olan oyuncu büyük ödülü kazanır!
+              </span>
             </div>
 
             <button
               onClick={() => {
                 sounds.playCoin(profile.settings);
-                onJoinTournament(tournament.id);
+                onStartTournament(tournament.id);
               }}
               className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-red-600/25 hover:shadow-red-600/40 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
             >
               <Zap className="w-4 h-4" />
-              <span>{isUserRegistered ? t('start_tournament_bracket', profile) : t('join_register_tournament', profile)}</span>
+              <span>{tournament.entryFee ? `${tournament.entryFee}🪙 ile Başla` : '🏆 Turnuvaya Başla'}</span>
             </button>
           </div>
         )}
       </div>
 
-      {/* Champion Podium View (If tournament completed) */}
-      {tournament.status === 'completed' && tournament.winner && (
+      {/* Champion Podium View (If user won tournament) */}
+      {isUserChampion && (
         <div className="bg-gradient-to-br from-amber-950/40 via-yellow-950/20 to-slate-900 border-2 border-amber-500/50 rounded-3xl p-6 sm:p-8 text-center space-y-4 shadow-[0_0_50px_rgba(245,158,11,0.25)] relative overflow-hidden animate-fadeIn">
           <div className="inline-flex items-center gap-2 bg-amber-500/20 border border-amber-500/40 px-4 py-1.5 rounded-full text-amber-300 font-black text-xs uppercase tracking-widest">
             <Crown className="w-4 h-4 text-amber-400" />
@@ -138,13 +242,42 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
 
           <div>
             <h3 className="text-3xl font-black text-amber-300 uppercase tracking-wider">
-              {tournament.winner}
+              {profile.username}
             </h3>
             <p className="text-xs text-amber-200/80 mt-1 font-bold">
-              {tournament.winner === profile.username
-                ? t('tournament_congrats_win', profile)
-                : t('tournament_champion_won_desc', profile, tournament.winner)}
+              Tebrikler! Turnuvadaki tüm rakipleri eleyerek {tournament.prizeCoins?.toLocaleString()} 🪙 ve {tournament.prizeXp} XP ödülü kazandınız!
             </p>
+          </div>
+
+          <div className="pt-4 flex justify-center">
+            <span className="px-6 py-2.5 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-400/40 text-amber-300 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg flex items-center gap-2">
+              <Crown className="w-4 h-4 text-amber-400" />
+              <span>🏆 Şampiyonluk Tamamlandı</span>
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Eliminated View (If user lost match) */}
+      {isUserEliminated && (
+        <div className="bg-gradient-to-br from-rose-950/40 via-red-950/20 to-slate-900 border-2 border-rose-500/40 rounded-3xl p-6 sm:p-8 text-center space-y-3 shadow-xl relative overflow-hidden animate-fadeIn">
+          <div className="w-16 h-16 rounded-full bg-rose-500/20 border border-rose-500/40 mx-auto flex items-center justify-center text-3xl">
+            ❌
+          </div>
+          <div>
+            <h3 className="text-xl font-black text-rose-400 uppercase tracking-wider">
+              Turnuvadan Elendiniz (Nakavt)
+            </h3>
+            <p className="text-xs text-slate-300 mt-1">
+              Turnuva şampiyonu: <strong className="text-amber-300">{tournament.winner}</strong>. Nakavt sistemli bu turnuvada elendiğiniz için turnuva sizin için sona ermiştir.
+            </p>
+          </div>
+
+          <div className="pt-2 flex justify-center">
+            <span className="px-6 py-2.5 bg-rose-950/60 border border-rose-500/40 text-rose-300 font-bold text-xs rounded-xl flex items-center gap-2 shadow-inner">
+              <span>🔒</span>
+              <span>Elendiniz — Turnuva Bitti</span>
+            </span>
           </div>
         </div>
       )}
@@ -155,15 +288,18 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
           <div className="flex items-center justify-between border-b border-white/10 pb-3">
             <h3 className="text-sm font-black text-slate-200 uppercase tracking-widest flex items-center gap-2">
               <Swords className="w-4 h-4 text-rose-500" />
-              <span>{t('tournament_bracket_tree', profile)}</span>
+              <span>
+                {tournament.format === '4player'
+                  ? '👥 4 KİŞİLİK MASA EŞLEŞMELERİ'
+                  : tournament.format === '2v2_team'
+                  ? '⚔️ 2v2 TAKIM TURNUVA AĞACI'
+                  : t('tournament_bracket_tree', profile)}
+              </span>
             </h3>
-            <span className="text-[10px] text-slate-400 font-mono">
-              {t('total_stages_count', profile, rounds.length)}
-            </span>
           </div>
 
           {/* Bracket Rounds Container */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+          <div className={`grid grid-cols-1 ${rounds.length > 3 ? 'md:grid-cols-4' : (rounds.length === 2 ? 'md:grid-cols-2' : 'md:grid-cols-3')} gap-6 items-stretch`}>
             {rounds.map((round, rIdx) => {
               const isCurrentRound = round.matches.some((m) => m.status === 'pending');
               const roundTitle = getRoundTitle(round.roundNumber, rounds.length);
@@ -180,17 +316,37 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
                       {roundTitle}
                     </span>
                     <span className="text-[9px] opacity-75 font-mono">
-                      {t('matches_completed_of', profile, round.matches.filter((m) => m.status === 'completed').length, round.matches.length)}
+                      {round.matches.filter((m) => m.status === 'completed').length} / {round.matches.length} Tamamlandı
                     </span>
                   </div>
 
                   {/* Matches List */}
                   <div className="flex-1 flex flex-col justify-around gap-4">
-                    {round.matches.map((match) => {
-                      const isUserMatch = match.player1 === profile.username || match.player2 === profile.username;
-                      const opponentName = match.player1 === profile.username ? match.player2 : match.player1;
+                    {round.matches.map((match, mIdx) => {
+                      const isFormat4P = tournament.format === '4player';
+                      const isFormat2v2 = tournament.format === '2v2_team';
+
+                      const tableSeats = isFormat4P
+                        ? (match.tablePlayers || [match.player1, match.player2, match.player3 || '', match.player4 || ''])
+                        : [];
+
+                      const teamA = isFormat2v2 ? (match.team1 || [match.player1, match.player3 || '']) : [];
+                      const teamB = isFormat2v2 ? (match.team2 || [match.player2, match.player4 || '']) : [];
+
+                      const isUserInMatch = isFormat4P
+                        ? tableSeats.some((s) => s === profile.username || s === 'Sen')
+                        : isFormat2v2
+                        ? [...teamA, ...teamB].some((s) => s === profile.username || s === 'Sen')
+                        : (match.player1 === profile.username || match.player1 === 'Sen' || match.player2 === profile.username || match.player2 === 'Sen');
+
+                      const opponentDisplayName = isFormat4P
+                        ? 'Masa Rakipleri'
+                        : isFormat2v2
+                        ? 'Rakip Takım'
+                        : (match.player1 === profile.username || match.player1 === 'Sen' ? match.player2 : match.player1);
+
                       const isPending = match.status === 'pending';
-                      const isUserTurn = isUserMatch && isPending;
+                      const isUserTurn = isUserInMatch && isPending && tournament.status === 'active';
 
                       return (
                         <div
@@ -206,62 +362,166 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
                           {/* User Turn Indicator Pulse */}
                           {isUserTurn && (
                             <div className="absolute -top-2.5 inset-x-0 mx-auto w-fit bg-gradient-to-r from-rose-500 to-indigo-500 text-white font-black text-[9px] uppercase tracking-widest px-3 py-0.5 rounded-full shadow-md animate-pulse">
-                              {t('your_match_turn', profile)}
+                              {isFormat4P ? '🎮 MASANIZ HAZIR' : isFormat2v2 ? '⚔️ TAKIM MAÇI SIRASI' : t('your_match_turn', profile)}
                             </div>
                           )}
 
-                          {/* Player 1 Slot */}
-                          <div className={`flex items-center justify-between p-2 rounded-xl transition-all ${
-                            match.winner === match.player1
-                              ? 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-extrabold'
-                              : 'bg-black/30 border border-white/5 text-slate-300'
-                          }`}>
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-xs">
-                                {match.player1 === profile.username ? '👤' : '🤖'}
-                              </span>
-                              <span className={`text-xs truncate ${match.player1 === profile.username ? 'text-amber-300 font-black' : 'font-semibold'}`}>
-                                {match.player1}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0 font-mono text-xs">
-                              {match.score1 !== undefined && (
-                                <span className="font-bold">{match.score1}</span>
-                              )}
-                              {match.winner === match.player1 && (
-                                <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                              )}
-                            </div>
-                          </div>
+                          {/* 4-PLAYER TABLE LAYOUT */}
+                          {isFormat4P ? (
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between border-b border-white/10 pb-1.5">
+                                <span className="text-[10px] font-black text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+                                  <span>👥</span>
+                                  <span>{round.roundNumber === rounds.length ? 'Büyük Final Masası' : `Masa ${mIdx + 1}`}</span>
+                                </span>
+                                {match.winner && (
+                                  <span className="text-[9px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                    👑 Kazanan: {match.winner}
+                                  </span>
+                                )}
+                              </div>
 
-                          {/* VS Divider */}
-                          <div className="text-center text-[9px] font-black text-slate-500 uppercase tracking-widest">
-                            {t('vs_word', profile)}
-                          </div>
+                              <div className="grid grid-cols-2 gap-1.5">
+                                {tableSeats.map((seatName, sIdx) => {
+                                  const isMe = seatName === profile.username || seatName === 'Sen';
+                                  const isWinner = match.winner === seatName;
 
-                          {/* Player 2 Slot */}
-                          <div className={`flex items-center justify-between p-2 rounded-xl transition-all ${
-                            match.winner === match.player2
-                              ? 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-extrabold'
-                              : 'bg-black/30 border border-white/5 text-slate-300'
-                          }`}>
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-xs">
-                                {match.player2 === profile.username ? '👤' : '🤖'}
-                              </span>
-                              <span className={`text-xs truncate ${match.player2 === profile.username ? 'text-amber-300 font-black' : 'font-semibold'}`}>
-                                {match.player2}
-                              </span>
+                                  return (
+                                    <div
+                                      key={sIdx}
+                                      className={`p-2 rounded-xl border flex items-center justify-between text-xs transition-all ${
+                                        isWinner
+                                          ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300 font-black'
+                                          : isMe
+                                          ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 font-bold'
+                                          : 'bg-black/30 border-white/5 text-slate-300'
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-1.5 truncate">
+                                        <span className="text-[10px]">{isMe ? '👤' : '🤖'}</span>
+                                        <span className="truncate">{isMe ? profile.username : seatName}</span>
+                                      </div>
+                                      {isWinner && <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0" />}
+                                    </div>
+                                  );
+                                })}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0 font-mono text-xs">
-                              {match.score2 !== undefined && (
-                                <span className="font-bold">{match.score2}</span>
-                              )}
-                              {match.winner === match.player2 && (
-                                <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                              )}
+                          ) : isFormat2v2 ? (
+                            /* 2V2 TEAM LAYOUT */
+                            <div className="space-y-2.5">
+                              {/* Team Blue */}
+                              <div className="p-2.5 rounded-xl bg-blue-950/50 border border-blue-500/40 text-blue-200 space-y-1.5">
+                                <div className="text-[10px] font-black text-blue-400 uppercase flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5">
+                                    <span>🔵</span>
+                                    <span>Mavi Takım (2 Oyuncu)</span>
+                                  </span>
+                                  {match.winner && teamA.includes(match.winner) && <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {teamA.map((name, i) => {
+                                    const isMe = name === profile.username || name === 'Sen';
+                                    return (
+                                      <div
+                                        key={i}
+                                        className={`p-1.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 truncate ${
+                                          isMe
+                                            ? 'bg-amber-500/20 border-amber-500/40 text-amber-300'
+                                            : 'bg-blue-900/30 border-blue-400/20 text-blue-100'
+                                        }`}
+                                      >
+                                        <span className="text-[10px]">{isMe ? '👤' : '🤖'}</span>
+                                        <span className="truncate">{isMe ? profile.username : name}</span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              <div className="text-center text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                                ⚔️ TAKIMLAR ARASI DÜELLO ⚔️
+                              </div>
+
+                              {/* Team Red */}
+                              <div className="p-2.5 rounded-xl bg-rose-950/50 border border-rose-500/40 text-rose-200 space-y-1.5">
+                                <div className="text-[10px] font-black text-rose-400 uppercase flex items-center justify-between">
+                                  <span className="flex items-center gap-1.5">
+                                    <span>🔴</span>
+                                    <span>Kırmızı Takım (2 Oyuncu)</span>
+                                  </span>
+                                  {match.winner && teamB.includes(match.winner) && <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+                                </div>
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {teamB.map((name, i) => (
+                                    <div
+                                      key={i}
+                                      className="p-1.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 truncate bg-rose-900/30 border-rose-400/20 text-rose-100"
+                                    >
+                                      <span className="text-[10px]">🤖</span>
+                                      <span className="truncate">{name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            /* 1V1 DUEL LAYOUT */
+                            <>
+                              {/* Player 1 Slot */}
+                              <div className={`flex items-center justify-between p-2 rounded-xl transition-all ${
+                                match.winner === match.player1 || (match.player1 === profile.username && match.winner === profile.username)
+                                  ? 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-extrabold'
+                                  : 'bg-black/30 border border-white/5 text-slate-300'
+                              }`}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-xs">
+                                    {match.player1 === profile.username || match.player1 === 'Sen' ? '👤' : '🤖'}
+                                  </span>
+                                  <span className={`text-xs truncate ${match.player1 === profile.username || match.player1 === 'Sen' ? 'text-amber-300 font-black' : 'font-semibold'}`}>
+                                    {match.player1 === profile.username || match.player1 === 'Sen' ? profile.username : match.player1}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0 font-mono text-xs">
+                                  {match.score1 !== undefined && (
+                                    <span className="font-bold">{match.score1}</span>
+                                  )}
+                                  {(match.winner === match.player1 || (match.player1 === profile.username && match.winner === profile.username)) && (
+                                    <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* VS Divider */}
+                              <div className="text-center text-[9px] font-black text-slate-500 uppercase tracking-widest">
+                                {t('vs_word', profile)}
+                              </div>
+
+                              {/* Player 2 Slot */}
+                              <div className={`flex items-center justify-between p-2 rounded-xl transition-all ${
+                                match.winner === match.player2 || (match.player2 === profile.username && match.winner === profile.username)
+                                  ? 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 font-extrabold'
+                                  : 'bg-black/30 border border-white/5 text-slate-300'
+                              }`}>
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-xs">
+                                    {match.player2 === profile.username || match.player2 === 'Sen' ? '👤' : '🤖'}
+                                  </span>
+                                  <span className={`text-xs truncate ${match.player2 === profile.username || match.player2 === 'Sen' ? 'text-amber-300 font-black' : 'font-semibold'}`}>
+                                    {match.player2 === profile.username || match.player2 === 'Sen' ? profile.username : match.player2}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1.5 shrink-0 font-mono text-xs">
+                                  {match.score2 !== undefined && (
+                                    <span className="font-bold">{match.score2}</span>
+                                  )}
+                                  {(match.winner === match.player2 || (match.player2 === profile.username && match.winner === profile.username)) && (
+                                    <Crown className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                                  )}
+                                </div>
+                              </div>
+                            </>
+                          )}
 
                           {/* Action Footer */}
                           <div className="pt-2 border-t border-white/5 flex items-center justify-between">
@@ -270,19 +530,27 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
                                 ? t('completed_title', profile)
                                 : isUserTurn
                                 ? t('your_turn_title', profile)
-                                : t('simulating_title', profile)}
+                                : 'Bekliyor'}
                             </span>
 
                             {isUserTurn && (
                               <button
                                 onClick={() => {
                                   sounds.playPlay(profile.settings);
-                                  onPlayMatch(tournament.id, match.id, opponentName);
+                                  onPlayMatch(
+                                    tournament.id,
+                                    match.id,
+                                    opponentDisplayName,
+                                    tournament.format,
+                                    tournament.botDifficulty,
+                                    tournament.targetSets,
+                                    tournament.turnDurationSeconds
+                                  );
                                 }}
                                 className="px-4 py-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-[10px] uppercase tracking-wider rounded-xl shadow-md shadow-red-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-1"
                               >
                                 <Swords className="w-3 h-3" />
-                                <span>{t('play_match_btn', profile)}</span>
+                                <span>{isFormat4P ? '⚔️ Masaya Gir' : isFormat2v2 ? '⚔️ Takım Maçı' : t('play_match_btn', profile)}</span>
                               </button>
                             )}
                           </div>

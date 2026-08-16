@@ -8,7 +8,7 @@ import { UserProfile } from '../types';
 import { t } from '../lib/TranslationSystem';
 import { sounds } from '../lib/SoundSystem';
 import { Capacitor } from '@capacitor/core';
-import { AdMob, RewardAdPluginEvents } from '@capacitor-community/admob';
+import { adMobService } from '../lib/adMobService';
 
 interface LuckyWheelProps {
   isOpen: boolean;
@@ -70,15 +70,9 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
   // Initialize AdMob on Native Platforms
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
-      try {
-        AdMob.initialize({
-          initializeForTesting: isTesting,
-        }).catch(err => {
-          console.warn("AdMob initialization failed or already initialized:", err);
-        });
-      } catch (error) {
-        console.warn("AdMob initialize try-catch error:", error);
-      }
+      adMobService.initialize(isTesting).catch((err) => {
+        console.warn('AdMob initialization error:', err);
+      });
     }
   }, [isTesting]);
 
@@ -161,87 +155,34 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
     setIsNativeAdLoading(true);
     setAdmobError(null);
 
-    const listenerHandles: any[] = [];
-    let earnedReward = false;
-    let timeoutId: any = null;
-
-    const cleanupListeners = async () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      for (const handle of listenerHandles) {
-        try {
-          await handle.remove();
-        } catch (e) {
-          console.error("Error removing listener handle:", e);
-        }
-      }
-    };
-
-    // Safety timeout
-    timeoutId = setTimeout(() => {
-      setIsNativeAdLoading(false);
-      setAdmobError("Reklam isteği zaman aşımına uğradı. Lütfen tekrar deneyin.");
-      cleanupListeners();
-    }, 15000);
-
     try {
-      // 1. Add Event listeners BEFORE preparing ad
-      const loadedListener = await AdMob.addListener(RewardAdPluginEvents.Loaded, async () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        console.log("AdMob Rewarded Ad Loaded successfully!");
-        setIsNativeAdLoading(false);
-        try {
-          await AdMob.showRewardVideoAd();
-        } catch (showError) {
-          console.error("AdMob Show failed:", showError);
-          setAdmobError("Reklam gösterilemedi.");
-          cleanupListeners();
-        }
+      const result = await adMobService.showRewardedAd({
+        customAdUnitId: activeAdUnitId,
+        isTesting,
+        onAdLoaded: () => {
+          setIsNativeAdLoading(false);
+        },
+        onAdFailedToLoad: (err) => {
+          setIsNativeAdLoading(false);
+          setAdmobError(profile.settings.language === 'en' ? 'Ad could not be loaded. Please try again later.' : 'Reklam yüklenemedi (AdMob No Fill / Bağlantı). Lütfen daha sonra tekrar deneyin.');
+        },
+        onAdDismissed: () => {
+          setIsNativeAdLoading(false);
+        },
       });
-      listenerHandles.push(loadedListener);
 
-      const failedListener = await AdMob.addListener(RewardAdPluginEvents.FailedToLoad, (info) => {
-        if (timeoutId) clearTimeout(timeoutId);
-        console.error("AdMob Rewarded Ad failed to load:", info);
-        setAdmobError("Reklam yüklenemedi (AdMob No Fill / Bağlantı). Lütfen daha sonra tekrar deneyin.");
-        setIsNativeAdLoading(false);
-        cleanupListeners();
-      });
-      listenerHandles.push(failedListener);
-
-      const rewardedListener = await AdMob.addListener(RewardAdPluginEvents.Rewarded, (reward) => {
-        console.log("User successfully earned reward from AdMob ad:", reward);
-        earnedReward = true;
-      });
-      listenerHandles.push(rewardedListener);
-
-      const dismissedListener = await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        console.log("AdMob ad dismissed.");
-        setIsNativeAdLoading(false);
-        cleanupListeners();
-        if (earnedReward) {
-          triggerSpin(true); // Spin wheel as ad reward!
-        } else {
-          setAdmobError("Ödül kazanmak için reklamı sonuna kadar izlemelisiniz.");
-        }
-      });
-      listenerHandles.push(dismissedListener);
-
-      // 2. Prepare rewarded video ad
-      const targetAdUnitId = isTesting
-        ? (platform === 'ios' ? 'ca-app-pub-3940256099942544/1712485313' : 'ca-app-pub-3940256099942544/5224354917')
-        : activeAdUnitId;
-
-      await AdMob.prepareRewardVideoAd({
-        adId: targetAdUnitId,
-        isTesting: isTesting,
-      });
-    } catch (error: any) {
-      if (timeoutId) clearTimeout(timeoutId);
-      console.error("AdMob flow exception:", error);
-      setAdmobError(error?.message || "Reklam yüklenirken bir hata oluştu.");
       setIsNativeAdLoading(false);
-      cleanupListeners();
+      if (result.rewardEarned) {
+        triggerSpin(true); // Spin wheel as ad reward!
+      } else if (result.error) {
+        setAdmobError(result.error);
+      } else {
+        setAdmobError(profile.settings.language === 'en' ? 'You must watch the full ad to earn the spin.' : 'Ödül kazanmak için reklamı sonuna kadar izlemelisiniz.');
+      }
+    } catch (error: any) {
+      console.error('AdMob flow exception:', error);
+      setIsNativeAdLoading(false);
+      setAdmobError(error?.message || (profile.settings.language === 'en' ? 'Error loading ad.' : 'Reklam yüklenirken bir hata oluştu.'));
     }
   };
 

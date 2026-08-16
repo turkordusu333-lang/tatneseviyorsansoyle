@@ -12,7 +12,7 @@ import { HowToPlayModal } from './HowToPlayModal';
 import { LuckyWheel } from './LuckyWheel';
 import { RewardedAdCoinButton } from './RewardedAdCoinButton';
 import { motion, AnimatePresence } from 'motion/react';
-import { t } from '../lib/TranslationSystem';
+import { t, changeLanguage } from '../lib/TranslationSystem';
 import { API_BASE_URL, WS_BASE_URL } from '../lib/apiConfig';
 import { getCountryByCode } from '../lib/countryData';
 import { 
@@ -281,11 +281,11 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
     }
   };
   const [tournamentsList, setTournamentsList] = React.useState<Tournament[]>([]);
-  const [selectedTournamentId, setSelectedTournamentId] = React.useState<string>('t-1');
+  const [selectedTournamentId, setSelectedTournamentId] = React.useState<string>('t-bronze');
 
   const fetchTournaments = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/tournaments`);
+      const res = await fetch(`${API_BASE_URL}/api/tournaments?userId=${profile.id}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
@@ -303,26 +303,58 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
   React.useEffect(() => {
     if (activeTab === 'tournaments') {
       fetchTournaments();
+      const interval = setInterval(fetchTournaments, 2000);
+      return () => clearInterval(interval);
     }
-  }, [activeTab]);
+  }, [activeTab, profile.id]);
 
-  const handleJoinTournament = async (tournamentId: string) => {
+  const handleStartTournament = async (tournamentId: string) => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/tournaments/join`, {
+      const res = await fetch(`${API_BASE_URL}/api/tournaments/user/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: profile.id, tournamentId }),
       });
-      if (res.ok) {
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.user) onUpdateProfile(data.user);
         fetchTournaments();
+      } else {
+        alert(data.error || 'Turnuva başlatılamadı.');
       }
     } catch (e) {
-      console.error('Failed to join tournament', e);
+      console.error('Failed to start tournament', e);
     }
   };
 
-  const handlePlayTournamentMatch = (tournamentId: string, matchId: string, opponentName: string) => {
-    onJoinRoom(`tournament:${tournamentId}:${matchId}:${opponentName}`, true);
+  const handleResetTournament = async (tournamentId: string) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/tournaments/user/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: profile.id, tournamentId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        if (data.user) onUpdateProfile(data.user);
+        fetchTournaments();
+      }
+    } catch (e) {
+      console.error('Failed to reset tournament', e);
+    }
+  };
+
+  const handlePlayTournamentMatch = (
+    tournamentId: string,
+    matchId: string,
+    opponentName: string,
+    format: string = '1v1',
+    botDifficulty: string = 'medium',
+    targetSets: number = 3,
+    turnDurationSeconds: number = 30
+  ) => {
+    const roomId = `tournament:${tournamentId}:${matchId}:${opponentName}:${format}:${botDifficulty}:${targetSets}:${turnDurationSeconds}`;
+    onJoinRoom(roomId, true);
   };
 
   // Ping indicator state
@@ -383,13 +415,20 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
   const [showRoomPasswordModal, setShowRoomPasswordModal] = React.useState(false);
   const [roomPasswordInput, setRoomPasswordInput] = React.useState('');
   const [pendingRoomId, setPendingRoomId] = React.useState('');
+  const [createRoomGameMode, setCreateRoomGameMode] = React.useState<'classic' | '2v2_team' | 'chaos' | 'speed'>('classic');
+  const [createRoomMaxPlayers, setCreateRoomMaxPlayers] = React.useState<number>(4);
 
   const handleCreateRoom = (offline: boolean = false) => {
+    let prefix = 'oda';
+    if (createRoomGameMode === '2v2_team') prefix = 'oda-2v2';
+    else if (createRoomGameMode === 'chaos') prefix = 'oda-chaos';
+    else if (createRoomGameMode === 'speed') prefix = 'oda-speed';
+
     const rid = offline
       ? `offline-${Math.random().toString(36).substr(2, 5)}`
       : customRoomId.trim() !== ''
-        ? customRoomId.trim()
-        : `oda-${Math.random().toString(36).substr(2, 5)}`;
+        ? (createRoomGameMode === '2v2_team' && !customRoomId.includes('2v2') ? `2v2-${customRoomId.trim()}` : customRoomId.trim())
+        : `${prefix}-${Math.random().toString(36).substr(2, 5)}`;
 
     sounds.playPlay(profile.settings);
     onJoinRoom(rid, offline, roomPassword.trim() !== '' ? roomPassword.trim() : undefined);
@@ -507,7 +546,9 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
             <div className="flex items-center bg-zinc-900/40 px-0.5 py-0.5 sm:px-1 sm:py-1 rounded-xl border border-zinc-800/80 text-[9px] sm:text-xs">
               <button
                 onClick={async () => {
-                  const nextLang = (profile.settings.language || 'tr') === 'tr' ? 'en' : 'tr';
+                  const currentLang = profile?.settings?.language || localStorage.getItem('language') || 'tr';
+                  const nextLang = currentLang === 'tr' ? 'en' : 'tr';
+                  changeLanguage(nextLang);
                   const updated = {
                     ...profile,
                     settings: { ...profile.settings, language: nextLang }
@@ -593,15 +634,15 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
         <nav className="lg:col-span-1 flex flex-col gap-5">
           <div className="bg-zinc-950/40 border border-zinc-900/85 rounded-2xl p-2.5 flex flex-row lg:flex-col gap-1.5 overflow-x-auto lg:overflow-x-visible pb-3.5 lg:pb-2.5 whitespace-nowrap scrollbar-none w-full">
             {[
-              { id: 'play', label: t('tab_multiplayer', profile), icon: Play, color: 'hover:text-red-400' },
-              { id: 'bot_practice', label: t('tab_bot_practice', profile), icon: Bot, color: 'hover:text-red-400' },
-              { id: 'tournaments', label: t('tab_tournaments', profile), icon: Trophy, color: 'hover:text-red-400' },
-              (!adminSettings || adminSettings.rankedLeagueEnabled !== false) && { id: 'leaderboard', label: t('tab_leaderboard', profile), icon: Award, color: 'hover:text-red-400' },
-              { id: 'shop', label: t('tab_shop', profile), icon: Sparkles, color: 'hover:text-red-400' },
-              { id: 'customization', label: t('tab_customize', profile), icon: Layout, color: 'hover:text-red-400' },
-              { id: 'profile', label: t('tab_profile', profile), icon: UserIcon, color: 'hover:text-red-400' },
-              { id: 'rules', label: t('tab_rules', profile), icon: BookOpen, color: 'hover:text-red-400' },
-              { id: 'admin', label: t('tab_admin', profile), icon: Shield, color: 'hover:text-amber-500' },
+              { id: 'play', label: t('tab_multiplayer', profile) || '🎮 Çok Oyunculu', icon: Play, color: 'hover:text-red-400' },
+              { id: 'bot_practice', label: t('tab_bot_practice', profile) || '🤖 Bot Pratik', icon: Bot, color: 'hover:text-red-400' },
+              { id: 'tournaments', label: '🏆 Kupa Turnuvaları', icon: Trophy, badge: 'ÖDÜLLÜ', color: 'hover:text-amber-400', special: true },
+              (!adminSettings || adminSettings.rankedLeagueEnabled !== false) && { id: 'leaderboard', label: t('tab_leaderboard', profile) || '🌍 Sıralama', icon: Award, color: 'hover:text-red-400' },
+              { id: 'shop', label: t('tab_shop', profile) || '✨ Mağaza', icon: Sparkles, color: 'hover:text-red-400' },
+              { id: 'customization', label: t('tab_customize', profile) || '🎨 Özelleştir', icon: Layout, color: 'hover:text-red-400' },
+              { id: 'profile', label: t('tab_profile', profile) || '👤 Profil', icon: UserIcon, color: 'hover:text-red-400' },
+              { id: 'rules', label: t('tab_rules', profile) || '📖 Kurallar', icon: BookOpen, color: 'hover:text-red-400' },
+              { id: 'admin', label: t('tab_admin', profile) || '🛡️ Yönetici', icon: Shield, color: 'hover:text-amber-500' },
             ].filter(Boolean).map((tab: any) => {
               const IconComp = tab.icon;
               const isActive = activeTab === tab.id;
@@ -626,15 +667,24 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                   }}
                   className={`flex-shrink-0 lg:w-full text-left px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all flex items-center justify-between gap-3.5 ${
                     isActive
-                      ? 'bg-zinc-900/60 border-l-2 border-red-500 text-red-400 font-extrabold shadow-sm'
+                      ? tab.special
+                        ? 'bg-amber-500/20 border-l-2 border-amber-400 text-amber-300 font-black shadow-lg shadow-amber-500/10'
+                        : 'bg-zinc-900/60 border-l-2 border-red-500 text-red-400 font-extrabold shadow-sm'
+                      : tab.special
+                      ? 'bg-amber-500/10 border border-amber-500/30 text-amber-300 hover:bg-amber-500/20 font-bold'
                       : `text-zinc-400 ${tab.color} hover:bg-zinc-900/20`
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <IconComp className={`w-4 h-4 ${isActive ? 'text-red-400' : 'text-zinc-500'}`} />
+                    <IconComp className={`w-4 h-4 ${isActive ? (tab.special ? 'text-amber-300' : 'text-red-400') : (tab.special ? 'text-amber-400' : 'text-zinc-500')}`} />
                     <span>{tab.label}</span>
                   </div>
-                  {isActive && <span className="text-red-500 text-xs hidden lg:inline-block">●</span>}
+                  {tab.badge && (
+                    <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      {tab.badge}
+                    </span>
+                  )}
+                  {isActive && !tab.badge && <span className="text-red-500 text-xs hidden lg:inline-block">●</span>}
                 </button>
               );
             })}
@@ -892,29 +942,116 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                       <p className="text-xs text-zinc-500 mt-0.5">{t('multiplayer_lobby_desc', profile)}</p>
                     </div>
 
-                    {/* Create Room Actions */}
-                    <div className="flex flex-col sm:flex-row w-full xl:w-auto gap-2 items-center">
-                      <input
-                        type="text"
-                        placeholder={t('enter_code', profile)}
-                        value={customRoomId}
-                        onChange={(e) => setCustomRoomId(e.target.value)}
-                        className="w-full sm:w-36 bg-zinc-900/30 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500/50 transition-all"
-                      />
-                      <input
-                        type="password"
-                        placeholder={profile.settings.language === 'en' ? "Password (optional)" : "Şifre (isteğe bağlı)"}
-                        value={roomPassword}
-                        onChange={(e) => setRoomPassword(e.target.value)}
-                        className="w-full sm:w-36 bg-zinc-900/30 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500/50 transition-all"
-                      />
-                      <button
-                        onClick={() => handleCreateRoom(false)}
-                        className="w-full sm:w-auto px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-red-600/10 active:scale-95 transform whitespace-nowrap cursor-pointer"
-                      >
-                        {t('create_room_btn', profile)}
-                      </button>
+                    {/* Create Room Actions & Mode Selector */}
+                    <div className="flex flex-col w-full xl:w-auto gap-2.5">
+                      {/* Game Mode Selector Buttons & Max Players */}
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex items-center gap-1 bg-zinc-900/60 border border-zinc-800 p-1 rounded-xl">
+                          {[
+                            { id: 'classic', label: '🎲 Klasik', title: 'Klasik Herkes Tek' },
+                            { id: '2v2_team', label: '⚔️ 2v2 Takım', title: '2v2 Takım Savaşı - Mavi vs Kırmızı' },
+                            { id: 'speed', label: '⚡ Hızlı', title: '15sn Tur Süresi - 2 Set' },
+                            { id: 'chaos', label: '🌀 Kaos', title: 'Sınırsız Hamle' },
+                          ].map((mode) => (
+                            <button
+                              key={mode.id}
+                              type="button"
+                              onClick={() => {
+                                setCreateRoomGameMode(mode.id as any);
+                                sounds.playCoin(profile.settings);
+                              }}
+                              title={mode.title}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all cursor-pointer ${
+                                createRoomGameMode === mode.id
+                                  ? 'bg-gradient-to-r from-red-600 to-amber-600 text-white shadow-sm'
+                                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                              }`}
+                            >
+                              {mode.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Max Players Selector (2-6) */}
+                        <div className="flex items-center gap-1 bg-zinc-900/60 border border-zinc-800 p-1 rounded-xl">
+                          <span className="text-[9px] font-black uppercase text-zinc-500 px-1">👥 Kapasite:</span>
+                          {[2, 3, 4, 5, 6].map((pCount) => (
+                            <button
+                              key={pCount}
+                              type="button"
+                              onClick={() => {
+                                setCreateRoomMaxPlayers(pCount);
+                                sounds.playCoin(profile.settings);
+                              }}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-extrabold transition-all cursor-pointer ${
+                                createRoomMaxPlayers === pCount
+                                  ? 'bg-indigo-600 text-white shadow-sm'
+                                  : 'text-zinc-400 hover:text-white hover:bg-white/5'
+                              }`}
+                            >
+                              {pCount}P
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2 items-center">
+                        <input
+                          type="text"
+                          placeholder={t('enter_code', profile)}
+                          value={customRoomId}
+                          onChange={(e) => setCustomRoomId(e.target.value)}
+                          className="w-full sm:w-36 bg-zinc-900/30 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500/50 transition-all"
+                        />
+                        <input
+                          type="password"
+                          placeholder={profile.settings.language === 'en' ? "Password (optional)" : "Şifre (isteğe bağlı)"}
+                          value={roomPassword}
+                          onChange={(e) => setRoomPassword(e.target.value)}
+                          className="w-full sm:w-36 bg-zinc-900/30 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-red-500/50 transition-all"
+                        />
+                        <button
+                          onClick={() => handleCreateRoom(false)}
+                          className="w-full sm:w-auto px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all shadow-md shadow-red-600/10 active:scale-95 transform whitespace-nowrap cursor-pointer"
+                        >
+                          {t('create_room_btn', profile)}
+                        </button>
+                      </div>
                     </div>
+                  </div>
+
+                  {/* 🏆 NAKAVT KUPA TURNUVALARI ARENA BANNER */}
+                  <div className="relative overflow-hidden bg-gradient-to-r from-amber-950/60 via-slate-900 to-indigo-950/60 border-2 border-amber-500/40 rounded-2xl p-5 shadow-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-2xl shadow-inner shrink-0 animate-bounce">
+                        👑
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                            YENİ SEZON MODU
+                          </span>
+                          <span className="text-[10px] text-amber-400 font-bold">15,000🪙 Ödüllü</span>
+                        </div>
+                        <h4 className="text-sm sm:text-base font-black text-white uppercase tracking-wider mt-0.5">
+                          🥊 Nakavt Kupa Turnuvaları (Knockout Arena)
+                        </h4>
+                        <p className="text-[11px] text-slate-300">
+                          8 ve 16 kişilik eleme ağacı! Çeyrek, Yarı ve Büyük Finali kazanıp kupayı kaldırın.
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        sounds.playCoin(profile.settings);
+                        setActiveTab('tournaments');
+                      }}
+                      className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer whitespace-nowrap flex items-center justify-center gap-1.5"
+                    >
+                      <Trophy className="w-4 h-4 text-slate-950" />
+                      <span>🏆 Turnuvaya Katıl</span>
+                    </button>
                   </div>
 
                   {/* Otomatik Oyuncu Eşleştirme (Matchmaking) Modülü */}
@@ -1207,10 +1344,25 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                                     sizeClassName="w-6 h-6 text-[8px]"
                                   />
                                 )}
-                                <div className="flex items-center gap-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-bold text-[10px] text-red-400 bg-red-500/5 border border-red-500/10 px-2 py-0.5 rounded-md">
                                     ID: {room.roomId}
                                   </span>
+                                  {((room as any).gameMode === '2v2_team' || room.roomId.includes('2v2')) && (
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                                      ⚔️ 2v2 Takım
+                                    </span>
+                                  )}
+                                  {(room as any).gameMode === 'chaos' && (
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                      🌀 Kaos
+                                    </span>
+                                  )}
+                                  {(room as any).gameMode === 'speed' && (
+                                    <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                                      ⚡ Hızlı
+                                    </span>
+                                  )}
                                   {room.hasPassword && (
                                     <span className="text-[10px] text-zinc-500" title={profile.settings.language === 'en' ? "Password Protected" : "Şifreli Oda"}>
                                       🔒
@@ -1218,8 +1370,8 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                                   )}
                                 </div>
                               </div>
-                              <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider bg-zinc-900/40 px-2 py-0.5 rounded-md border border-zinc-800/40">
-                                👥 {room.playerCount} Oyuncu
+                              <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider bg-zinc-900/60 px-2 py-0.5 rounded-md border border-zinc-800/40">
+                                👥 {room.playerCount}/{(room as any).maxPlayers || 4} Oyuncu
                               </span>
                             </div>
                             <div className="mb-4">
@@ -1351,16 +1503,30 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => {
-                        const rid = `offline-practice-${botDifficulty}-${Math.random().toString(36).substr(2, 5)}`;
-                        sounds.playPlay(profile.settings);
-                        onJoinRoom(rid, true);
-                      }}
-                      className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-extrabold rounded-xl transition-all shadow-sm shadow-red-600/10 active:scale-95 transform text-xs uppercase tracking-wider cursor-pointer"
-                    >
-                      {t('lobby_start_practise', profile)} ({botDifficulty === 'easy' ? t('easy_word', profile) : botDifficulty === 'medium' ? t('medium_word', profile) : t('hard_word', profile)})
-                    </button>
+                    <div className="flex flex-col sm:flex-row gap-2.5">
+                      <button
+                        onClick={() => {
+                          const rid = `offline-practice-${botDifficulty}-${Math.random().toString(36).substr(2, 5)}`;
+                          sounds.playPlay(profile.settings);
+                          onJoinRoom(rid, true);
+                        }}
+                        className="flex-1 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-extrabold rounded-xl transition-all shadow-sm active:scale-95 transform text-xs uppercase tracking-wider cursor-pointer border border-zinc-700"
+                      >
+                        1v1 Pratik ({botDifficulty === 'easy' ? t('easy_word', profile) : botDifficulty === 'medium' ? t('medium_word', profile) : t('hard_word', profile)})
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          const rid = `offline-2v2-${botDifficulty}-${Math.random().toString(36).substr(2, 5)}`;
+                          sounds.playPlay(profile.settings);
+                          onJoinRoom(rid, true);
+                        }}
+                        className="flex-1 py-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-rose-600 hover:opacity-95 text-white font-black rounded-xl transition-all shadow-lg shadow-indigo-600/20 active:scale-95 transform text-xs uppercase tracking-wider cursor-pointer flex items-center justify-center gap-1.5 border border-indigo-400/30"
+                      >
+                        <span>⚔️</span>
+                        <span>2v2 Takım Savaşı Başlat</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1368,20 +1534,35 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
               {/* TAB 3: Tournaments */}
               {activeTab === 'tournaments' && (
                 <div className="bg-zinc-950/20 border border-zinc-900/80 rounded-2xl p-6 space-y-6">
-                  {tournamentsList.length > 1 && (
-                    <div className="flex flex-wrap items-center gap-2 pb-4 border-b border-white/5">
+                  {tournamentsList.length > 0 && (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pb-2">
                       {tournamentsList.map((t) => (
                         <button
                           key={t.id}
-                          onClick={() => setSelectedTournamentId(t.id)}
-                          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                          onClick={() => {
+                            sounds.playCoin(profile.settings);
+                            setSelectedTournamentId(t.id);
+                          }}
+                          className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between space-y-2 ${
                             selectedTournamentId === t.id
-                              ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/20 ring-1 ring-red-400/50'
-                              : 'bg-zinc-900/60 text-zinc-400 hover:text-white border border-zinc-800'
+                              ? 'bg-gradient-to-br from-indigo-950/80 via-slate-900 to-indigo-950/80 border-indigo-400 shadow-xl shadow-indigo-600/20 ring-2 ring-indigo-500/50 scale-[1.02]'
+                              : 'bg-zinc-900/40 border-zinc-800/80 hover:border-zinc-700 hover:bg-zinc-900/70'
                           }`}
                         >
-                          <span>🏆</span>
-                          <span>{t.name}</span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-base">{t.icon || '🏆'}</span>
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                              {t.prizeCoins ? `${t.prizeCoins.toLocaleString()} 🪙` : 'ÖDÜLLÜ'}
+                            </span>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-black text-white">{t.name}</h4>
+                            <p className="text-[9px] text-zinc-400 mt-0.5 line-clamp-1">{t.description}</p>
+                          </div>
+                          <div className="pt-2 border-t border-white/5 flex items-center justify-between text-[8.5px] font-bold text-zinc-400">
+                            <span>{t.entryFee ? `${t.entryFee} 🪙 Giriş` : 'Ücretsiz'}</span>
+                            <span className="text-indigo-300">{t.maxParticipants || 8} Oyuncu</span>
+                          </div>
                         </button>
                       ))}
                     </div>
@@ -1391,9 +1572,16 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                     const activeT =
                       tournamentsList.find((t) => t.id === selectedTournamentId) ||
                       tournamentsList[0] || {
-                        id: 't-1',
-                        name: '🏆 Deal Master Türkiye Şampiyonası 2026',
-                        participants: [profile.username],
+                        id: 't-bronze',
+                        name: '🥉 Acemi Arenası',
+                        description: 'Hızlı 8 kişilik eleme kupası. Yeni taktikleri test etmek için ideal!',
+                        tier: 'bronze',
+                        entryFee: 100,
+                        prizeCoins: 500,
+                        prizeXp: 150,
+                        maxParticipants: 8,
+                        icon: '🥉',
+                        participants: ['Bot Memo', 'Bot Can', 'Bot Defne'],
                         rounds: [],
                         status: 'registration',
                       };
@@ -1403,7 +1591,7 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                         tournament={activeT}
                         profile={profile}
                         onPlayMatch={handlePlayTournamentMatch}
-                        onJoinTournament={handleJoinTournament}
+                        onStartTournament={handleStartTournament}
                       />
                     );
                   })()}

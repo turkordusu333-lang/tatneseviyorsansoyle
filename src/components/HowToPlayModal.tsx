@@ -51,7 +51,7 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = React.memo(({ isOpe
                   {isEn ? 'How to Play & Card Strategies' : 'Nasıl Oynanır & Kart Stratejileri'}
                 </h2>
                 <p className="text-[11px] text-amber-400 font-semibold">
-                  {isEn ? 'Monopoly Deal Complete Masterclass' : 'Monopoly Deal Kapsamlı Rehberi'}
+                  {isEn ? 'Master Deal Complete Masterclass' : 'Master Deal Kapsamlı Rehberi'}
                 </p>
               </div>
             </div>
@@ -84,11 +84,10 @@ export const HowToPlayModal: React.FC<HowToPlayModalProps> = React.memo(({ isOpe
                     sounds.playPlay(profile.settings);
                     setActiveTab(tab.id as any);
                   }}
-                  className={`flex-1 min-w-[100px] py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${
-                    isActive
+                  className={`flex-1 min-w-[100px] py-2 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap ${isActive
                       ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md font-black'
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
+                    }`}
                 >
                   <IconComp className="w-3.5 h-3.5" />
                   <span>{tab.label}</span>

@@ -141,6 +141,11 @@ export interface TournamentMatch {
   id: string;
   player1: string;
   player2: string;
+  player3?: string;
+  player4?: string;
+  team1?: string[];
+  team2?: string[];
+  tablePlayers?: string[];
   winner?: string;
   score1?: number;
   score2?: number;
@@ -150,6 +155,18 @@ export interface TournamentMatch {
 export interface Tournament {
   id: string;
   name: string;
+  description?: string;
+  tier?: 'bronze' | 'silver' | 'gold' | 'legend';
+  format?: '1v1' | '4player' | '2v2_team';
+  botDifficulty?: 'easy' | 'medium' | 'hard' | 'expert';
+  allowBots?: boolean;
+  entryFee?: number;
+  prizeCoins?: number;
+  prizeXp?: number;
+  maxParticipants?: number;
+  targetSets?: number;
+  turnDurationSeconds?: number;
+  icon?: string;
   participants: string[];
   rounds: {
     roundNumber: number;
@@ -185,6 +202,7 @@ export interface UserProfile {
   achievements: Achievement[];
   dailyQuests: DailyQuest[];
   gamesHistory?: GameHistoryItem[];
+  tournaments?: Record<string, Tournament>;
   password?: string; // Optional user account password
   rankPoints?: number; // Ranked / League Points
   mmr?: number; // Secret Matchmaking Rating
@@ -203,6 +221,7 @@ export interface GamePlayer {
   cardBack?: string; // ID of equipped card back
   cardSkin?: string; // ID of equipped card skin
   actionVfx?: string; // ID of equipped action VFX
+  team?: 'team_blue' | 'team_red'; // 2v2 Team Battle assignment
   isBot: boolean;
   isDisconnected?: boolean;
   hasAbandoned?: boolean;
@@ -239,6 +258,7 @@ export interface MatchState {
   turnNumber?: number; // Round/Turn number (starts at 1, increments when round completes)
   actionsPlayedThisTurn: number; // Max 3
   winnerId?: string;
+  winnerTeam?: 'team_blue' | 'team_red'; // 2v2 Winner Team
   logs: GameLog[];
   isOffline: boolean;
   activeActionRequest?: ActionRequest; // For interactions like "Just Say No", payments, forced-deal target, etc.
@@ -251,7 +271,22 @@ export interface MatchState {
     targetSets: number;
     turnLimit: '15s' | '30s' | '1m' | 'unlimited';
     autoEndTurn: boolean;
-    gameMode: 'classic' | 'chaos' | 'speed';
+    gameMode: 'classic' | 'chaos' | 'speed' | '2v2_team';
+    maxPlayers?: number; // 2 to 6 players
+    // Chaos Mode Toggles (only active when gameMode === 'chaos')
+    chaosSpy?: boolean;       // 🕵️ Casus / Gizli El
+    chaosKingHill?: boolean;  // 👑 Kralın Tacı
+    chaosHotPotato?: boolean; // 💣 Saatli Bomba
+  };
+  // Runtime chaos state (not stored in settings)
+  chaosState?: {
+    // 👑 Kralın Tacı
+    kingHillHolderId?: string;   // Who currently holds the Golden Property
+    kingHillHeldSince?: number;  // Turn number when they first took it
+    kingHillLastBonus?: number;  // Turn number when the last bonus was given
+    // 💣 Saatli Bomba
+    hotPotatoHolderId?: string;  // Who is holding the bomb
+    hotPotatoTurnsLeft?: number; // Turns until explosion (starts at 3)
   };
   password?: string; // Optional password to enter the room
   isMatchmaking?: boolean;

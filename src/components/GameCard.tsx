@@ -3,7 +3,7 @@ import { Card, CardColor } from '../types';
 import { COLOR_HEX, COLOR_LABELS, RENT_VALUES, MAX_IN_SET } from '../lib/deck';
 import { motion } from 'motion/react';
 import { Holo } from './Holo';
-import { t } from '../lib/TranslationSystem';
+import { t, useTranslation, getCurrentLanguage } from '../lib/TranslationSystem';
 import { findShopItem } from '../lib/shopItemsStore';
 import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
 
@@ -328,9 +328,19 @@ const GameCardComponent: React.FC<GameCardProps> = ({
   disable3D = false,
   cardSkin = 'skin_none',
 }) => {
+  const { t: translate, lang: currentLang } = useTranslation();
   const skin = getSkinStyles(cardBack);
   const skinItem = findShopItem(cardSkin);
   const isSkinVideo = skinItem?.mediaUrl && isVideoUrl(skinItem.mediaUrl, skinItem.mediaType);
+
+  const getColorLabel = (c: CardColor): string => {
+    if (!c) return '';
+    let key = c as string;
+    if (key === 'lightblue') key = 'sky_blue';
+    if (key === 'railroad') key = 'station';
+    if (key === 'darkblue') key = 'blue';
+    return translate(`color_${key}`).toUpperCase();
+  };
 
   const getSkinOverlayClass = () => {
     if (size === 'normal') return 'rounded-2xl';
@@ -389,14 +399,12 @@ const GameCardComponent: React.FC<GameCardProps> = ({
 
     return (
       <div
-        id={`card-facedown-${card?.id || 'unknown'}`}
         onClick={onClick}
-        className={`rounded-xl border select-none relative overflow-hidden transition-all shadow-xl cursor-pointer hover:scale-105 flex flex-col justify-between p-2 ${skin.borderClass} ${className}`}
-        style={{
-          width: size === 'mini' ? '40px' : size === 'medium' ? '48px' : '96px',
-          height: size === 'mini' ? '58px' : size === 'medium' ? '70px' : '140px',
-          backgroundColor: (skin as any).previewColor || undefined
-        }}
+        className={`relative select-none flex flex-col justify-between overflow-hidden shadow-2xl transition-all duration-200 border-2 ${skin.borderClass} ${
+          size === 'normal' ? 'w-24 h-36 sm:w-28 sm:h-44 p-2 sm:p-2.5 rounded-2xl' :
+          size === 'medium' ? 'w-14 h-20 sm:w-16 sm:h-24 p-1 sm:p-1.5 rounded-md' :
+          'w-10 h-14 sm:w-12 sm:h-16 p-0.5 sm:p-1 rounded-lg'
+        } ${className}`}
       >
         {(skin as any).mediaUrl ? (
           isVideo ? (
@@ -553,10 +561,50 @@ const GameCardComponent: React.FC<GameCardProps> = ({
       'Short Line Railroad': 'station_short_line',
       'Water Works': 'utility_water',
       'Electric Company': 'utility_electric',
+
+      // Turkish names mapping to keys
+      'Hacıhüsrev': 'prop_baltic_ave',
+      'Kasımpaşa': 'prop_mediterranean_ave',
+      'Sultanahmet': 'prop_mediterranean_ave',
+      'Eminönü': 'prop_oriental_ave',
+      'Fatih': 'prop_vermont_ave',
+      'Karaköy': 'prop_vermont_ave',
+      'Aksaray': 'prop_connecticut_ave',
+      'Ortaköy': 'prop_connecticut_ave',
+      'Harbiye': 'prop_st_charles_pl',
+      'Kabataş': 'prop_st_charles_pl',
+      'Şişli': 'prop_states_ave',
+      'Mecidiyeköy': 'prop_virginia_ave',
+      'Kadıköy': 'prop_st_james_pl',
+      'Moda': 'prop_st_james_pl',
+      'Bostancı': 'prop_tennessee_ave',
+      'Bağdat Caddesi': 'prop_new_york_ave',
+      'Beşiktaş': 'prop_kentucky_ave',
+      'Caddebostan': 'prop_kentucky_ave',
+      'Erenköy': 'prop_indiana_ave',
+      'Bebek': 'prop_illinois_ave',
+      'Barış Manço': 'prop_illinois_ave',
+      'Tarabya': 'prop_atlantic_ave',
+      'Sarıyer': 'prop_ventnor_ave',
+      'Nişantaşı': 'prop_park_place',
+      'Teşvikiye': 'prop_marvin_gardens',
+      'Yeniköy': 'prop_marvin_gardens',
+      'Florya': 'prop_pacific_ave',
+      'Yeşilköy': 'prop_north_carolina_ave',
+      'Levent': 'prop_north_carolina_ave',
+      'Etiler': 'prop_pacific_ave',
+      'Bakırköy': 'prop_pennsylvania_ave',
+      'Bebek Sahil': 'prop_boardwalk',
+      'Haydarpaşa Garı': 'station_reading',
+      'Sirkeci Garı': 'station_pennsylvania',
+      'Kadıköy Vapur İskelesi': 'station_b_o',
+      'Yenikapı İskelesi': 'station_short_line',
+      'Sular İdaresi': 'utility_water',
+      'Elektrik İdaresi': 'utility_electric',
     };
 
     let name = card.name;
-    let typeLabel = t('prop_label');
+    let typeLabel = translate('prop_label');
     let description = card.description;
     let shortDesc = '';
     let icon = '🏢';
@@ -566,29 +614,20 @@ const GameCardComponent: React.FC<GameCardProps> = ({
     let isRent = card.type === 'rent';
     let isWildcard = card.isWildcard === true;
 
-    // Helper to get translated color names
-    const getColorLabel = (c: CardColor): string => {
-      let key = c as string;
-      if (key === 'lightblue') key = 'sky_blue';
-      if (key === 'railroad') key = 'station';
-      if (key === 'darkblue') key = 'blue';
-      return t(`color_${key}`).toUpperCase();
-    };
-
     // Helper to get translated property names
     const getPropertyName = (origName: string): string => {
       const key = CARD_KEY_MAP[origName];
       if (key) {
-        const val = t(key);
+        const val = translate(key);
         return val !== key ? val : origName;
       }
       return origName;
     };
 
     if (isMoney) {
-      typeLabel = t('money_label');
+      typeLabel = translate('money_label');
       icon = '💵';
-      shortDesc = t('card_money_desc', null, card.value);
+      shortDesc = translate('card_money_desc', null, card.value);
       description = shortDesc;
       if (card.value === 10) bgColor = '#FF9800'; // Vibrant Orange
       else if (card.value === 5) bgColor = '#9C27B0'; // Purple
@@ -597,93 +636,93 @@ const GameCardComponent: React.FC<GameCardProps> = ({
       else if (card.value === 2) bgColor = '#EF5350'; // Red
       else bgColor = '#90A4AE'; // Silver/Grey
     } else if (card.type === 'property') {
-      typeLabel = t('prop_label');
+      typeLabel = translate('prop_label');
       icon = '🏢';
       name = getPropertyName(card.name);
-      shortDesc = `${getColorLabel(card.color!)} ${t('card_rent').toLowerCase()}.`;
+      shortDesc = `${getColorLabel(card.color!)} ${translate('card_rent').toLowerCase()}.`;
       description = shortDesc;
     } else if (isWildcard) {
-      typeLabel = t('joker_label');
+      typeLabel = translate('joker_label');
       icon = '🃏';
-      name = t('card_wildcard_name');
+      name = translate('card_wildcard_name');
       if (!card.secondaryColor) {
-        shortDesc = t('card_wildcard_desc_any');
+        shortDesc = translate('card_wildcard_desc_any');
       } else {
-        shortDesc = t('card_wildcard_desc_two', null, getColorLabel(card.color!), getColorLabel(card.secondaryColor!));
+        shortDesc = translate('card_wildcard_desc_two', null, getColorLabel(card.color!), getColorLabel(card.secondaryColor!));
       }
       description = shortDesc;
     } else if (isAction) {
-      typeLabel = t('action_label');
+      typeLabel = translate('action_label');
       if (card.actionType === 'deal-breaker') {
-        name = t('card_deal_breaker_name');
-        description = t('card_deal_breaker_desc');
+        name = translate('card_deal_breaker_name');
+        description = translate('card_deal_breaker_desc');
         shortDesc = description;
         icon = '⚡';
         bgColor = '#9C27B0'; // Purple
       } else if (card.actionType === 'just-say-no') {
-        name = t('card_just_say_no_name');
-        description = t('card_just_say_no_desc');
+        name = translate('card_just_say_no_name');
+        description = translate('card_just_say_no_desc');
         shortDesc = description;
         icon = '🛑';
         bgColor = '#4CAF50'; // Lime green
       } else if (card.actionType === 'sly-deal') {
-        name = t('card_sly_deal_name');
-        description = t('card_sly_deal_desc');
+        name = translate('card_sly_deal_name');
+        description = translate('card_sly_deal_desc');
         shortDesc = description;
         icon = '🥷';
         bgColor = '#00B0FF'; // Vibrant blue
       } else if (card.actionType === 'forced-deal') {
-        name = t('card_forced_deal_name');
-        description = t('card_forced_deal_desc');
+        name = translate('card_forced_deal_name');
+        description = translate('card_forced_deal_desc');
         shortDesc = description;
         icon = '⇄';
         bgColor = '#00B0FF'; // Blue
       } else if (card.actionType === 'debt-collector') {
-        name = t('card_debt_collector_name');
-        description = t('card_debt_collector_desc');
+        name = translate('card_debt_collector_name');
+        description = translate('card_debt_collector_desc');
         shortDesc = description;
         icon = '💼';
         bgColor = '#00B0FF'; // Blue
       } else if (card.actionType === 'birthday') {
-        name = t('card_birthday_name');
-        description = t('card_birthday_desc');
+        name = translate('card_birthday_name');
+        description = translate('card_birthday_desc');
         shortDesc = description;
         icon = '🎂';
         bgColor = '#EC407A'; // Hot pink
       } else if (card.actionType === 'pass-go') {
-        name = t('card_pass_go_name');
-        description = t('card_pass_go_desc');
+        name = translate('card_pass_go_name');
+        description = translate('card_pass_go_desc');
         shortDesc = description;
         icon = '↩️';
         bgColor = '#FFFFFF'; // White action card base
       } else if (card.actionType === 'double-rent') {
-        name = t('card_double_rent_name');
-        description = t('card_double_rent_desc');
+        name = translate('card_double_rent_name');
+        description = translate('card_double_rent_desc');
         shortDesc = description;
         icon = '💰';
         bgColor = '#FFFFFF'; // White action card base
       } else if (card.actionType === 'house') {
-        name = t('card_house_name');
-        description = t('card_house_desc');
+        name = translate('card_house_name');
+        description = translate('card_house_desc');
         shortDesc = description;
         icon = '🏠';
         bgColor = '#00B0FF'; // Blue
       } else if (card.actionType === 'hotel') {
-        name = t('card_hotel_name');
-        description = t('card_hotel_desc');
+        name = translate('card_hotel_name');
+        description = translate('card_hotel_desc');
         shortDesc = description;
         icon = '🏢';
         bgColor = '#4CAF50'; // Green
       }
     } else if (isRent) {
-      typeLabel = t('rent_label');
+      typeLabel = translate('rent_label');
       icon = '💰';
-      name = t('card_rent_name');
+      name = translate('card_rent_name');
       if (card.name.includes('Her Renk') || !card.color) {
-        description = t('card_rent_desc_any');
+        description = translate('card_rent_desc_any');
         shortDesc = description;
       } else {
-        description = t('card_rent_desc_two', null, getColorLabel(card.color), getColorLabel(card.secondaryColor!));
+        description = translate('card_rent_desc_two', null, getColorLabel(card.color), getColorLabel(card.secondaryColor!));
         shortDesc = description;
       }
     }
@@ -862,7 +901,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
             onClick={onClick}
             className={`w-[40px] h-[58px] rounded-lg border border-black/40 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${className}`}
             style={{ backgroundColor: details.bgColor }}
-            title={`${card.value}M Para`}
+            title={`${card.value}M ${localStorage.getItem('language') === 'en' ? 'Cash' : 'Para'}`}
           >
             <div className="absolute inset-0 bg-gradient-to-tr from-black/10 via-transparent to-white/10 pointer-events-none" />
             <div className="w-5 h-5 rounded-full border border-black/20 bg-white/90 flex items-center justify-center mx-auto mt-0.5 shadow-sm">
@@ -877,6 +916,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
 
       if (details.isWildcard) {
         const isMulticolor = !card.secondaryColor;
+        const currentLang = localStorage.getItem('language') || 'tr';
         return (
           <div
             id={`card-mini-${card.id}`}
@@ -894,8 +934,8 @@ const GameCardComponent: React.FC<GameCardProps> = ({
                 {isMulticolor ? '🌈' : '🌟'}
               </span>
             </div>
-            <div className="bg-black/60 text-[6px] text-white font-black text-center py-0.5 leading-none rounded-sm">
-              {isMulticolor ? 'JOKER' : 'ÇİFT'}
+            <div className="bg-black/60 text-[6px] text-white font-black text-center py-0.5 leading-none rounded-sm uppercase">
+              {isMulticolor ? (currentLang === 'en' ? 'WILDCARD' : 'JOKER') : (currentLang === 'en' ? 'DUAL' : 'ÇİFT')}
             </div>
           </div>
         );
@@ -907,7 +947,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
             id={`card-mini-${card.id}`}
             onClick={onClick}
             className={`w-[40px] h-[58px] rounded-lg bg-white border border-slate-350 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${holoClass} ${className}`}
-            title={`${details.name} (Tapu)`}
+            title={`${details.name} (${localStorage.getItem('language') === 'en' ? 'Property' : 'Tapu'})`}
           >
             <div className="h-2.5 w-full rounded-t-sm flex-shrink-0" style={{ backgroundColor: primaryColorHex }} />
             <div className="flex-1 flex items-center justify-center px-0.5 w-full overflow-hidden">
@@ -923,6 +963,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
       // Dedicated Rent Mini card with color indicators
       if (details.isRent) {
         const isMulticolor = !card.color;
+        const currentLang = localStorage.getItem('language') || 'tr';
         return (
           <div
             id={`card-mini-${card.id}`}
@@ -938,11 +979,11 @@ const GameCardComponent: React.FC<GameCardProps> = ({
             title={details.name}
           >
             <div className="flex justify-between items-center px-0.5">
-              <span className="text-[5.5px] font-black text-slate-900 bg-white/90 px-0.5 rounded leading-none">KİRA</span>
+              <span className="text-[5.5px] font-black text-slate-900 bg-white/90 px-0.5 rounded leading-none">{translate('rent_label').toUpperCase()}</span>
               <span className="text-[8px] leading-none drop-shadow-[0_0.5px_0.5px_rgba(0,0,0,0.5)]">💰</span>
             </div>
             <div className="bg-black/50 py-0.5 rounded-sm flex items-center justify-center w-full px-0.5 overflow-hidden">
-              {renderCardTitle(isMulticolor ? 'HER RENK' : 'KİRA', 'mini', false)}
+              {renderCardTitle(isMulticolor ? (currentLang === 'en' ? 'ANY COLOR' : 'HER RENK') : (currentLang === 'en' ? 'RENT' : 'KİRA'), 'mini', false)}
             </div>
           </div>
         );
@@ -989,6 +1030,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
   // ---------------------------------------------------------
   if (size === 'medium') {
     const renderMediumBody = () => {
+      const currentLang = localStorage.getItem('language') || 'tr';
       if (details.isMoney) {
         return (
           <div
@@ -1007,7 +1049,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
                 {renderCardTitle(`${card.value}M`, 'medium', false)}
               </div>
               <span className="text-[4px] sm:text-[5px] font-black text-white/60 text-center tracking-wider uppercase leading-none fluid-card-badge">
-                PARA
+                {currentLang === 'en' ? 'MONEY' : 'PARA'}
               </span>
             </div>
           </div>
@@ -1033,12 +1075,12 @@ const GameCardComponent: React.FC<GameCardProps> = ({
               <div className="flex justify-between items-center px-0.5">
                 <span className="text-[6px] sm:text-[8px] drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]">🌟</span>
                 <span className="text-[4px] sm:text-[5.5px] font-black text-white bg-black/40 px-0.5 py-0.5 rounded uppercase leading-none fluid-card-badge">
-                  JOKER
+                  {translate('joker_label').toUpperCase()}
                 </span>
               </div>
 
               <div className="bg-black/60 px-1 py-0.5 rounded flex items-center justify-center mx-auto overflow-hidden max-w-[90%]">
-                {renderCardTitle(isMulticolor ? 'MULTİ' : 'ÇİFT', 'medium', false)}
+                {renderCardTitle(isMulticolor ? (currentLang === 'en' ? 'MULTI' : 'MULTİ') : (currentLang === 'en' ? 'DUAL' : 'ÇİFT'), 'medium', false)}
               </div>
 
               <div className="flex justify-between items-center text-[4px] sm:text-[6px] text-white font-black leading-none px-0.5 fluid-card-badge">
@@ -1073,7 +1115,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
 
               <div className="flex justify-between items-center text-[4.5px] sm:text-[6px] font-black text-slate-400 border-t border-slate-100 pt-0.5 mt-auto fluid-card-badge">
                 <span className="text-slate-800 font-extrabold bg-slate-100 px-0.5 rounded leading-none">M{card.value}</span>
-                <span className="leading-none">TAPU</span>
+                <span className="leading-none">{currentLang === 'en' ? 'PROP' : 'TAPU'}</span>
               </div>
             </div>
           </div>
@@ -1101,18 +1143,18 @@ const GameCardComponent: React.FC<GameCardProps> = ({
             >
               <div className="flex justify-between items-center px-0.5">
                 <span className="text-[4px] sm:text-[5.5px] font-black text-slate-950 bg-white/90 px-1 py-0.5 rounded uppercase leading-none fluid-card-badge shadow-sm">
-                  KİRA
+                  {translate('rent_label').toUpperCase()}
                 </span>
                 <span className="text-[6px] sm:text-[9px] leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">💰</span>
               </div>
 
               <div className="bg-black/60 px-1 py-0.5 rounded flex items-center justify-center mx-auto overflow-hidden max-w-[90%] shadow-sm">
-                {renderCardTitle(isMulticolor ? 'HER RENK' : 'KİRA', 'medium', false)}
+                {renderCardTitle(isMulticolor ? (currentLang === 'en' ? 'ANY COLOR' : 'HER RENK') : (currentLang === 'en' ? 'RENT' : 'KİRA'), 'medium', false)}
               </div>
 
               <div className="flex justify-between items-center text-[4px] sm:text-[6px] text-white font-black leading-none px-0.5 fluid-card-badge drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
                 <span>M{card.value}</span>
-                <span className="text-white/80">KİRA</span>
+                <span className="text-white/80">{translate('rent_label').toUpperCase()}</span>
               </div>
             </div>
           </div>
@@ -1200,7 +1242,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
               M{card.value}
             </div>
             <span className="text-[6px] font-black tracking-widest text-white uppercase bg-black/20 px-1 py-0.5 rounded-sm leading-none">
-              PARA KARTI
+              {translate('money_label').toUpperCase()}
             </span>
           </div>
 
@@ -1220,8 +1262,8 @@ const GameCardComponent: React.FC<GameCardProps> = ({
 
           {/* Repeating value at bottom */}
           <div className="flex justify-between items-center text-[6px] font-black text-white/90 z-10 px-0.5 leading-none">
-            <span className="tracking-tighter font-extrabold">{card.value}M NAKİT</span>
-            <span className="tracking-wide uppercase font-black">PARA</span>
+            <span className="tracking-tighter font-extrabold">{card.value}M {localStorage.getItem('language') === 'en' ? 'CASH' : 'NAKİT'}</span>
+            <span className="tracking-wide uppercase font-black">{localStorage.getItem('language') === 'en' ? 'MONEY' : 'PARA'}</span>
           </div>
         </div>
       )}
@@ -1247,7 +1289,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
 
             {/* Set limit tag top-right */}
             <span className="absolute top-1 right-1 text-[5px] font-black text-slate-800 uppercase bg-amber-100 border border-amber-300 px-1 py-0.5 rounded leading-none">
-              {MAX_IN_SET[card.color!]}'li Set
+              {MAX_IN_SET[card.color!]}{currentLang === 'en' ? ' in Set' : '\'li Set'}
             </span>
 
             {/* Simplified, larger Rent info table for immediate mobile reading */}
@@ -1264,7 +1306,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
                           : 'text-slate-700 font-extrabold'
                       }`}
                     >
-                      <span>{idx + 1} Tapu:</span>
+                      <span>{idx + 1} {currentLang === 'en' ? 'Prop:' : 'Tapu:'}</span>
                       <span className="font-extrabold text-[7px] text-slate-950">M{rent}</span>
                     </div>
                   );
@@ -1279,7 +1321,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
               </span>
               <span className="text-[5.5px] font-black text-slate-600 uppercase tracking-tight flex items-center gap-0.5 leading-none">
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: primaryColorHex }} />
-                {TURKISH_COLOR_LABELS[card.color!]}
+                {getColorLabel(card.color!)}
               </span>
             </div>
           </div>
@@ -1298,7 +1340,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
               }}
             >
               <div className="bg-black text-white font-black text-[7.5px] text-center uppercase tracking-wide py-0.5 rounded border border-white/25 leading-none">
-                SÜPER JOKER TAPU
+                {currentLang === 'en' ? 'MULTI PROPERTY WILDCARD' : 'SÜPER JOKER TAPU'}
               </div>
 
               <div className="my-auto text-center z-10 flex flex-col items-center">
@@ -1306,20 +1348,20 @@ const GameCardComponent: React.FC<GameCardProps> = ({
                   <span className="text-2xl leading-none">🎩</span>
                 </div>
                 <div className="bg-[#E51B24] border border-black px-1.5 py-0.5 mt-[-6px] text-[5.5px] font-black text-white uppercase rounded-sm shadow leading-none">
-                  HER RENK
+                  {currentLang === 'en' ? 'ANY COLOR' : 'HER RENK'}
                 </div>
               </div>
 
               {/* Rules banner simplified */}
               <div className="bg-black/85 border border-white/10 rounded-lg p-1 text-center text-white z-10">
                 <p className="text-[5.5px] font-black leading-tight text-amber-300">
-                  HERHANGİ BİR SETTE KULLANILIR!
+                  {currentLang === 'en' ? 'CAN BE USED IN ANY SET!' : 'HERHANGİ BİR SETTE KULLANILIR!'}
                 </p>
               </div>
 
               <div className="flex justify-between items-center text-[6px] text-white font-black z-10 leading-none">
                 <span>M{card.value}</span>
-                <span className="tracking-wide uppercase font-extrabold">JOKER KART</span>
+                <span className="tracking-wide uppercase font-extrabold">{translate('joker_label').toUpperCase()}</span>
               </div>
             </div>
           ) : (
@@ -1334,16 +1376,16 @@ const GameCardComponent: React.FC<GameCardProps> = ({
 
               {/* Headers styled to be highly readable */}
               <div className="absolute top-1.5 inset-x-1.5 z-10 bg-white border border-black rounded px-1 py-0.5 flex justify-between items-center">
-                <span className="text-[5.5px] font-black text-slate-900 uppercase">JOKER:</span>
+                <span className="text-[5.5px] font-black text-slate-900 uppercase">{translate('joker_label').toUpperCase()}:</span>
                 <span className="text-[5.5px] font-black px-1 rounded text-white" style={{ backgroundColor: primaryColorHex }}>
-                  {TURKISH_COLOR_LABELS[card.color!]}
+                  {getColorLabel(card.color!)}
                 </span>
               </div>
 
               <div className="absolute bottom-1.5 inset-x-1.5 z-10 bg-white border border-black rounded px-1 py-0.5 flex justify-between items-center flex-row-reverse">
-                <span className="text-[5.5px] font-black text-slate-900 uppercase">JOKER:</span>
+                <span className="text-[5.5px] font-black text-slate-900 uppercase">{translate('joker_label').toUpperCase()}:</span>
                 <span className="text-[5.5px] font-black px-1 rounded text-white" style={{ backgroundColor: secondaryColorHex }}>
-                  {TURKISH_COLOR_LABELS[card.secondaryColor!]}
+                  {getColorLabel(card.secondaryColor!)}
                 </span>
               </div>
 
@@ -1376,7 +1418,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
             </div>
 
             <div className="border border-black bg-white px-1 py-0.5 rounded text-[5px] font-black text-slate-950 uppercase tracking-wide select-none shadow leading-none">
-              HAMLE KARTI
+              {translate('action_label').toUpperCase()}
             </div>
           </div>
 
@@ -1393,14 +1435,18 @@ const GameCardComponent: React.FC<GameCardProps> = ({
           {/* Bottom rules box - simplified for high contrast / easy reading on mobile */}
           <div className="bg-white border border-black rounded-lg p-1 text-center shadow min-h-[32px] flex items-center justify-center z-10">
             <p className="text-[7.5px] font-black leading-tight text-slate-950 uppercase">
-              {renderColorizedText(details.shortDesc, localStorage.getItem('language') || 'tr')}
+              {renderColorizedText(details.shortDesc, currentLang)}
             </p>
           </div>
 
           {/* Footer value and brand info */}
           <div className="flex justify-between items-center text-[6px] font-black z-10 px-0.5 leading-none">
-            <span className={`${details.bgColor === '#FFFFFF' ? 'text-slate-800' : 'text-white'}`}>M{card.value} DEĞER</span>
-            <span className={`tracking-wide font-black ${details.bgColor === '#FFFFFF' ? 'text-slate-400' : 'text-white/80'}`}>HAMLE</span>
+            <span className={`${details.bgColor === '#FFFFFF' ? 'text-slate-800' : 'text-white'}`}>
+              {currentLang === 'en' ? `VALUE ${card.value}M` : `M${card.value} DEĞER`}
+            </span>
+            <span className={`tracking-wide font-black ${details.bgColor === '#FFFFFF' ? 'text-slate-400' : 'text-white/80'}`}>
+              {translate('action_label').toUpperCase()}
+            </span>
           </div>
         </div>
       )}
@@ -1414,7 +1460,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
               M{card.value}
             </div>
             <div className="border border-black bg-slate-950 px-1.5 py-0.5 rounded text-[5px] font-black text-white uppercase tracking-wide select-none shadow leading-none">
-              KİRA KARTI
+              {translate('rent_label').toUpperCase()}
             </div>
           </div>
 
@@ -1432,7 +1478,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
             >
               <div className="absolute inset-[3px] rounded-full bg-white flex flex-col items-center justify-center border border-black/10">
                 <span className="text-lg leading-none">💰</span>
-                <span className="text-[7.5px] font-black text-slate-950 leading-none">KİRA</span>
+                <span className="text-[7.5px] font-black text-slate-950 leading-none">{translate('rent_label').toUpperCase()}</span>
               </div>
             </div>
           </div>
@@ -1440,14 +1486,14 @@ const GameCardComponent: React.FC<GameCardProps> = ({
           {/* Description - Simplified and ultra bold */}
           <div className="bg-slate-50 border border-black/15 rounded-lg p-1 text-center shadow min-h-[32px] flex items-center justify-center z-10">
             <p className="text-[7.5px] font-black leading-tight text-slate-950 uppercase">
-              {renderColorizedText(details.shortDesc, localStorage.getItem('language') || 'tr')}
+              {renderColorizedText(details.shortDesc, currentLang)}
             </p>
           </div>
 
           {/* Footer details */}
           <div className="flex justify-between items-center text-[6px] font-black text-slate-500 z-10 px-0.5 leading-none">
             <span className="bg-slate-100 border border-slate-200 px-1 rounded text-slate-950 font-black">M{card.value}</span>
-            <span className="tracking-wide text-slate-400 uppercase">KİRA</span>
+            <span className="tracking-wide text-slate-400 uppercase">{translate('rent_label').toUpperCase()}</span>
           </div>
         </div>
       )}
@@ -1458,7 +1504,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
           <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-amber-400 via-yellow-300 to-amber-500 opacity-90 blur-[6px] animate-pulse pointer-events-none z-25 shadow-[0_0_20px_rgba(251,191,36,0.9)]" />
           <div className="absolute inset-0 rounded-xl ring-2 ring-amber-400 ring-offset-1 ring-offset-slate-950 pointer-events-none z-35 animate-pulse" />
           <div className="absolute top-1 right-1 z-40 bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black text-[6px] px-1 py-0.5 rounded shadow-[0_0_8px_rgba(245,158,11,0.9)] flex items-center gap-0.5 leading-none animate-bounce-subtle">
-            ⚡ KİRA HAZIR
+            {currentLang === 'en' ? '⚡ RENT READY' : '⚡ KİRA HAZIR'}
           </div>
         </>
       )}

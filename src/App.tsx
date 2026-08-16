@@ -4,12 +4,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import { MainMenu } from './components/MainMenu';
 import { GameRoom } from './components/GameRoom';
 import { sounds } from './lib/SoundSystem';
-import { initTranslations, addTranslationListener } from './lib/TranslationSystem';
+import { initTranslations, addTranslationListener, t, changeLanguage } from './lib/TranslationSystem';
 import { API_BASE_URL } from './lib/apiConfig';
 import { GlobalToast } from './components/GlobalToast';
 import { STORE_ITEMS } from './components/ShopDialog';
 import { PrivacyAndDeleteAccountPages } from './components/PrivacyAndDeleteAccountPages';
 import { AdMobBanner } from './components/AdMobBanner';
+import { AvatarWithFrame } from './components/AvatarWithFrame';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -57,10 +58,32 @@ class GameRoomErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryS
   }
 }
 
+export interface SavedAccount {
+  id?: string;
+  username: string;
+  password?: string;
+  avatarId?: string;
+  avatarUrl?: string;
+  profileFrame?: string;
+  level?: number;
+  coins?: number;
+  lastLogin: number;
+}
+
 export default function App() {
   const [profile, setProfile] = React.useState<UserProfile | null>(null);
-  const [usernameInput, setUsernameInput] = React.useState('');
+  const [usernameInput, setUsernameInput] = React.useState(() => {
+    return localStorage.getItem('last_logged_username') || '';
+  });
   const [passwordInput, setPasswordInput] = React.useState(''); // Password field to secure nicknames
+  const [savedAccounts, setSavedAccounts] = React.useState<SavedAccount[]>(() => {
+    try {
+      const raw = localStorage.getItem('mono_deal_saved_accounts');
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return [];
+  });
+  const [rememberAccount, setRememberAccount] = React.useState<boolean>(true);
   const [authError, setAuthError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [adminSettings, setAdminSettings] = React.useState<any>(null);
@@ -176,7 +199,74 @@ export default function App() {
     }
   }, [profile]);
 
-  // Authenticate user on startup or after input
+  // Save account to persistent local storage for 1-click Quick Login
+  const saveAccountToStorage = (user: UserProfile, pass?: string) => {
+    try {
+      const existingList: SavedAccount[] = JSON.parse(localStorage.getItem('mono_deal_saved_accounts') || '[]');
+      const filtered = existingList.filter((a) => a.username.toLowerCase() !== user.username.toLowerCase());
+
+      const newAccount: SavedAccount = {
+        id: user.id,
+        username: user.username,
+        password: pass && pass.trim() !== '' ? pass.trim() : (existingList.find(a => a.username.toLowerCase() === user.username.toLowerCase())?.password || undefined),
+        avatarId: user.avatarId || 'avatar_classic',
+        avatarUrl: user.avatarUrl,
+        profileFrame: user.settings?.profileFrame || 'frame_none',
+        level: user.level || 1,
+        coins: user.coins || 0,
+        lastLogin: Date.now(),
+      };
+
+      const updated = [newAccount, ...filtered].slice(0, 6);
+      localStorage.setItem('mono_deal_saved_accounts', JSON.stringify(updated));
+      localStorage.setItem('last_logged_username', user.username);
+      setSavedAccounts(updated);
+    } catch (e) {
+      console.error('Failed to save account to localStorage', e);
+    }
+  };
+
+  const removeSavedAccount = (username: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const filtered = savedAccounts.filter((a) => a.username.toLowerCase() !== username.toLowerCase());
+    setSavedAccounts(filtered);
+    localStorage.setItem('mono_deal_saved_accounts', JSON.stringify(filtered));
+    sounds.playPlay();
+  };
+
+  // ⚡ 1-Click Quick Login with Saved Account
+  const handleSavedAccountLogin = async (acc: SavedAccount) => {
+    if (loading) return;
+    setLoading(true);
+    setAuthError(null);
+    setUsernameInput(acc.username);
+    if (acc.password) setPasswordInput(acc.password);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/auth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: acc.username, password: acc.password }),
+      });
+
+      if (response.ok) {
+        const user = await response.json();
+        setProfile(user);
+        saveAccountToStorage(user, acc.password);
+        sounds.playCoin(user.settings);
+      } else {
+        const err = await response.json();
+        setAuthError(err.error || `${acc.username} için giriş yapılamadı.`);
+      }
+    } catch (err: any) {
+      console.error('Saved account quick auth error:', err);
+      setAuthError(`Sunucu bağlantısı kurulamadı (${err?.message || 'Ağ Hatası'}).`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Authenticate user on manual input
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     if (usernameInput.trim() === '') return;
@@ -188,12 +278,17 @@ export default function App() {
       const response = await fetch(`${API_BASE_URL}/api/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: usernameInput, password: passwordInput }),
+        body: JSON.stringify({ username: usernameInput.trim(), password: passwordInput.trim() || undefined }),
       });
 
       if (response.ok) {
         const user = await response.json();
         setProfile(user);
+        if (rememberAccount) {
+          saveAccountToStorage(user, passwordInput.trim() || undefined);
+        } else {
+          localStorage.setItem('last_logged_username', usernameInput.trim());
+        }
 
         // Play welcome sound!
         sounds.playCoin(user.settings);
@@ -309,6 +404,23 @@ export default function App() {
             <div className="absolute -top-24 -left-24 w-48 h-48 rounded-full bg-red-600/10 blur-3xl" />
             <div className="absolute -bottom-24 -right-24 w-48 h-48 rounded-full bg-slate-500/5 blur-3xl" />
 
+            {/* Quick Language Toggle for Login Screen */}
+            <div className="flex justify-end items-center relative z-20">
+              <button
+                type="button"
+                onClick={() => {
+                  const currentLang = localStorage.getItem('language') || 'tr';
+                  const nextLang = currentLang === 'tr' ? 'en' : 'tr';
+                  changeLanguage(nextLang);
+                  sounds.playPlay();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/15 text-xs font-extrabold text-slate-300 hover:text-white transition-all cursor-pointer shadow-sm hover:scale-105 active:scale-95"
+              >
+                <span>🌐</span>
+                <span>{(localStorage.getItem('language') || 'tr') === 'tr' ? 'EN 🇺🇸' : 'TR 🇹🇷'}</span>
+              </button>
+            </div>
+
             <div className="text-center space-y-4 relative">
               <div className="flex flex-col items-center gap-3">
                 <div className="w-12 h-12 bg-gradient-to-br from-red-600 to-red-800 rounded-xl flex items-center justify-center font-black text-2xl shadow-lg shadow-red-900/40 text-white italic">
@@ -319,39 +431,123 @@ export default function App() {
                 </h1>
               </div>
               <h2 className="font-extrabold text-sm text-slate-300 tracking-tight mt-2">
-                Kart Oyunu Arenası
+                {t('login_arena_subtitle')}
               </h2>
               <p className="text-xs text-slate-400">
-                Eş zamanlı çok oyunculu, sesli sohbetli ve bot pratikli modern Deal Master PRO deneyimi.
+                {t('login_arena_desc')}
               </p>
             </div>
+
+            {/* ⚡ SAVED ACCOUNTS / QUICK LOGIN SECTION */}
+            {savedAccounts.length > 0 && (
+              <div className="space-y-3 relative z-10 bg-zinc-950/60 border border-amber-500/30 p-4 rounded-2xl shadow-xl shadow-amber-950/20 backdrop-blur-md">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-amber-400 font-black text-xs uppercase tracking-wider">
+                    <span className="text-sm animate-pulse">⚡</span>
+                    <span>{t('saved_accounts_title')}</span>
+                  </div>
+                  <span className="text-[9px] text-zinc-500 font-bold">{savedAccounts.length} Hesap</span>
+                </div>
+                <p className="text-[10px] text-zinc-400">
+                  {t('saved_accounts_desc')}
+                </p>
+
+                <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto pr-0.5 scrollbar-thin">
+                  {savedAccounts.map((acc) => (
+                    <div
+                      key={acc.username}
+                      onClick={() => handleSavedAccountLogin(acc)}
+                      className="group relative flex items-center justify-between p-2.5 bg-gradient-to-r from-zinc-900/90 to-zinc-950/90 hover:from-amber-950/40 hover:to-zinc-900 border border-zinc-800 hover:border-amber-500/50 rounded-xl transition-all cursor-pointer shadow-md active:scale-[0.98]"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <AvatarWithFrame
+                          avatarId={acc.avatarId || 'avatar_classic'}
+                          avatarUrl={acc.avatarUrl}
+                          frameId={acc.profileFrame || 'frame_none'}
+                          sizeClassName="w-8 h-8 text-[11px]"
+                        />
+                        <div className="flex flex-col min-w-0">
+                          <span className="font-black text-xs text-white group-hover:text-amber-300 transition-colors truncate">
+                            {acc.username}
+                          </span>
+                          <div className="flex items-center gap-1.5 text-[9px] font-bold text-zinc-400">
+                            <span className="bg-amber-500/10 text-amber-300 border border-amber-500/20 px-1 py-0.2 rounded font-extrabold">
+                              Lv. {acc.level || 1}
+                            </span>
+                            <span>{acc.coins !== undefined ? `${acc.coins.toLocaleString()} 🪙` : ''}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={loading}
+                          className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black text-[10px] uppercase tracking-wider rounded-lg shadow-md group-hover:brightness-110 active:scale-95 transition-all flex items-center gap-1 shrink-0 cursor-pointer"
+                        >
+                          <span>⚡</span>
+                          <span>GİRİŞ</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => removeSavedAccount(acc.username, e)}
+                          title={t('remove_saved_account')}
+                          className="w-6 h-6 rounded-lg bg-zinc-800/80 hover:bg-rose-500/20 text-zinc-500 hover:text-rose-400 text-xs flex items-center justify-center transition-all cursor-pointer border border-transparent hover:border-rose-500/30 shrink-0"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="relative flex py-1 items-center">
+                  <div className="flex-grow border-t border-white/10"></div>
+                  <span className="flex-shrink mx-2 text-[8px] font-black uppercase text-zinc-500 tracking-wider">
+                    {t('login_with_another_account')}
+                  </span>
+                  <div className="flex-grow border-t border-white/10"></div>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleAuth} className="space-y-4 relative">
               <div className="space-y-1">
                 <label className="text-xs text-slate-400 font-bold block">
-                  Kullanıcı Adınız (Nickname)
+                  {t('login_username_label')}
                 </label>
-                <input
-                  type="text"
-                  placeholder="Örn: Deal Master PRO Kralı"
-                  value={usernameInput}
-                  onChange={(e) => setUsernameInput(e.target.value)}
-                  disabled={loading}
-                  maxLength={16}
-                  className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-red-500 placeholder:text-slate-500 transition-all focus:ring-1 focus:ring-red-500/30"
-                />
+                <div className="relative flex items-center">
+                  <input
+                    type="text"
+                    placeholder={t('login_username_placeholder')}
+                    value={usernameInput}
+                    onChange={(e) => setUsernameInput(e.target.value)}
+                    disabled={loading}
+                    maxLength={16}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-red-500 placeholder:text-slate-500 transition-all focus:ring-1 focus:ring-red-500/30 pr-10"
+                  />
+                  {usernameInput && (
+                    <button
+                      type="button"
+                      onClick={() => setUsernameInput('')}
+                      className="absolute right-3 text-slate-500 hover:text-slate-300 text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="space-y-1">
                 <div className="flex justify-between items-center">
                   <label className="text-xs text-slate-400 font-bold block">
-                    Şifre (Güvenlik / İsteğe Bağlı)
+                    {t('login_password_label')}
                   </label>
-                  <span className="text-[9px] text-slate-500 font-semibold leading-none">Başkası kullanamasın diye</span>
+                  <span className="text-[9px] text-slate-500 font-semibold leading-none">{t('login_password_hint')}</span>
                 </div>
                 <input
                   type="password"
-                  placeholder="Hesabınızı korumak için bir şifre girin"
+                  placeholder={t('login_password_placeholder')}
                   value={passwordInput}
                   onChange={(e) => setPasswordInput(e.target.value)}
                   disabled={loading}
@@ -359,8 +555,22 @@ export default function App() {
                 />
               </div>
 
+              {/* Remember Account on this device Checkbox */}
+              <div className="flex items-center gap-2 pt-0.5">
+                <input
+                  type="checkbox"
+                  id="rememberAccountCheckbox"
+                  checked={rememberAccount}
+                  onChange={(e) => setRememberAccount(e.target.checked)}
+                  className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-amber-500 focus:ring-amber-500/30 cursor-pointer accent-amber-500"
+                />
+                <label htmlFor="rememberAccountCheckbox" className="text-[10px] text-zinc-400 font-bold cursor-pointer select-none">
+                  {t('save_account_checkbox')}
+                </label>
+              </div>
+
               {authError && (
-                <div className="p-3 bg-red-500/10 border border-red-500/25 rounded-xl text-red-400 text-xs flex items-center gap-1.5">
+                <div className="p-3 bg-red-500/10 border border-red-500/25 rounded-xl text-red-400 text-xs flex items-center gap-1.5 animate-fadeIn">
                   <span>⚠️</span> {authError}
                 </div>
               )}
@@ -368,19 +578,20 @@ export default function App() {
               <button
                 type="submit"
                 disabled={loading || usernameInput.trim() === ''}
-                className="w-full py-3.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black rounded-xl text-sm transition-all shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 transform active:scale-95"
+                className="w-full py-3.5 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-black rounded-xl text-sm transition-all shadow-lg shadow-red-600/25 flex items-center justify-center gap-2 transform active:scale-95 cursor-pointer"
               >
-                {loading ? 'Yükleniyor...' : 'Arenaya Giriş Yap 🚀'}
+                <span>🚀</span>
+                <span>{loading ? t('login_loading') : t('login_button')}</span>
               </button>
             </form>
 
             <div className="border-t border-white/10 pt-4 text-center space-y-3">
               <div>
                 <span className="text-[10px] text-slate-500 block font-bold uppercase tracking-wider">
-                  Platform ve Cihaz Uyumluluğu
+                  {t('login_compatibility_title')}
                 </span>
                 <p className="text-[9px] text-slate-400 mt-0.5">
-                  Hem masaüstü tarayıcılarda hem de mobil tarayıcılarda tam dokunmatik hassasiyeti ve optimize performans.
+                  {t('login_compatibility_desc')}
                 </p>
               </div>
 
@@ -394,7 +605,7 @@ export default function App() {
                   }}
                   className="text-slate-400 hover:text-amber-400 transition-colors flex items-center gap-1 cursor-pointer"
                 >
-                  <span>🛡️</span> Gizlilik Politikası
+                  <span>🛡️</span> {t('privacy_policy')}
                 </a>
                 <span className="text-white/10">|</span>
                 <a
@@ -406,7 +617,7 @@ export default function App() {
                   }}
                   className="text-slate-400 hover:text-red-400 transition-colors flex items-center gap-1 cursor-pointer"
                 >
-                  <span>🗑️</span> Veri Silme Talebi
+                  <span>🗑️</span> {t('data_deletion')}
                 </a>
               </div>
             </div>
@@ -479,7 +690,7 @@ export default function App() {
                 </div>
 
                 <div className="text-[10px] font-black tracking-widest text-amber-500/80 animate-pulse">
-                  {profile?.settings?.language === 'en' ? 'ENTERING ARENA...' : 'ARENAYA GİRİLİYOR...'}
+                  {t('entering_arena', profile)}
                 </div>
               </div>
 

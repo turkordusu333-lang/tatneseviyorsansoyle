@@ -5,7 +5,7 @@ import { UserProfile } from '../types';
 import { sounds } from '../lib/SoundSystem';
 import { t } from '../lib/TranslationSystem';
 import { Capacitor } from '@capacitor/core';
-import { AdMob, RewardAdPluginEvents } from '@capacitor-community/admob';
+import { adMobService } from '../lib/adMobService';
 
 interface RewardedAdCoinButtonProps {
   profile: UserProfile;
@@ -42,19 +42,6 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
   // Victory reward state
   const [showVictoryModal, setShowVictoryModal] = useState(false);
 
-  // Initialize AdMob on native device
-  useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      try {
-        AdMob.initialize({
-          initializeForTesting: isTesting,
-        }).catch((e) => console.warn('AdMob initialize catch:', e));
-      } catch (err) {
-        console.warn('AdMob try-catch error:', err);
-      }
-    }
-  }, [isTesting]);
-
   // Handle web ad countdown timer
   useEffect(() => {
     let timer: any;
@@ -88,85 +75,34 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
     setIsLoading(true);
     setErrorMessage(null);
 
-    const listenerHandles: any[] = [];
-    let earnedReward = false;
-    let timeoutId: any = null;
-
-    const cleanupListeners = async () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      for (const handle of listenerHandles) {
-        try {
-          await handle.remove();
-        } catch (e) {
-          console.error('Error removing listener handle:', e);
-        }
-      }
-    };
-
-    // Safety timeout in case network blocks or no event fires
-    timeoutId = setTimeout(() => {
-      setIsLoading(false);
-      setErrorMessage('Reklam isteği zaman aşımına uğradı. Lütfen tekrar deneyin.');
-      cleanupListeners();
-    }, 15000);
-
     try {
-      // 1. Add Event Listeners BEFORE preparing ad so no events are missed
-      const loadedListener = await AdMob.addListener(RewardAdPluginEvents.Loaded, async () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        setIsLoading(false);
-        try {
-          await AdMob.showRewardVideoAd();
-        } catch (showError) {
-          console.error('AdMob show failure:', showError);
-          setErrorMessage('Reklam gösterilemedi.');
-          cleanupListeners();
-        }
+      const result = await adMobService.showRewardedAd({
+        customAdUnitId: activeAdUnitId,
+        isTesting,
+        onAdLoaded: () => {
+          setIsLoading(false);
+        },
+        onAdFailedToLoad: (err) => {
+          setIsLoading(false);
+          setErrorMessage(profile.settings.language === 'en' ? 'Ad failed to load. Please try again later.' : 'Reklam yüklenemedi (AdMob No Fill / Bağlantı). Lütfen daha sonra tekrar deneyin.');
+        },
+        onAdDismissed: () => {
+          setIsLoading(false);
+        },
       });
-      listenerHandles.push(loadedListener);
 
-      const failedListener = await AdMob.addListener(RewardAdPluginEvents.FailedToLoad, (info) => {
-        if (timeoutId) clearTimeout(timeoutId);
-        console.error('AdMob failed to load:', info);
-        setErrorMessage('Reklam yüklenemedi (AdMob No Fill / Bağlantı). Lütfen daha sonra tekrar deneyin.');
-        setIsLoading(false);
-        cleanupListeners();
-      });
-      listenerHandles.push(failedListener);
-
-      const rewardedListener = await AdMob.addListener(RewardAdPluginEvents.Rewarded, (reward) => {
-        console.log('AdMob Rewarded event fired:', reward);
-        earnedReward = true;
-      });
-      listenerHandles.push(rewardedListener);
-
-      const dismissedListener = await AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
-        if (timeoutId) clearTimeout(timeoutId);
-        setIsLoading(false);
-        cleanupListeners();
-        if (earnedReward) {
-          awardUserCoins();
-        } else {
-          setErrorMessage('Ödül kazanmak için reklamı sonuna kadar izlemelisiniz.');
-        }
-      });
-      listenerHandles.push(dismissedListener);
-
-      // 2. Prepare Rewarded Video Ad (using test ad unit id if in test mode and no custom ID given)
-      const targetAdUnitId = isTesting
-        ? (platform === 'ios' ? 'ca-app-pub-3940256099942544/1712485313' : 'ca-app-pub-3940256099942544/5224354917')
-        : activeAdUnitId;
-
-      await AdMob.prepareRewardVideoAd({
-        adId: targetAdUnitId,
-        isTesting: isTesting,
-      });
-    } catch (error: any) {
-      if (timeoutId) clearTimeout(timeoutId);
-      console.error('Native AdMob error:', error);
-      setErrorMessage(error?.message || 'Reklam yüklenirken bir hata oluştu.');
       setIsLoading(false);
-      cleanupListeners();
+      if (result.rewardEarned) {
+        awardUserCoins();
+      } else if (result.error) {
+        setErrorMessage(result.error);
+      } else {
+        setErrorMessage(profile.settings.language === 'en' ? 'You must watch the full ad to earn the reward.' : 'Ödül kazanmak için reklamı sonuna kadar izlemelisiniz.');
+      }
+    } catch (error: any) {
+      console.error('Native AdMob error:', error);
+      setIsLoading(false);
+      setErrorMessage(error?.message || (profile.settings.language === 'en' ? 'Error loading ad.' : 'Reklam yüklenirken bir hata oluştu.'));
     }
   };
 

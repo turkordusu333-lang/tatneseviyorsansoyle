@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { AdMob, BannerAdPosition, BannerAdSize, BannerAdPluginEvents } from '@capacitor-community/admob';
+import { adMobService } from '../lib/adMobService';
 
 interface AdMobBannerProps {
   adminSettings?: any;
@@ -29,60 +29,26 @@ export const AdMobBanner: React.FC<AdMobBannerProps> = ({
   const iosAdUnitId = adminSettings?.bannerAdMobiOSAdUnitId || 'ca-app-pub-3940256099942544/2934735716';
 
   const activeAdUnitId = platform === 'ios' ? iosAdUnitId : androidAdUnitId;
-  const testAdUnitId = platform === 'ios' 
-    ? 'ca-app-pub-3940256099942544/2934735716' 
-    : 'ca-app-pub-3940256099942544/6300978111';
-
-  const targetAdUnitId = isTesting ? testAdUnitId : (activeAdUnitId || testAdUnitId);
 
   useEffect(() => {
     if (!isNative || !isBannerEnabled || !visible) {
       if (isNative) {
-        AdMob.hideBanner().catch(() => {});
+        adMobService.hideBanner().catch(() => {});
       }
       return;
     }
 
     let isMounted = true;
-    const listeners: any[] = [];
 
-    const initializeAndShowBanner = async () => {
+    const showBanner = async () => {
       try {
-        // Initialize AdMob if needed
-        try {
-          await AdMob.initialize({
-            initializeForTesting: isTesting,
-          });
-        } catch (e) {
-          // Already initialized or warning
+        const success = await adMobService.showBanner(activeAdUnitId, isTesting, position as ('top' | 'bottom'));
+        if (isMounted) {
+          setAdLoaded(success);
+          if (!success) {
+            setAdError('Banner yüklenemedi');
+          }
         }
-
-        // Add event listeners
-        const loadedListener = await AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
-          if (isMounted) {
-            console.log('AdMob Banner successfully loaded');
-            setAdLoaded(true);
-            setAdError(null);
-          }
-        });
-        listeners.push(loadedListener);
-
-        const failedListener = await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (err) => {
-          if (isMounted) {
-            console.warn('AdMob Banner failed to load:', err);
-            setAdError(err?.message || 'Banner yüklenemedi');
-          }
-        });
-        listeners.push(failedListener);
-
-        // Show banner
-        await AdMob.showBanner({
-          adId: targetAdUnitId,
-          adSize: BannerAdSize.ADAPTIVE_BANNER,
-          position: position === 'top' ? BannerAdPosition.TOP_CENTER : BannerAdPosition.BOTTOM_CENTER,
-          margin: 0,
-          isTesting: isTesting,
-        });
       } catch (err: any) {
         if (isMounted) {
           console.error('AdMob showBanner error:', err);
@@ -91,20 +57,15 @@ export const AdMobBanner: React.FC<AdMobBannerProps> = ({
       }
     };
 
-    initializeAndShowBanner();
+    showBanner();
 
     return () => {
       isMounted = false;
-      listeners.forEach((l) => {
-        try {
-          l.remove();
-        } catch (e) {}
-      });
       if (isNative) {
-        AdMob.hideBanner().catch(() => {});
+        adMobService.hideBanner().catch(() => {});
       }
     };
-  }, [isNative, isBannerEnabled, visible, targetAdUnitId, isTesting, position]);
+  }, [isNative, isBannerEnabled, visible, activeAdUnitId, isTesting, position]);
 
   // If not visible or disabled, render nothing
   if (!visible || !isBannerEnabled) {
@@ -127,7 +88,7 @@ export const AdMobBanner: React.FC<AdMobBannerProps> = ({
         <div className="flex flex-col">
           <span className="font-bold text-slate-200 text-[11px]">Deal Card Sponsorlu Reklam</span>
           <span className="text-[9px] text-slate-400 font-mono truncate max-w-[220px]">
-            {isTesting ? 'Google Test Banner (Aktif)' : targetAdUnitId}
+            {isTesting ? 'Google Test Banner (Aktif)' : activeAdUnitId}
           </span>
         </div>
       </div>

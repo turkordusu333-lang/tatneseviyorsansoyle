@@ -1,15 +1,14 @@
 @echo off
-title Monopoly Deal Launcher
+title Master Deal Launcher
 color 0a
 
 echo ==============================
-echo    MONOPOLY DEAL BASLATILIYOR
+echo    Master DEAL BASLATILIYOR
 echo ==============================
 echo.
 
 :: SERVER BASLAT
 echo [SERVER] Baslatiliyor...
-start "SERVER LOG" cmd /k "cd /d "%~dp0server" && npm run dev"
-
+start "SERVER LOG" cmd /k "cd /d "%~dp0" && npm run dev"
 
 pause

@@ -28,6 +28,29 @@ if (supabaseUrl && supabaseAnonKey) {
 }
 
 function checkWinnerForMatch(match: MatchState, player: GamePlayer): boolean {
+  if (match.settings?.gameMode === '2v2_team') {
+    const playerTeam = player.team || (match.players.indexOf(player) % 2 === 0 ? 'team_blue' : 'team_red');
+    const teamPlayers = match.players.filter((p) => (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === playerTeam);
+    
+    // Count total completed sets across the 2 teammates
+    let totalCompletedSets = 0;
+    teamPlayers.forEach((tp) => {
+      Object.keys(tp.properties).forEach((colKey) => {
+        const col = colKey as CardColor;
+        const set = tp.properties[col];
+        if (set && set.cards.length >= MAX_IN_SET[col]) {
+          totalCompletedSets++;
+        }
+      });
+    });
+
+    const targetSets = match.settings?.targetSets || 4;
+    if (totalCompletedSets >= targetSets) {
+      match.winnerTeam = playerTeam;
+      return true;
+    }
+    return false;
+  }
   return checkWinner(player.properties, match.settings?.targetSets || 3);
 }
 
@@ -633,15 +656,76 @@ const activeMatches: Record<string, MatchState> = {};
 const roomLocks: Record<string, Promise<any>> = {};
 let activeTournaments: Tournament[] = [
   {
-    id: 't-1',
-    name: 'Yaz Kupası 2026',
-    participants: ['Bot Memo', 'Bot Can', 'Bot Defne'],
+    id: 't-bronze',
+    name: '🥉 Acemi Arenası',
+    description: 'Hızlı 8 kişilik eleme kupası. Yeni taktikleri test etmek için ideal!',
+    tier: 'bronze',
+    entryFee: 100,
+    prizeCoins: 500,
+    prizeXp: 150,
+    maxParticipants: 8,
+    icon: '🥉',
+    participants: ['Bot Memo', 'Bot Can', 'Bot Defne', 'Bot Ege', 'Bot Leyla', 'Bot Sarp', 'Bot Ada'],
     rounds: [
       {
         roundNumber: 1,
         matches: [
-          { id: 'tm-1', player1: 'Bot Memo', player2: 'Bot Can', score1: 3, score2: 1, status: 'completed', winner: 'Bot Memo' },
-          { id: 'tm-2', player1: 'Bot Defne', player2: 'Sen', status: 'pending' },
+          { id: 'tm-b1', player1: 'Bot Memo', player2: 'Bot Can', score1: 3, score2: 1, status: 'completed', winner: 'Bot Memo' },
+          { id: 'tm-b2', player1: 'Bot Defne', player2: 'Bot Ege', score1: 3, score2: 2, status: 'completed', winner: 'Bot Defne' },
+          { id: 'tm-b3', player1: 'Bot Leyla', player2: 'Bot Sarp', score1: 3, score2: 0, status: 'completed', winner: 'Bot Leyla' },
+          { id: 'tm-b4', player1: 'Bot Ada', player2: 'Sen', status: 'pending' },
+        ],
+      },
+    ],
+    status: 'active',
+  },
+  {
+    id: 't-gold',
+    name: '🥇 Şampiyonlar Kupası',
+    description: 'Büyük ödüllü 8 kişilik prestij turnuvası. En iyi deal ustaları burada!',
+    tier: 'gold',
+    entryFee: 500,
+    prizeCoins: 2500,
+    prizeXp: 400,
+    maxParticipants: 8,
+    icon: '🥇',
+    participants: ['Kral Oyuncu', 'Efsane Bot', 'Pro Bot', 'Zeki Bot', 'Kart Şampiyonu', 'Milyoner Bot', 'Yapay Zeka Master'],
+    rounds: [
+      {
+        roundNumber: 1,
+        matches: [
+          { id: 'tm-g1', player1: 'Kral Oyuncu', player2: 'Efsane Bot', score1: 3, score2: 2, status: 'completed', winner: 'Kral Oyuncu' },
+          { id: 'tm-g2', player1: 'Pro Bot', player2: 'Zeki Bot', score1: 3, score2: 1, status: 'completed', winner: 'Pro Bot' },
+          { id: 'tm-g3', player1: 'Kart Şampiyonu', player2: 'Milyoner Bot', score1: 3, score2: 0, status: 'completed', winner: 'Kart Şampiyonu' },
+          { id: 'tm-g4', player1: 'Yapay Zeka Master', player2: 'Sen', status: 'pending' },
+        ],
+      },
+    ],
+    status: 'active',
+  },
+  {
+    id: 't-legend',
+    name: '👑 Efsaneler Turnuvası (16 Kişilik)',
+    description: 'Devasa 16 kişilik büyük nakavt ligi! Son 16, Çeyrek, Yarı ve Büyük Final!',
+    tier: 'legend',
+    entryFee: 2500,
+    prizeCoins: 15000,
+    prizeXp: 1500,
+    maxParticipants: 16,
+    icon: '👑',
+    participants: ['Grandmaster Bot', 'Mega Lord', 'Titan Bot', 'Apex Player', 'Mythic Bot', 'Cyber King', 'Shadow Deal', 'Alpha Bot', 'Omega Player', 'Prime Bot', 'Vortex Bot', 'Quantum Deal', 'Ultra Bot', 'Imperial King', 'Dominator'],
+    rounds: [
+      {
+        roundNumber: 1,
+        matches: [
+          { id: 'tm-l1', player1: 'Grandmaster Bot', player2: 'Mega Lord', score1: 3, score2: 1, status: 'completed', winner: 'Grandmaster Bot' },
+          { id: 'tm-l2', player1: 'Titan Bot', player2: 'Apex Player', score1: 3, score2: 0, status: 'completed', winner: 'Titan Bot' },
+          { id: 'tm-l3', player1: 'Mythic Bot', player2: 'Cyber King', score1: 3, score2: 2, status: 'completed', winner: 'Mythic Bot' },
+          { id: 'tm-l4', player1: 'Shadow Deal', player2: 'Alpha Bot', score1: 3, score2: 1, status: 'completed', winner: 'Shadow Deal' },
+          { id: 'tm-l5', player1: 'Omega Player', player2: 'Prime Bot', score1: 3, score2: 2, status: 'completed', winner: 'Omega Player' },
+          { id: 'tm-l6', player1: 'Vortex Bot', player2: 'Quantum Deal', score1: 3, score2: 1, status: 'completed', winner: 'Vortex Bot' },
+          { id: 'tm-l7', player1: 'Ultra Bot', player2: 'Imperial King', score1: 3, score2: 0, status: 'completed', winner: 'Ultra Bot' },
+          { id: 'tm-l8', player1: 'Dominator', player2: 'Sen', status: 'pending' },
         ],
       },
     ],
@@ -676,6 +760,58 @@ async function startServer() {
   await loadAdminData();
 
   // --- API ROUTES ---
+
+  // --- USER SETTINGS SAVE ENDPOINT ---
+  app.post('/api/settings/save', async (req, res) => {
+    const { userId, settings } = req.body;
+    if (!userId || !settings) return res.status(400).json({ error: 'Geçersiz parametreler.' });
+
+    try {
+      const users = await loadUsers();
+      const user = users[userId];
+      if (user) {
+        user.settings = { ...user.settings, ...settings };
+        if (settings.avatarId) user.avatarId = settings.avatarId;
+        users[userId] = user;
+        await saveUsers(users);
+        return res.json({ success: true, user });
+      }
+      res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    } catch (e) {
+      console.error('[Server] Failed to save settings:', e);
+      res.status(500).json({ error: 'Ayarlar kaydedilemedi.' });
+    }
+  });
+
+  // --- TRANSLATIONS API ENDPOINTS ---
+  const TRANSLATIONS_FILE = path.join(process.cwd(), 'translations.json');
+
+  app.get('/api/translations', (req, res) => {
+    try {
+      if (fs.existsSync(TRANSLATIONS_FILE)) {
+        const raw = fs.readFileSync(TRANSLATIONS_FILE, 'utf-8');
+        return res.json(JSON.parse(raw));
+      }
+    } catch (e) {
+      console.error('[Server] Failed to read translations.json:', e);
+    }
+    res.json({ tr: {}, en: {} });
+  });
+
+  app.post('/api/translations/save', async (req, res) => {
+    try {
+      const { translations } = req.body;
+      if (!translations || typeof translations !== 'object') {
+        return res.status(400).json({ error: 'Geçersiz çeviri verisi.' });
+      }
+      fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(translations, null, 2), 'utf-8');
+      console.log('[Server] Saved updated translations to translations.json');
+      res.json({ success: true });
+    } catch (e) {
+      console.error('[Server] Failed to save translations.json:', e);
+      res.status(500).json({ error: 'Çeviriler kaydedilemedi.' });
+    }
+  });
 
   // --- ADMIN PANEL API ENDPOINTS ---
 
@@ -1078,223 +1214,569 @@ async function startServer() {
     }
   });
 
-  // --- TOURNAMENTS SYSTEM ---
-  app.get('/api/tournaments', (req, res) => {
-    // Provide default initial tournaments if none exist
-    if (!activeTournaments || activeTournaments.length === 0) {
-      activeTournaments = [
-        {
-          id: 't-1',
-          name: '🏆 Deal Master Türkiye Şampiyonası 2026',
-          participants: ['Bot Memo', 'Milyoner Bot', 'Hızlı Zar Bot', 'Siber Bot', 'Kral Bot', 'Emlak Büyücüsü', 'Borsa Kralı'],
-          rounds: [],
-          status: 'registration'
-        },
-        {
-          id: 't-2',
-          name: '⚡ Hızlı Emlakçılar Eleme Kupası',
-          participants: ['Bot Can', 'Bot Defne', 'Taktik Ustası Bot', 'Matrix Bot', 'Zengin Lord Bot', 'Gölge Ninja Bot', 'Uzay Gezgini Bot'],
-          rounds: [],
-          status: 'registration'
-        }
+  // --- 🏆 REVAMPED SOLO BOT TOURNAMENT ENGINE ---
+  const DEFAULT_TOURNAMENTS: Tournament[] = [
+    {
+      id: 't-bronze',
+      name: '🥉 Acemi Arenası',
+      description: 'Yeni başlayanlar için 8 kişilik 1v1 eleme kupası. Taktikleri test etmek için harika!',
+      tier: 'bronze',
+      format: '1v1',
+      botDifficulty: 'easy',
+      allowBots: true,
+      entryFee: 100,
+      prizeCoins: 500,
+      prizeXp: 150,
+      maxParticipants: 8,
+      targetSets: 3,
+      turnDurationSeconds: 35,
+      icon: '🥉',
+      participants: [],
+      rounds: [],
+      status: 'registration',
+    },
+    {
+      id: 't-gold',
+      name: '🥇 Şampiyonlar Kupası',
+      description: 'Zorlu taktikçi botlara karşı 8 kişilik büyük şampiyona. Büyük ödül sizi bekliyor!',
+      tier: 'gold',
+      format: '1v1',
+      botDifficulty: 'medium',
+      allowBots: true,
+      entryFee: 500,
+      prizeCoins: 2500,
+      prizeXp: 500,
+      maxParticipants: 8,
+      targetSets: 3,
+      turnDurationSeconds: 30,
+      icon: '🥇',
+      participants: [],
+      rounds: [],
+      status: 'registration',
+    },
+    {
+      id: 't-legend',
+      name: '👑 Efsaneler Ligi (16 Kişilik)',
+      description: 'En usta botların yer aldığı devasa 16 kişilik büyük nakavt ligi! Son 16, Çeyrek, Yarı ve Final!',
+      tier: 'legend',
+      format: '1v1',
+      botDifficulty: 'expert',
+      allowBots: true,
+      entryFee: 2500,
+      prizeCoins: 15000,
+      prizeXp: 2000,
+      maxParticipants: 16,
+      targetSets: 3,
+      turnDurationSeconds: 30,
+      icon: '👑',
+      participants: [],
+      rounds: [],
+      status: 'registration',
+    },
+    {
+      id: 't-2v2-championship',
+      name: '⚔️ 2v2 Takım Şampiyonası',
+      description: 'Sadık bot partnerinizle birlikte 2 rakip bota karşı 4 setlik büyük takım savaşı!',
+      tier: 'gold',
+      format: '2v2_team',
+      botDifficulty: 'medium',
+      allowBots: true,
+      entryFee: 300,
+      prizeCoins: 1500,
+      prizeXp: 400,
+      maxParticipants: 4,
+      targetSets: 4,
+      turnDurationSeconds: 30,
+      icon: '⚔️',
+      participants: [],
+      rounds: [],
+      status: 'registration',
+    },
+    {
+      id: 't-4p-royal',
+      name: '👥 4 Kişilik Krallık Masası',
+      description: 'Aynı masada 3 bot rakibe karşı herkes tek mücadele! 3 seti ilk tamamlayan kupayı kaldırır.',
+      tier: 'silver',
+      format: '4player',
+      botDifficulty: 'medium',
+      allowBots: true,
+      entryFee: 200,
+      prizeCoins: 1000,
+      prizeXp: 300,
+      maxParticipants: 4,
+      targetSets: 3,
+      turnDurationSeconds: 30,
+      icon: '👥',
+      participants: [],
+      rounds: [],
+      status: 'registration',
+    }
+  ];
+
+  // Helper to generate bot pool by difficulty (Rich 100+ name pool with dynamic fallback)
+  function getBotPoolByDifficulty(diff: string = 'medium'): string[] {
+    if (diff === 'easy') {
+      return [
+        'Acemi Bot', 'Stajyer Bot', 'Çaylak Memo', 'Yeni Oyuncu Bot', 'Hızlı Zar Bot', 'Hevesli Bot', 'Mini Bot', 'Bot Can',
+        'Acemi Ege', 'Çırak Sarp', 'Yeni Başlayan Ali', 'Deneme Botu', 'Piyon Bot', 'Zar Meraklısı', 'Çaylak Defne', 'Genç Milyoner',
+        'Stajyer Leyla', 'Mini Zar', 'Acemi Kerem', 'Bot Berke', 'Bot Selin', 'Bot Barış', 'Bot Ela', 'Bot Yağız',
+        'Bot Deniz', 'Bot Doruk', 'Bot Miray', 'Bot Emre', 'Bot Zehra', 'Bot Batu', 'Bot Melis', 'Bot Kaan',
+        'Bot Tuana', 'Bot Aras', 'Bot Duru', 'Bot Poyraz', 'Bot Arya', 'Bot Mert', 'Bot Ada', 'Bot Rüzgar',
+        'Bot Nil', 'Bot Burak', 'Bot Derin', 'Bot Umut', 'Bot Ecrin', 'Bot Tuna', 'Bot Asya', 'Bot Demir'
       ];
     }
-    res.json(activeTournaments);
-  });
+    if (diff === 'expert') {
+      return [
+        'Grandmaster Bot', 'Mega Lord', 'Titan Bot', 'Apex Master', 'Mythic Bot', 'Cyber King', 'Shadow Deal', 'Alpha Dominator',
+        'Quantum Master', 'Ultra Bot', 'Imperial King', 'Dominator', 'Süper Zeka Alpha', 'Borsa Baronu Prime', 'Milyarder VIP', 'Vortex Master',
+        'Phantom King', 'Omega Striker', 'Nova Emperor', 'Infinity Deal', 'Absolute Dominance', 'Apex Prime', 'Zenith Master', 'Solar Titan',
+        'Dark Sovereign', 'Cyber Overlord', 'God of Deals', 'Supreme Strategist', 'Grand Sultan', 'Titan Monarch', 'Galaxy Master', 'Cosmic Lord',
+        'Overlord X', 'Grand Titan', 'Hyper Master', 'Apex Sovereign', 'Quantum Deity', 'Lord of Monopoly', 'Mastermind Bot', 'Vanguard Prime',
+        'Chronos Deal', 'Apex Emperor', 'Imperial Master', 'Nexus Prime', 'Alpha Deity', 'Viper Master', 'Titan Dominator', 'Grand Sovereign'
+      ];
+    }
+    if (diff === 'hard') {
+      return [
+        'Taktik Ustası', 'Emlak Büyücüsü', 'Borsa Kralı', 'Kurnaz Bot', 'Sinsi Deal Bot', 'Kart Şampiyonu', 'Zeki Milyoner', 'Pro Bot',
+        'Kurt Oyuncu', 'Strateji Dehası', 'Hamle Ustası', 'Piyasa Avcısı', 'Arsa Zaptedicisi', 'Kira Avcısı', 'Kart Virtüözü', 'Sinsi Baron',
+        'Gölge Milyoner', 'Taktik Dehası Sarp', 'Deal Avcısı Cem', 'Emlak Kralı Kerim', 'Borsa Virtüözü', 'Sinsi Taktikçi', 'Kart Kurdu', 'Pro Defne',
+        'Kira Şampiyonu', 'Stratejik Bot', 'Zeki Hamle', 'Piyasa Canavarı', 'Borsa Kurdu', 'Emlak Şefi', 'Master Deal', 'Kurnaz Milyoner',
+        'Mega Stratejist', 'Taktik Lideri', 'Arsa Avcısı', 'Kira Ustası', 'Usta Hamleci', 'Piyasa Lideri', 'Kart Koleksiyoncusu', 'Kurnaz Zar'
+      ];
+    }
+    return [
+      'Milyoner Bot', 'Siber Bot', 'Kral Bot', 'Emlakçı Bot', 'Kart Ustası', 'Zeki Bot', 'Bot Defne', 'Bot Ege',
+      'Hızlı Zar', 'Taktikçi Memo', 'Şanslı Bot', 'Altın Zar', 'Borsa Meraklısı', 'Arsa Avcısı', 'Zeki Hamle', 'Kentsel Dönüşümcü',
+      'Kira Toplayıcı', 'Kart Sever', 'Zar Dehası', 'Milyonluk Bot', 'Kıdemli Bot', 'Deneyimli Oyuncu', 'Kira Uzmanı', 'Arsa Mimarı',
+      'Bot Selim', 'Bot Aylin', 'Bot Serdar', 'Bot Gizem', 'Bot Onur', 'Bot Büşra', 'Bot Tarık', 'Bot Sinem',
+      'Bot Erdem', 'Bot Hande', 'Bot Tolga', 'Bot Gamze', 'Bot Volkan', 'Bot Ceren', 'Bot Koray', 'Bot Begüm',
+      'Bot Cenk', 'Bot İpek', 'Bot Alper', 'Bot Esra', 'Bot Tayfun', 'Bot Melike', 'Bot Hakan', 'Bot Damla'
+    ];
+  }
 
-  app.post('/api/admin/tournaments/create', async (req, res) => {
-    const { name, participants } = req.body;
-    if (!name || !participants || participants.length < 2) {
-      return res.status(400).json({ error: 'Turnuva ismi ve en az 2 katılımcı gereklidir.' });
+  // Generate initial personal bracket tree for a tournament template
+  function generateUserTournamentTree(template: Tournament, username: string): Tournament {
+    const bots = getBotPoolByDifficulty(template.botDifficulty);
+    const maxP = template.maxParticipants || (template.format === '1v1' ? 8 : 4);
+    const participants: string[] = [username];
+
+    for (let i = 0; participants.length < maxP; i++) {
+      const name = i < bots.length ? bots[i] : `Bot Rakip ${i + 1}`;
+      if (!participants.includes(name)) {
+        participants.push(name);
+      }
     }
 
-    const newTournament: Tournament = {
-      id: `t-${Date.now()}`,
-      name,
-      participants: participants.length >= 8 ? participants : [...participants, 'Bot Memo', 'Milyoner Bot', 'Hızlı Zar Bot', 'Siber Bot', 'Kral Bot', 'Emlak Büyücüsü', 'Borsa Kralı'].slice(0, 8),
-      rounds: [],
+    const rounds: any[] = [];
+    const matchCount = (template.format === '4player' || template.format === '2v2_team') 
+      ? Math.max(1, Math.ceil(maxP / 4)) 
+      : Math.floor(maxP / 2);
+    
+    const matches: TournamentMatch[] = [];
+
+    for (let i = 0; i < matchCount; i++) {
+      if (template.format === '4player') {
+        const s1 = participants[i * 4] || username;
+        const s2 = participants[i * 4 + 1] || `Bot ${i * 4 + 2}`;
+        const s3 = participants[i * 4 + 2] || `Bot ${i * 4 + 3}`;
+        const s4 = participants[i * 4 + 3] || `Bot ${i * 4 + 4}`;
+        matches.push({
+          id: `tm-${template.id}-r1-${i + 1}`,
+          player1: s1,
+          player2: s2,
+          player3: s3,
+          player4: s4,
+          tablePlayers: [s1, s2, s3, s4],
+          status: 'pending'
+        });
+      } else if (template.format === '2v2_team') {
+        const t1a = participants[i * 4] || username;
+        const t1b = participants[i * 4 + 1] || 'Sadık Bot Partner';
+        const t2a = participants[i * 4 + 2] || `Rakip Bot ${i * 2 + 1}`;
+        const t2b = participants[i * 4 + 3] || `Rakip Bot ${i * 2 + 2}`;
+        matches.push({
+          id: `tm-${template.id}-r1-${i + 1}`,
+          player1: t1a,
+          player2: t2a,
+          player3: t1b,
+          player4: t2b,
+          team1: [t1a, t1b],
+          team2: [t2a, t2b],
+          status: 'pending'
+        });
+      } else {
+        const p1 = participants[i * 2] || username;
+        const p2 = participants[i * 2 + 1] || `Bot ${i + 1}`;
+        matches.push({
+          id: `tm-${template.id}-r1-${i + 1}`,
+          player1: p1,
+          player2: p2,
+          status: 'pending'
+        });
+      }
+    }
+
+    rounds.push({
+      roundNumber: 1,
+      matches
+    });
+
+    return {
+      ...template,
+      participants,
+      rounds,
+      status: 'active'
+    };
+  }
+
+  // Generate preview bracket tree when not yet started
+  function generatePreviewTournamentTree(template: Tournament): Tournament {
+    const maxP = template.maxParticipants || (template.format === '1v1' ? 8 : 4);
+    const matchCount = (template.format === '4player' || template.format === '2v2_team') 
+      ? Math.max(1, Math.ceil(maxP / 4)) 
+      : Math.floor(maxP / 2);
+
+    const matches: TournamentMatch[] = [];
+    for (let i = 0; i < matchCount; i++) {
+      if (template.format === '4player') {
+        matches.push({
+          id: `tm-preview-${i + 1}`,
+          player1: i === 0 ? 'Sen (Kayıt Ol)' : `Bot Rakip ${i * 4 + 1}`,
+          player2: `Bot Rakip ${i * 4 + 2}`,
+          player3: `Bot Rakip ${i * 4 + 3}`,
+          player4: `Bot Rakip ${i * 4 + 4}`,
+          tablePlayers: [i === 0 ? 'Sen (Kayıt Ol)' : `Bot Rakip ${i * 4 + 1}`, `Bot Rakip ${i * 4 + 2}`, `Bot Rakip ${i * 4 + 3}`, `Bot Rakip ${i * 4 + 4}`],
+          status: 'pending'
+        });
+      } else if (template.format === '2v2_team') {
+        matches.push({
+          id: `tm-preview-${i + 1}`,
+          player1: i === 0 ? 'Sen (Kayıt Ol)' : `Bot Kaptan ${i + 1}`,
+          player2: `Rakip Bot ${i * 2 + 1}`,
+          player3: 'Sadık Partner',
+          player4: `Rakip Bot ${i * 2 + 2}`,
+          team1: [i === 0 ? 'Sen (Kayıt Ol)' : `Bot Kaptan ${i + 1}`, 'Sadık Partner'],
+          team2: [`Rakip Bot ${i * 2 + 1}`, `Rakip Bot ${i * 2 + 2}`],
+          status: 'pending'
+        });
+      } else {
+        matches.push({
+          id: `tm-preview-${i + 1}`,
+          player1: i === 0 ? 'Sen (Kayıt Ol)' : `Bot ${i * 2 + 1}`,
+          player2: `Bot ${i * 2 + 2}`,
+          status: 'pending'
+        });
+      }
+    }
+
+    return {
+      ...template,
+      participants: [],
+      rounds: [
+        {
+          roundNumber: 1,
+          matches
+        }
+      ],
       status: 'registration'
     };
+  }
 
-    activeTournaments.unshift(newTournament);
-    await saveTournaments();
+  // GET /api/tournaments: Returns all tournaments with personalized progress for user if provided
+  app.get('/api/tournaments', async (req, res) => {
+    const userId = req.query.userId as string | undefined;
+    let users = await loadUsers();
+    const user = userId ? users[userId] : null;
 
-    res.json({ success: true, tournaments: activeTournaments });
+    // Ensure activeTournaments catalog exists
+    if (!activeTournaments || activeTournaments.length === 0) {
+      activeTournaments = [...DEFAULT_TOURNAMENTS];
+      await saveTournaments();
+    }
+
+    const result = activeTournaments.map((tpl) => {
+      if (user && user.tournaments && user.tournaments[tpl.id]) {
+        // Merge template details with saved user progress
+        return {
+          ...tpl,
+          ...user.tournaments[tpl.id]
+        };
+      }
+      return generatePreviewTournamentTree(tpl);
+    });
+
+    res.json(result);
   });
 
-  app.post('/api/tournaments/join', async (req, res) => {
+  // POST /api/tournaments/user/start: User registers and starts personal tournament campaign
+  app.post('/api/tournaments/user/start', async (req, res) => {
     const { userId, tournamentId } = req.body;
     const users = await loadUsers();
     const user = users[userId];
     if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
 
-    let tournament = activeTournaments.find((t) => t.id === tournamentId);
-    if (!tournament) {
-      tournament = {
-        id: tournamentId || `t-${Date.now()}`,
-        name: '🏆 Deal Master Türkiye Şampiyonası 2026',
-        participants: [],
-        rounds: [],
-        status: 'registration'
-      };
-      activeTournaments.unshift(tournament);
-    }
+    const template = activeTournaments.find((t) => t.id === tournamentId) || DEFAULT_TOURNAMENTS.find((t) => t.id === tournamentId);
+    if (!template) return res.status(404).json({ error: 'Turnuva bulunamadı.' });
 
-    // Add user to participants if not present
-    if (!tournament.participants.includes(user.username)) {
-      tournament.participants.unshift(user.username);
-    }
-
-    // Ensure 8 participants with bots
-    const botPool = ['Hızlı Zar Bot', 'Milyoner Bot', 'Siber Bot', 'Kral Bot', 'Emlak Büyücüsü', 'Borsa Kralı', 'Taktik Ustası Bot', 'Matrix Bot'];
-    for (const botName of botPool) {
-      if (tournament.participants.length < 8 && !tournament.participants.includes(botName)) {
-        tournament.participants.push(botName);
+    // Deduct entry fee
+    const fee = template.entryFee || 0;
+    if (fee > 0) {
+      if (user.coins < fee) {
+        return res.status(400).json({ error: `Yetersiz altın! Giriş ücreti: ${fee} 🪙` });
       }
+      user.coins -= fee;
     }
 
-    // Build Round 1 (Çeyrek Final) 4 Matches if not built
-    if (!tournament.rounds || tournament.rounds.length === 0) {
-      const p = tournament.participants;
-      tournament.rounds = [
-        {
-          roundNumber: 1,
-          matches: [
-            {
-              id: `tm-${Date.now()}-1`,
-              player1: p[1] || 'Bot Memo',
-              player2: p[2] || 'Bot Can',
-              score1: 3,
-              score2: 1,
-              winner: p[1] || 'Bot Memo',
-              status: 'completed'
-            },
-            {
-              id: `tm-${Date.now()}-2`,
-              player1: p[3] || 'Milyoner Bot',
-              player2: p[4] || 'Siber Bot',
-              score1: 2,
-              score2: 3,
-              winner: p[4] || 'Siber Bot',
-              status: 'completed'
-            },
-            {
-              id: `tm-${Date.now()}-3`,
-              player1: user.username,
-              player2: p[0] === user.username ? p[5] || 'Hızlı Zar Bot' : p[0],
-              status: 'pending'
-            },
-            {
-              id: `tm-${Date.now()}-4`,
-              player1: p[6] || 'Emlak Büyücüsü',
-              player2: p[7] || 'Borsa Kralı',
-              score1: 3,
-              score2: 0,
-              winner: p[6] || 'Emlak Büyücüsü',
-              status: 'completed'
-            }
-          ]
-        }
-      ];
-    }
+    // Generate personalized bracket tree
+    const personalTree = generateUserTournamentTree(template, user.username);
 
-    tournament.status = 'active';
-    await saveTournaments();
-    res.json({ success: true, tournament, tournaments: activeTournaments });
+    if (!user.tournaments) user.tournaments = {};
+    user.tournaments[template.id] = personalTree;
+
+    await saveUsers(users);
+
+    res.json({ success: true, tournament: personalTree, user });
   });
 
-  // Submit match score
-  app.post('/api/tournaments/match/submit', async (req, res) => {
-    const { tournamentId, matchId, winnerName, score1, score2 } = req.body;
-    const tournament = activeTournaments.find((t) => t.id === tournamentId);
-    if (!tournament) return res.status(404).json({ error: 'Turnuva bulunamadı.' });
+  // POST /api/tournaments/user/match_complete: Advance user tournament after match result
+  app.post('/api/tournaments/user/match_complete', async (req, res) => {
+    const { userId, tournamentId, matchId, playerWon, score1 = 3, score2 = 1 } = req.body;
+    const users = await loadUsers();
+    const user = users[userId];
+    if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
 
-    // Find the match in the latest round
-    const currentRound = tournament.rounds[tournament.rounds.length - 1];
-    const match = currentRound.matches.find((m) => m.id === matchId);
+    if (!user.tournaments || !user.tournaments[tournamentId]) {
+      return res.status(404).json({ error: 'Aktif turnuva kaydı bulunamadı.' });
+    }
+
+    const t: Tournament = user.tournaments[tournamentId];
+    if (!t.rounds || t.rounds.length === 0) return res.status(400).json({ error: 'Turnuva turları bulunamadı.' });
+
+    const currentRound = t.rounds[t.rounds.length - 1];
+    const match = currentRound.matches.find((m) => m.id === matchId || m.id.includes(matchId)) || currentRound.matches[0];
     if (!match) return res.status(404).json({ error: 'Maç bulunamadı.' });
 
+    const isPlayer1Me = match.player1 === user.username || match.player1 === 'Sen';
+    const isTeam1Me = match.team1 && match.team1.includes(user.username);
+    const isTableMe = match.tablePlayers && match.tablePlayers.includes(user.username);
+
+    const winnerName = playerWon ? user.username : (isPlayer1Me ? match.player2 : match.player1);
+
     match.winner = winnerName;
-    match.score1 = score1 !== undefined ? Number(score1) : 3;
-    match.score2 = score2 !== undefined ? Number(score2) : 1;
+    match.score1 = playerWon ? Math.max(score1, 3) : Math.min(score1, 1);
+    match.score2 = playerWon ? Math.min(score2, 1) : Math.max(score2, 3);
     match.status = 'completed';
 
-    // Auto-simulate any remaining pending bot matches in this round
+    // Simulate any other bot matches in this round
     currentRound.matches.forEach((m) => {
-      if (m.status === 'pending') {
-        const winP1 = Math.random() > 0.5;
-        m.winner = winP1 ? m.player1 : m.player2;
-        m.score1 = winP1 ? 3 : Math.floor(Math.random() * 3);
-        m.score2 = winP1 ? Math.floor(Math.random() * 3) : 3;
-        m.status = 'completed';
+      if (m.id !== match.id && m.status === 'pending') {
+        if (t.format === '4player') {
+          const pool = m.tablePlayers || [m.player1, m.player2, m.player3 || 'Bot 3', m.player4 || 'Bot 4'];
+          const randomWinner = pool[Math.floor(Math.random() * pool.length)];
+          m.winner = randomWinner;
+          m.status = 'completed';
+        } else if (t.format === '2v2_team') {
+          const winTeam1 = Math.random() > 0.5;
+          m.winner = winTeam1 ? (m.team1?.[0] || m.player1) : (m.team2?.[0] || m.player2);
+          m.score1 = winTeam1 ? 4 : Math.floor(Math.random() * 3);
+          m.score2 = winTeam1 ? Math.floor(Math.random() * 3) : 4;
+          m.status = 'completed';
+        } else {
+          const winP1 = Math.random() > 0.5;
+          m.winner = winP1 ? m.player1 : m.player2;
+          m.score1 = winP1 ? 3 : Math.floor(Math.random() * 2);
+          m.score2 = winP1 ? Math.floor(Math.random() * 2) : 3;
+          m.status = 'completed';
+        }
       }
     });
 
-    // Check if all matches in this round are completed
-    const allCompleted = currentRound.matches.every((m) => m.status === 'completed');
-    if (allCompleted) {
+    if (playerWon) {
       if (currentRound.matches.length === 1) {
-        // Grand Final completed!
-        tournament.status = 'completed';
-        tournament.winner = winnerName;
+        // Grand Final Won! Champion crowned!
+        t.status = 'completed';
+        t.winner = user.username;
 
-        // Reward the tournament winner if real user
-        const users = await loadUsers();
-        const winnerUser = Object.values(users).find((u) => u.username === winnerName);
-        if (winnerUser) {
-          winnerUser.coins += 1000;
-          winnerUser.xp += 500;
-          winnerUser.stats.gamesWon += 1;
-          winnerUser.stats.gamesPlayed += 1;
-          await saveUsers(users);
-        }
+        // Give Grand Prize
+        const prizeCoins = t.prizeCoins || 1000;
+        const prizeXp = t.prizeXp || 300;
+        user.coins += prizeCoins;
+        user.xp += prizeXp;
+        user.stats.gamesWon += 1;
+        user.stats.gamesPlayed += 1;
       } else {
-        // Build next round (Round 2: Yarı Final or Round 3: Büyük Final)
-        const winners = currentRound.matches.map((m) => m.winner).filter(Boolean) as string[];
+        // Build Next Round
         const nextRoundNumber = currentRound.roundNumber + 1;
         const nextMatches: TournamentMatch[] = [];
 
-        for (let i = 0; i < winners.length; i += 2) {
-          if (i + 1 < winners.length) {
-            const p1 = winners[i];
-            const p2 = winners[i + 1];
-            // If neither player is a real user in this match, simulate it immediately!
-            const isUserInMatch = p1 === winnerName || p2 === winnerName;
-            
-            if (isUserInMatch) {
+        if (t.format === '4player') {
+          const winners = currentRound.matches.map((m) => m.winner).filter(Boolean) as string[];
+          if (winners.length <= 4) {
+            // Final Table with advancing winners
+            const s1 = winners[0] || user.username;
+            const s2 = winners[1] || 'Usta Bot 1';
+            const s3 = winners[2] || 'Usta Bot 2';
+            const s4 = winners[3] || 'Usta Bot 3';
+            nextMatches.push({
+              id: `tm-${t.id}-r${nextRoundNumber}-final`,
+              player1: s1,
+              player2: s2,
+              player3: s3,
+              player4: s4,
+              tablePlayers: [s1, s2, s3, s4],
+              status: 'pending'
+            });
+          } else {
+            // Group winners into tables of 4
+            const numTables = Math.ceil(winners.length / 4);
+            for (let i = 0; i < numTables; i++) {
+              const s1 = winners[i * 4] || user.username;
+              const s2 = winners[i * 4 + 1] || `Usta Bot ${i * 4 + 2}`;
+              const s3 = winners[i * 4 + 2] || `Usta Bot ${i * 4 + 3}`;
+              const s4 = winners[i * 4 + 3] || `Usta Bot ${i * 4 + 4}`;
               nextMatches.push({
-                id: `tm-r${nextRoundNumber}-${Date.now()}-${i}`,
-                player1: p1,
-                player2: p2,
+                id: `tm-${t.id}-r${nextRoundNumber}-${Date.now()}-${i + 1}`,
+                player1: s1,
+                player2: s2,
+                player3: s3,
+                player4: s4,
+                tablePlayers: [s1, s2, s3, s4],
                 status: 'pending'
               });
-            } else {
-              const winP1 = Math.random() > 0.5;
+            }
+          }
+        } else if (t.format === '2v2_team') {
+          // Get winning teams
+          const winningTeams: string[][] = currentRound.matches.map((m) => {
+            if (m.winner && m.team1 && m.team1.includes(m.winner)) return m.team1;
+            if (m.winner && m.team2 && m.team2.includes(m.winner)) return m.team2;
+            return m.team1 || [m.player1, m.player3 || 'Bot'];
+          });
+
+          for (let i = 0; i < winningTeams.length; i += 2) {
+            if (i + 1 < winningTeams.length) {
+              const t1 = winningTeams[i];
+              const t2 = winningTeams[i + 1];
               nextMatches.push({
-                id: `tm-r${nextRoundNumber}-${Date.now()}-${i}`,
-                player1: p1,
-                player2: p2,
-                winner: winP1 ? p1 : p2,
-                score1: winP1 ? 3 : 1,
-                score2: winP1 ? 1 : 3,
-                status: 'completed'
+                id: `tm-${t.id}-r${nextRoundNumber}-${Date.now()}-${i / 2 + 1}`,
+                player1: t1[0],
+                player2: t2[0],
+                player3: t1[1],
+                player4: t2[1],
+                team1: t1,
+                team2: t2,
+                status: 'pending'
+              });
+            }
+          }
+        } else {
+          // 1v1 Format
+          const winners = currentRound.matches.map((m) => m.winner).filter(Boolean) as string[];
+          for (let i = 0; i < winners.length; i += 2) {
+            if (i + 1 < winners.length) {
+              nextMatches.push({
+                id: `tm-${t.id}-r${nextRoundNumber}-${Date.now()}-${i / 2 + 1}`,
+                player1: winners[i],
+                player2: winners[i + 1],
+                status: 'pending'
               });
             }
           }
         }
 
-        tournament.rounds.push({
+        t.rounds.push({
           roundNumber: nextRoundNumber,
           matches: nextMatches
         });
       }
+    } else {
+      // Player lost the match -> Tournament ends
+      t.status = 'completed';
+      t.winner = winnerName;
+      user.stats.gamesPlayed += 1;
+    }
+
+    user.tournaments[tournamentId] = t;
+    await saveUsers(users);
+
+    res.json({ success: true, tournament: t, user });
+  });
+
+  // POST /api/tournaments/user/reset: Resets user's tournament progression so they can replay
+  app.post('/api/tournaments/user/reset', async (req, res) => {
+    const { userId, tournamentId } = req.body;
+    const users = await loadUsers();
+    const user = users[userId];
+    if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+
+    if (user.tournaments && user.tournaments[tournamentId]) {
+      delete user.tournaments[tournamentId];
+      await saveUsers(users);
+    }
+
+    const template = activeTournaments.find((t) => t.id === tournamentId) || DEFAULT_TOURNAMENTS.find((t) => t.id === tournamentId);
+    const preview = template ? generatePreviewTournamentTree(template) : null;
+
+    res.json({ success: true, tournament: preview, user });
+  });
+
+  // Admin Save (Create or Update) Tournament in Catalog
+  app.post('/api/admin/tournaments/save', async (req, res) => {
+    const {
+      id,
+      name,
+      description,
+      tier = 'gold',
+      format = '1v1',
+      botDifficulty = 'medium',
+      entryFee = 100,
+      prizeCoins = 1000,
+      prizeXp = 300,
+      maxParticipants = 8,
+      targetSets = 3,
+      turnDurationSeconds = 30,
+      icon
+    } = req.body;
+
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'Turnuva adı girilmelidir.' });
+    }
+
+    const tId = id || `t-${Date.now()}`;
+    const autoIcon = icon || (format === '4player' ? '👥' : (format === '2v2_team' ? '⚔️' : (tier === 'legend' ? '👑' : tier === 'gold' ? '🥇' : '🥉')));
+
+    const updatedTournament: Tournament = {
+      id: tId,
+      name: name.trim(),
+      description: description ? description.trim() : undefined,
+      tier,
+      format,
+      botDifficulty,
+      allowBots: true,
+      entryFee: Number(entryFee) || 0,
+      prizeCoins: Number(prizeCoins) || 1000,
+      prizeXp: Number(prizeXp) || 300,
+      maxParticipants: Number(maxParticipants) || 8,
+      targetSets: Number(targetSets) || 3,
+      turnDurationSeconds: Number(turnDurationSeconds) || 30,
+      icon: autoIcon,
+      participants: [],
+      rounds: [],
+      status: 'registration'
+    };
+
+    const existingIndex = activeTournaments.findIndex((t) => t.id === tId);
+    if (existingIndex >= 0) {
+      activeTournaments[existingIndex] = updatedTournament;
+    } else {
+      activeTournaments.push(updatedTournament);
     }
 
     await saveTournaments();
-    res.json({ success: true, tournament, tournaments: activeTournaments });
+    res.json({ success: true, tournament: updatedTournament, tournaments: activeTournaments });
   });
 
-  // Admin deletes a tournament
+  // Admin Delete Tournament from Catalog
   app.post('/api/admin/tournaments/delete', async (req, res) => {
     const { tournamentId } = req.body;
     activeTournaments = activeTournaments.filter((t) => t.id !== tournamentId);
@@ -2119,6 +2601,9 @@ async function startServer() {
           hostProfileFrame: host?.profileFrame || 'frame_none',
           hostPlayerBoard: host?.playerBoard || 'board_classic',
           hasPassword: !!m.password,
+          gameMode: m.settings?.gameMode || (m.roomId.includes('2v2') ? '2v2_team' : 'classic'),
+          targetSets: m.settings?.targetSets || (m.roomId.includes('2v2') ? 4 : 3),
+          maxPlayers: m.settings?.maxPlayers || 4,
         };
       });
 
@@ -2145,6 +2630,15 @@ async function startServer() {
 
   const clients: Record<string, { ws: WebSocket; userId: string; roomId?: string }> = {};
 
+  const botTurnTimeouts = new Map<string, NodeJS.Timeout>();
+
+  function clearBotTurnTimeout(roomId: string) {
+    if (botTurnTimeouts.has(roomId)) {
+      clearTimeout(botTurnTimeouts.get(roomId)!);
+      botTurnTimeouts.delete(roomId);
+    }
+  }
+
   interface MatchmakingRequest {
     clientId: string;
     userId: string;
@@ -2161,10 +2655,13 @@ async function startServer() {
     // Generate full deck
     let fullDeck = shuffleDeck(generateDeck());
 
-    // Deal 5 cards to each player
-    match.players.forEach((player: any) => {
+    // Deal 5 cards to each player and assign 2v2 teams if gameMode is 2v2_team
+    match.players.forEach((player: any, idx: number) => {
       player.hand = fullDeck.splice(0, 5);
       player.isDisconnected = false; // Ensure they are active once game starts
+      if (match.settings?.gameMode === '2v2_team') {
+        player.team = (idx % 2 === 0) ? 'team_blue' : 'team_red';
+      }
     });
 
     match.discardPile = [];
@@ -2184,6 +2681,30 @@ async function startServer() {
 
     // Put deck to a safe temporary server state
     (match as any).serverDeck = fullDeck;
+
+    // Initialize Chaos Mode state if enabled
+    if (match.settings?.gameMode === 'chaos') {
+      match.chaosState = {};
+      // 💣 Hot Potato: assign to a random player at start
+      if (match.settings?.chaosHotPotato) {
+        const randIdx = Math.floor(Math.random() * match.players.length);
+        match.chaosState.hotPotatoHolderId = match.players[randIdx].id;
+        match.chaosState.hotPotatoTurnsLeft = 3;
+        match.logs.push({
+          id: `bomb-start-${Date.now()}`,
+          message: `💣 Saatli Bomba ${match.players[randIdx].username}'in eline düştü! 3 tur içinde patlar!`,
+          timestamp: Date.now(),
+        });
+      }
+      // 👑 King of the Hill: no holder at start
+      if (match.settings?.chaosKingHill) {
+        match.logs.push({
+          id: `king-start-${Date.now()}`,
+          message: `👑 Kralın Tacı aktif! Altın Mülkü en uzun süre elinde tutan her tur başı 2M bonus kazanır.`,
+          timestamp: Date.now(),
+        });
+      }
+    }
 
     // Automatically trigger first draw
     triggerDrawForActivePlayer(match);
@@ -2206,6 +2727,24 @@ async function startServer() {
     async function processClientMessage(payload: any, userId: string, roomId: string | undefined, clientId: string, ws: WebSocket) {
       try {
         const { type } = payload;
+
+        // Auto-clear AFK / disconnect status on any incoming player interaction
+        if (roomId && activeMatches[roomId] && userId) {
+          const m = activeMatches[roomId];
+          if (m.players) {
+            const sender = m.players.find((p: any) => p.id === userId);
+            if (sender && sender.isDisconnected && !sender.isBot) {
+              sender.isDisconnected = false;
+              (sender as any).isAfk = false;
+              (sender as any).consecutiveAfkTurns = 0;
+              if (m.players[m.turnIndex]?.id === sender.id) {
+                clearBotTurnTimeout(roomId);
+              }
+              broadcastToRoom(roomId, { type: 'room_update', matchState: m });
+            }
+          }
+        }
+
         switch (type) {
           case 'register':
             clients[clientId] = { ws, userId };
@@ -2223,6 +2762,8 @@ async function startServer() {
             // Find or create room
             let match = activeMatches[roomId];
             if (!match) {
+              const is2v2 = roomId.includes('2v2') || roomId.includes('team');
+              const requestedMaxPlayers = payload.settings?.maxPlayers || (payload.maxPlayers ? Number(payload.maxPlayers) : 4);
               match = {
                 roomId,
                 status: 'lobby',
@@ -2231,8 +2772,16 @@ async function startServer() {
                 discardPile: [],
                 turnIndex: 0,
                 actionsPlayedThisTurn: 0,
-                logs: [{ id: 'l-init', message: `${user.username} odayı kurdu.`, timestamp: Date.now() }],
+                logs: [{ id: 'l-init', message: `${user.username} odayı kurdu.${is2v2 ? ' [⚔️ 2v2 Takım Savaşı]' : ''}`, timestamp: Date.now() }],
                 isOffline: false,
+                settings: {
+                  targetSets: is2v2 ? 4 : 3,
+                  turnLimit: '30s',
+                  autoEndTurn: true,
+                  gameMode: is2v2 ? '2v2_team' : 'classic',
+                  maxPlayers: Math.min(6, Math.max(2, requestedMaxPlayers)),
+                  ...payload.settings,
+                }
               };
               if (roomPassword && roomPassword.trim() !== '') {
                 match.password = roomPassword.trim();
@@ -2250,6 +2799,16 @@ async function startServer() {
                   break;
                 }
               }
+
+              // Check max players capacity
+              const maxP = match.settings?.maxPlayers || 4;
+              if (match.players.length >= maxP && !match.players.some((p) => p.id === userId)) {
+                ws.send(JSON.stringify({
+                  type: 'join_failed',
+                  error: `Oda dolu! Maksimum ${maxP} oyuncu kapasitesine ulaşıldı.`,
+                }));
+                break;
+              }
             }
 
             clients[clientId].roomId = roomId;
@@ -2257,6 +2816,13 @@ async function startServer() {
             // Join if not already in
             const existingPlayer = match.players.find((p) => p.id === userId);
             if (!existingPlayer) {
+              let assignedTeam: 'team_blue' | 'team_red' | undefined = undefined;
+              if (match.settings?.gameMode === '2v2_team') {
+                const blueCount = match.players.filter((p) => p.team === 'team_blue').length;
+                const redCount = match.players.filter((p) => p.team === 'team_red').length;
+                assignedTeam = blueCount <= redCount ? 'team_blue' : 'team_red';
+              }
+
               match.players.push({
                 id: userId,
                 username: user.username,
@@ -2268,6 +2834,7 @@ async function startServer() {
                 cardBack: user.settings.cardBack || 'back_classic',
                 cardSkin: user.settings.cardSkin || 'skin_none',
                 actionVfx: user.settings.actionVfx || 'vfx_none',
+                team: assignedTeam,
                 isBot: false,
                 hand: [],
                 bank: [],
@@ -2275,7 +2842,7 @@ async function startServer() {
               });
               match.logs.push({
                 id: `join-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                message: `${user.username} odaya katıldı.`,
+                message: `${user.username} odaya katıldı.${assignedTeam ? ` (${assignedTeam === 'team_blue' ? '🔵 Mavi Takım' : '🔴 Kırmızı Takım'})` : ''}`,
                 timestamp: Date.now(),
               });
             } else {
@@ -2643,7 +3210,7 @@ async function startServer() {
 
           case 'add_bot': {
             const match = activeMatches[roomId];
-            if (!match || match.status !== 'lobby') break;
+            if (!match || match.status !== 'lobby' || roomId.startsWith('tournament')) break;
 
             const botNames = ['Bot Memo', 'Bot Can', 'Bot Defne', 'Milyoner Bot'];
             const usedNames = match.players.map((p) => p.username);
@@ -2654,6 +3221,13 @@ async function startServer() {
             const botBoard = botBoards[Math.floor(Math.random() * botBoards.length)];
             const botCountries = ['TR', 'US', 'DE', 'GB', 'FR', 'IT', 'ES', 'BR', 'JP', 'AZ', 'NL', 'CA'];
 
+            let assignedTeam: 'team_blue' | 'team_red' | undefined = undefined;
+            if (match.settings?.gameMode === '2v2_team') {
+              const blueCount = match.players.filter((p) => p.team === 'team_blue').length;
+              const redCount = match.players.filter((p) => p.team === 'team_red').length;
+              assignedTeam = blueCount <= redCount ? 'team_blue' : 'team_red';
+            }
+
             match.players.push({
               id: `bot-${Math.random().toString(36).substr(2, 5)}`,
               username: botName,
@@ -2661,6 +3235,7 @@ async function startServer() {
               avatarId: 'avatar_skater',
               profileFrame: 'frame_none',
               playerBoard: botBoard,
+              team: assignedTeam,
               isBot: true,
               hand: [],
               bank: [],
@@ -2668,8 +3243,8 @@ async function startServer() {
             });
 
             match.logs.push({
-              id: `bot-add-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-              message: `${botName} odaya eklendi.`,
+              id: `bot-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+              message: `${botName} odaya katıldı.${assignedTeam ? ` (${assignedTeam === 'team_blue' ? '🔵 Mavi Takım' : '🔴 Kırmızı Takım'})` : ''}`,
               timestamp: Date.now(),
             });
 
@@ -2682,15 +3257,15 @@ async function startServer() {
 
           case 'kick_player': {
             const match = activeMatches[roomId];
-            if (!match || match.status !== 'lobby') break;
+            if (!match || match.status !== 'lobby' || roomId.startsWith('tournament')) break;
 
-            if (match.players[0] && match.players[0].id === userId) {
-              const { targetPlayerId } = payload;
-              const idx = match.players.findIndex((p) => p.id === targetPlayerId);
-              if (idx !== -1) {
-                const kickedPlayer = match.players[idx];
-
-                const targetClient = Object.values(clients).find((c) => c.userId === targetPlayerId && c.roomId === roomId);
+            // Only host can kick
+            if (match.players[0]?.id === userId) {
+              const targetId = payload.targetPlayerId;
+              const targetIdx = match.players.findIndex((p) => p.id === targetId);
+              if (targetIdx !== -1) {
+                const kickedPlayer = match.players[targetIdx];
+                const targetClient = Object.values(clients).find((c) => c.userId === targetId && c.roomId === roomId);
                 if (targetClient) {
                   try {
                     targetClient.ws.send(JSON.stringify({ type: 'kicked' }));
@@ -2700,10 +3275,10 @@ async function startServer() {
                   targetClient.roomId = undefined;
                 }
 
-                match.players.splice(idx, 1);
+                match.players.splice(targetIdx, 1);
                 match.logs.push({
                   id: `kick-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                  message: `${kickedPlayer.username} odadan atıldı.`,
+                  message: `${kickedPlayer.username} odadan çıkarıldı.`,
                   timestamp: Date.now(),
                 });
 
@@ -2723,6 +3298,18 @@ async function startServer() {
             const idx = match.players.findIndex((p) => p.id === userId);
             if (idx !== -1) {
               const leavingPlayer = match.players[idx];
+
+              // If this is a tournament match, record immediate forfeit / loss in bracket
+              if (roomId.startsWith('tournament_')) {
+                const parts = roomId.split('_');
+                const tId = parts[1];
+                const mId = parts[2];
+                const opponent = match.players.find((p: any) => p.id !== userId);
+                if (tId && mId && opponent?.username) {
+                  await submitTournamentMatchInternal(tId, mId, opponent.username, 3, 0);
+                }
+              }
+
               if (match.status === 'playing') {
                 leavingPlayer.isDisconnected = true;
                 leavingPlayer.hasAbandoned = true;
@@ -2796,29 +3383,67 @@ async function startServer() {
 
             if (match.players[0] && match.players[0].id === userId) {
               const { settings } = payload;
-              match.settings = {
-                targetSets: 3,
-                turnLimit: 'unlimited',
-                autoEndTurn: false,
-                gameMode: 'classic',
-                ...match.settings,
-                ...settings
-              };
+              const prevMode = match.settings?.gameMode;
+              const newMode = settings.gameMode || prevMode || 'classic';
 
-              if (settings.gameMode === 'chaos') {
-                match.settings.targetSets = 4;
-                match.settings.turnLimit = 'unlimited';
-                match.settings.autoEndTurn = false;
-              } else if (settings.gameMode === 'speed') {
-                match.settings.targetSets = 2;
-                match.settings.turnLimit = '15s';
-                match.settings.autoEndTurn = true;
+              let defaultTarget = match.settings?.targetSets || 3;
+              let defaultTurnLimit = match.settings?.turnLimit || '30s';
+              let defaultAutoEnd = match.settings?.autoEndTurn ?? true;
+              let defaultMaxPlayers = match.settings?.maxPlayers || 4;
+
+              if (settings.gameMode && settings.gameMode !== prevMode) {
+                if (settings.gameMode === 'chaos') {
+                  defaultTarget = 4;
+                  defaultTurnLimit = 'unlimited';
+                  defaultAutoEnd = false;
+                } else if (settings.gameMode === 'speed') {
+                  defaultTarget = 2;
+                  defaultTurnLimit = '15s';
+                  defaultAutoEnd = true;
+                } else if (settings.gameMode === '2v2_team') {
+                  defaultTarget = 4;
+                  defaultTurnLimit = '30s';
+                  defaultAutoEnd = true;
+                } else if (settings.gameMode === 'classic') {
+                  defaultTarget = 3;
+                  defaultTurnLimit = '30s';
+                  defaultAutoEnd = true;
+                }
               }
 
-              const modeLabel = match.settings.gameMode === 'chaos' ? 'Kaos Modu 🌀' : match.settings.gameMode === 'speed' ? 'Speed Deal Master PRO ⚡' : 'Klasik Mod 🎲';
+              match.settings = {
+                targetSets: settings.targetSets !== undefined ? Number(settings.targetSets) : defaultTarget,
+                turnLimit: settings.turnLimit !== undefined ? settings.turnLimit : defaultTurnLimit,
+                autoEndTurn: settings.autoEndTurn !== undefined ? Boolean(settings.autoEndTurn) : defaultAutoEnd,
+                gameMode: newMode,
+                maxPlayers: settings.maxPlayers ? Math.min(6, Math.max(2, Number(settings.maxPlayers))) : defaultMaxPlayers,
+                // Chaos Mode Toggles
+                chaosSpy: settings.chaosSpy !== undefined ? Boolean(settings.chaosSpy) : (match.settings?.chaosSpy ?? false),
+                chaosKingHill: settings.chaosKingHill !== undefined ? Boolean(settings.chaosKingHill) : (match.settings?.chaosKingHill ?? false),
+                chaosHotPotato: settings.chaosHotPotato !== undefined ? Boolean(settings.chaosHotPotato) : (match.settings?.chaosHotPotato ?? false),
+              };
+
+              if (match.settings.gameMode === '2v2_team') {
+                // Auto-assign teams: first half Blue, second half Red
+                const half = Math.ceil(match.players.length / 2);
+                match.players.forEach((p, idx) => {
+                  p.team = idx < half ? 'team_blue' : 'team_red';
+                });
+              } else {
+                match.players.forEach((p) => { delete p.team; });
+              }
+
+              const modeLabel = match.settings.gameMode === 'chaos' 
+                ? 'Kaos Modu 🌀' 
+                : match.settings.gameMode === 'speed' 
+                ? 'Speed Deal Master PRO ⚡' 
+                : match.settings.gameMode === '2v2_team'
+                ? '2v2 Takım Savaşı ⚔️'
+                : 'Klasik Mod 🎲';
+
               match.logs.push({
                 id: `settings-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                message: `Oda ayarları güncellendi: [${modeLabel}] - Hedef: ${match.settings.targetSets} Set, Tur Süresi: ${match.settings.turnLimit === 'unlimited' ? 'Sınırsız' : match.settings.turnLimit}, Otomatik Tur Sonu: ${match.settings.autoEndTurn ? 'Açık' : 'Kapalı'}`,
+                message: `Oda ayarları güncellendi: [${modeLabel}] - Maks. ${match.settings.maxPlayers} Oyuncu, Hedef: ${match.settings.targetSets} Set, Tur Süresi: ${match.settings.turnLimit === 'unlimited' ? 'Sınırsız' : match.settings.turnLimit}, Otomatik Tur Sonu: ${match.settings.autoEndTurn ? 'Açık' : 'Kapalı'}`,
                 timestamp: Date.now(),
               });
 
@@ -2826,6 +3451,35 @@ async function startServer() {
                 type: 'room_update',
                 matchState: match,
               });
+            }
+            break;
+          }
+
+          case 'switch_team': {
+            const match = activeMatches[roomId];
+            if (!match || match.status !== 'lobby') break;
+
+            const targetPlayerId = payload.targetPlayerId || payload.userId || userId;
+            const isHost = match.players[0]?.id === userId;
+            const isSelf = targetPlayerId === userId;
+
+            // Allow if sender is host or switching themselves
+            if (isHost || isSelf) {
+              const targetPlayer = match.players.find((p) => p.id === targetPlayerId);
+              if (targetPlayer) {
+                const currentTeam = targetPlayer.team || 'team_blue';
+                const nextTeam = payload.team || (currentTeam === 'team_blue' ? 'team_red' : 'team_blue');
+                targetPlayer.team = nextTeam;
+                match.logs.push({
+                  id: `team-${Date.now()}`,
+                  message: `${targetPlayer.username} ${nextTeam === 'team_blue' ? '🔵 Mavi Takım' : '🔴 Kırmızı Takım'}'a geçti.`,
+                  timestamp: Date.now(),
+                });
+                broadcastToRoom(roomId, {
+                  type: 'room_update',
+                  matchState: match,
+                });
+              }
             }
             break;
           }
@@ -3420,16 +4074,168 @@ async function startServer() {
             break;
           }
 
-          case 'reset_afk': {
+          // 🕵️ CASUS / GİZLİ EL: Reveal target's hand for 5s, then steal a random card
+          case 'chaos_spy_peek': {
+            const match = activeMatches[roomId];
+            if (!match || match.status !== 'playing') break;
+            if (!match.settings?.chaosSpy) break;
+
+            const spyPlayer = match.players[match.turnIndex];
+            if (spyPlayer.id !== userId) break;
+
+            const { targetPlayerId } = payload;
+            const targetPlayer = match.players.find(p => p.id === targetPlayerId);
+            if (!targetPlayer || targetPlayerId === userId) break;
+
+            // Cost: 1M from bank (cheapest money card)
+            const costIdx = spyPlayer.bank
+              .map((c, i) => ({ i, v: c.value }))
+              .filter(x => x.v >= 1)
+              .sort((a, b) => a.v - b.v)[0]?.i;
+
+            if (costIdx === undefined) {
+              ws.send(JSON.stringify({ type: 'alert', message: 'Casus Bakış için bankada yeterli para yok! (1M gerekli)' }));
+              break;
+            }
+
+            const costCard = spyPlayer.bank.splice(costIdx, 1)[0];
+            match.discardPile.push(costCard);
+
+            match.logs.push({
+              id: `spy-peek-${Date.now()}`,
+              message: `🕵️ ${spyPlayer.username}, ${targetPlayer.username}'in kartlarına Casus Bakış yaptı! (1M ödedi)`,
+              timestamp: Date.now(),
+            });
+
+            // Broadcast special spy_peek event so target's hand is revealed to the spy for 5s
+            broadcastToRoom(roomId, {
+              type: 'spy_peek',
+              spyId: userId,
+              targetId: targetPlayerId,
+              targetHand: targetPlayer.hand, // Send cards only to spy
+              matchState: match,
+            });
+
+            // After 5 seconds, steal a random card from target's hand
+            setTimeout(() => {
+              const freshMatch = activeMatches[roomId];
+              if (!freshMatch) return;
+              const freshTarget = freshMatch.players.find(p => p.id === targetPlayerId);
+              const freshSpy = freshMatch.players.find(p => p.id === userId);
+              if (!freshTarget || !freshSpy || freshTarget.hand.length === 0) return;
+
+              const randCardIdx = Math.floor(Math.random() * freshTarget.hand.length);
+              const stolenCard = freshTarget.hand.splice(randCardIdx, 1)[0];
+              freshSpy.hand.push(stolenCard);
+
+              freshMatch.logs.push({
+                id: `spy-steal-${Date.now()}`,
+                message: `🕵️ ${freshSpy.username}, ${freshTarget.username}'in elinden "${stolenCard.name}" kartını çaldı!`,
+                timestamp: Date.now(),
+              });
+
+              broadcastToRoom(roomId, {
+                type: 'room_update',
+                matchState: freshMatch,
+              });
+            }, 5000);
+            break;
+          }
+
+          // 💣 SAATLİ BOMBA PAS: Pass bomb to the next player in turn
+          case 'chaos_hot_potato_pass': {
+            const match = activeMatches[roomId];
+            if (!match || match.status !== 'playing') break;
+            if (!match.settings?.chaosHotPotato) break;
+            if (!match.chaosState?.hotPotatoHolderId) break;
+
+            // Only the current turn player can pass and they must be the bomb holder
+            const passer = match.players[match.turnIndex];
+            if (passer.id !== userId) break;
+            if (match.chaosState.hotPotatoHolderId !== userId) break;
+
+            // Pass to next player
+            const nextIdx = (match.turnIndex + 1) % match.players.length;
+            const nextPlayer = match.players[nextIdx];
+            match.chaosState.hotPotatoHolderId = nextPlayer.id;
+
+            match.logs.push({
+              id: `bomb-pass-${Date.now()}`,
+              message: `💣 ${passer.username}, Saatli Bombayı ${nextPlayer.username}'e paslattı! (${match.chaosState.hotPotatoTurnsLeft} tur kaldı)`,
+              timestamp: Date.now(),
+            });
+
+            broadcastToRoom(roomId, {
+              type: 'room_update',
+              matchState: match,
+            });
+            break;
+          }
+
+          // 👑 KRALIN TACI: Claim the Golden Property (active player takes it)
+          case 'chaos_claim_king_hill': {
+            const match = activeMatches[roomId];
+            if (!match || match.status !== 'playing') break;
+            if (!match.settings?.chaosKingHill) break;
+
+            const claimer = match.players[match.turnIndex];
+            if (claimer.id !== userId) break;
+
+            if (!match.chaosState) match.chaosState = {};
+            const prevHolderId = match.chaosState.kingHillHolderId;
+            match.chaosState.kingHillHolderId = userId;
+            match.chaosState.kingHillHeldSince = match.turnNumber || 1;
+
+            if (prevHolderId && prevHolderId !== userId) {
+              const prevHolder = match.players.find(p => p.id === prevHolderId);
+              match.logs.push({
+                id: `king-claim-${Date.now()}`,
+                message: `👑 ${claimer.username}, Altın Mülkü ${prevHolder?.username || 'rakibinden'} ele geçirdi! Artık Kral!`,
+                timestamp: Date.now(),
+              });
+            } else {
+              match.logs.push({
+                id: `king-claim-${Date.now()}`,
+                message: `👑 ${claimer.username}, Altın Mülkü sahiplendi! Artık Kral!`,
+                timestamp: Date.now(),
+              });
+            }
+
+            broadcastToRoom(roomId, {
+              type: 'room_update',
+              matchState: match,
+            });
+            break;
+          }
+
+
+          case 'reset_afk':
+          case 'return_from_afk': {
             const match = activeMatches[roomId!];
             if (match && match.status === 'playing') {
-              if (match.activeActionRequest && match.activeActionRequest.targetPlayerId === userId) {
-                match.actionRequestStartedAt = Date.now();
-              } else if (match.activeActionRequests) {
-                const myReq = match.activeActionRequests.find(r => r.targetPlayerId === userId);
-                if (myReq) {
-                  match.actionRequestStartedAt = Date.now();
+              const player = match.players.find(p => p.id === userId);
+              if (player) {
+                player.isDisconnected = false;
+                (player as any).isAfk = false;
+                (player as any).consecutiveAfkTurns = 0;
+                if (match.players[match.turnIndex]?.id === player.id) {
+                  clearBotTurnTimeout(roomId!);
+                  match.turnStartedAt = Date.now();
                 }
+                if (match.activeActionRequest && match.activeActionRequest.targetPlayerId === userId) {
+                  match.actionRequestStartedAt = Date.now();
+                } else if (match.activeActionRequests) {
+                  const myReq = match.activeActionRequests.find(r => r.targetPlayerId === userId);
+                  if (myReq) {
+                    match.actionRequestStartedAt = Date.now();
+                  }
+                }
+                match.logs.push({
+                  id: `afk-return-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                  message: `🟢 ${player.username} oyuna geri döndü!`,
+                  timestamp: Date.now(),
+                });
+                broadcastToRoom(roomId!, { type: 'room_update', matchState: match });
               }
             }
             break;
@@ -3586,6 +4392,109 @@ async function startServer() {
       timestamp: Date.now(),
       turnNumber: match.turnNumber || 1,
     });
+
+    // =========================================================
+    // 🌀 CHAOS MODE EFFECTS
+    // =========================================================
+    if (match.settings?.gameMode === 'chaos' && match.chaosState) {
+      const cs = match.chaosState;
+
+      // 👑 KING OF THE HILL: Give bonus to holder each turn
+      if (match.settings.chaosKingHill && cs.kingHillHolderId) {
+        const kingHolder = match.players.find(p => p.id === cs.kingHillHolderId);
+        if (kingHolder) {
+          // Give 2M bonus (add a 2M money card to bank)
+          const bonusCard: Card = {
+            id: `king-bonus-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+            type: 'money',
+            name: '2M (Kral Bonusu)',
+            value: 2,
+            description: 'Kralın Tacı bonusu!',
+          };
+          kingHolder.bank.push(bonusCard);
+          match.logs.push({
+            id: `king-bonus-log-${Date.now()}`,
+            message: `👑 ${kingHolder.username} Altın Mülkü elinde tuttuğu için 2M Kral Bonusu kazandı!`,
+            timestamp: Date.now(),
+          });
+        }
+      }
+
+      // 💣 HOT POTATO: Penalty per turn, countdown & explosion
+      if (match.settings.chaosHotPotato && cs.hotPotatoHolderId) {
+        const bombHolder = match.players.find(p => p.id === cs.hotPotatoHolderId);
+        if (bombHolder) {
+          // Deduct 1M per turn (remove cheapest money card from bank if possible)
+          const cheapestMoneyIdx = bombHolder.bank
+            .map((c, i) => ({ i, v: c.value }))
+            .filter(x => x.v > 0)
+            .sort((a, b) => a.v - b.v)[0]?.i;
+          if (cheapestMoneyIdx !== undefined) {
+            const penaltyCard = bombHolder.bank.splice(cheapestMoneyIdx, 1)[0];
+            match.discardPile.push(penaltyCard);
+            match.logs.push({
+              id: `bomb-pen-${Date.now()}`,
+              message: `💣 ${bombHolder.username} Saatli Bombayı tuttuğu için 1M ceza ödedi! (${cs.hotPotatoTurnsLeft} tur kaldı)`,
+              timestamp: Date.now(),
+            });
+          } else {
+            match.logs.push({
+              id: `bomb-pen-nofunds-${Date.now()}`,
+              message: `💣 ${bombHolder.username} Saatli Bombayı tutuyor! Ceza ödemek için para yok. (${cs.hotPotatoTurnsLeft} tur kaldı)`,
+              timestamp: Date.now(),
+            });
+          }
+
+          // Count down
+          cs.hotPotatoTurnsLeft = (cs.hotPotatoTurnsLeft ?? 3) - 1;
+
+          // 💥 EXPLOSION: destroy smallest non-complete property set
+          if (cs.hotPotatoTurnsLeft <= 0) {
+            // Find the smallest incomplete property set the holder has
+            let smallestColor: string | null = null;
+            let smallestCount = Infinity;
+            for (const [color, propSet] of Object.entries(bombHolder.properties || {})) {
+              if (propSet && !propSet.hasHotel && !propSet.hasHouse) {
+                const cardCount = propSet.cards?.length || 0;
+                if (cardCount > 0 && cardCount < smallestCount) {
+                  smallestCount = cardCount;
+                  smallestColor = color;
+                }
+              }
+            }
+            if (smallestColor && bombHolder.properties[smallestColor as keyof typeof bombHolder.properties]) {
+              const destroyedSet = bombHolder.properties[smallestColor as keyof typeof bombHolder.properties];
+              const cardNames = destroyedSet!.cards.map(c => c.name).join(', ');
+              // Move cards to discard pile
+              destroyedSet!.cards.forEach(c => match.discardPile.push(c));
+              delete bombHolder.properties[smallestColor as keyof typeof bombHolder.properties];
+              match.logs.push({
+                id: `bomb-explode-${Date.now()}`,
+                message: `💥 PATLADI! ${bombHolder.username}'in "${smallestColor}" seti yok edildi! (${cardNames})`,
+                timestamp: Date.now(),
+              });
+            } else {
+              match.logs.push({
+                id: `bomb-explode-noprop-${Date.now()}`,
+                message: `💥 ${bombHolder.username}'de patlayan bomba için yok edilecek set bulunamadı!`,
+                timestamp: Date.now(),
+              });
+            }
+
+            // Reset bomb to the next player in turn order
+            const nextBombIdx = (match.players.findIndex(p => p.id === bombHolder.id) + 1) % match.players.length;
+            cs.hotPotatoHolderId = match.players[nextBombIdx].id;
+            cs.hotPotatoTurnsLeft = 3;
+            match.logs.push({
+              id: `bomb-reset-${Date.now()}`,
+              message: `💣 Saatli Bomba yeniden ${match.players[nextBombIdx].username}'e düştü! 3 tur sayacı başladı.`,
+              timestamp: Date.now(),
+            });
+          }
+        }
+      }
+    }
+    // =========================================================
 
     triggerDrawForActivePlayer(match);
     if (nextPlayer.isBot || nextPlayer.isDisconnected) {
@@ -4093,13 +5002,9 @@ async function startServer() {
 
 
 
-  const botTurnTimeouts = new Map<string, NodeJS.Timeout>();
-
   function scheduleBotTurn(match: MatchState, delay = 1000) {
     const roomId = match.roomId;
-    if (botTurnTimeouts.has(roomId)) {
-      clearTimeout(botTurnTimeouts.get(roomId)!);
-    }
+    clearBotTurnTimeout(roomId);
     const timer = setTimeout(async () => {
       botTurnTimeouts.delete(roomId);
       await handleBotTurn(match);
@@ -4680,6 +5585,25 @@ async function handleMatchWinner(match: any, winnerId: string) {
     message: `👑 Tebrikler! Maçı ${winner?.username} kazandı!`,
     timestamp: Date.now(),
   });
+
+  // Automatically submit winner to tournament bracket if this was an online tournament match
+  if (match.roomId && match.roomId.startsWith('tournament_')) {
+    const parts = match.roomId.split('_');
+    const tId = parts[1];
+    const mId = parts[2];
+    const tournament = activeTournaments.find((t) => t.id === tId);
+    if (tournament && winner?.username) {
+      const currentRound = tournament.rounds[tournament.rounds.length - 1];
+      const tMatch = currentRound?.matches.find((m) => m.id === mId || m.id.includes(mId));
+      if (tMatch) {
+        tMatch.winner = winner.username;
+        tMatch.score1 = tMatch.player1 === winner.username ? 3 : 1;
+        tMatch.score2 = tMatch.player2 === winner.username ? 3 : 1;
+        tMatch.status = 'completed';
+        await saveTournaments();
+      }
+    }
+  }
 
   const users = await loadUsers();
   const dateStr = new Date().toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });

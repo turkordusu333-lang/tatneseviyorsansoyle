@@ -172,8 +172,21 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   const [tournaments, setTournaments] = useState<any[]>([]);
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(null);
 
+  const [editingTournamentId, setEditingTournamentId] = useState<string | null>(null);
   const [tournamentName, setTournamentName] = useState('');
-  const [tournamentPlayers, setTournamentPlayers] = useState('Bot Memo, Bot Can, Bot Defne, Bot Su');
+  const [tournamentDescription, setTournamentDescription] = useState('');
+  const [tournamentFormat, setTournamentFormat] = useState<'1v1' | '4player' | '2v2_team'>('1v1');
+  const [tournamentBotDifficulty, setTournamentBotDifficulty] = useState<'easy' | 'medium' | 'hard' | 'expert'>('medium');
+  const [tournamentMaxParticipants, setTournamentMaxParticipants] = useState<number>(8);
+  const [tournamentAllowBots, setTournamentAllowBots] = useState<boolean>(true);
+  const [tournamentEntryFee, setTournamentEntryFee] = useState<number>(100);
+  const [tournamentPrizeCoins, setTournamentPrizeCoins] = useState<number>(1000);
+  const [tournamentPrizeXp, setTournamentPrizeXp] = useState<number>(300);
+  const [tournamentTargetSets, setTournamentTargetSets] = useState<number>(3);
+  const [tournamentTurnDuration, setTournamentTurnDuration] = useState<number>(30);
+  const [tournamentTier, setTournamentTier] = useState<'bronze' | 'silver' | 'gold' | 'legend'>('gold');
+  const [tournamentStatus, setTournamentStatus] = useState<'registration' | 'active'>('registration');
+  const [tournamentPlayers, setTournamentPlayers] = useState('');
 
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -812,33 +825,83 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
       .catch(err => console.error(err));
   };
 
-  const handleCreateTournament = (e: React.FormEvent) => {
+  const handleSaveTournament = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tournamentName.trim()) return;
-
-    const list = tournamentPlayers.split(',').map(p => p.trim()).filter(Boolean);
-    if (list.length < 2) {
-      alert('Turnuva için en az 2 oyuncu tanımlamalısınız.');
+    if (!tournamentName.trim()) {
+      setNotification({ message: 'Lütfen turnuva adını giriniz.', type: 'error' });
       return;
     }
 
-    fetch(`${API_BASE_URL}/api/admin/tournaments/create`, {
+    fetch(`${API_BASE_URL}/api/admin/tournaments/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: tournamentName.trim(), participants: list })
+      body: JSON.stringify({
+        id: editingTournamentId || undefined,
+        name: tournamentName.trim(),
+        description: tournamentDescription.trim(),
+        format: tournamentFormat,
+        botDifficulty: tournamentBotDifficulty,
+        maxParticipants: Number(tournamentMaxParticipants),
+        allowBots: true,
+        entryFee: Number(tournamentEntryFee),
+        prizeCoins: Number(tournamentPrizeCoins),
+        prizeXp: Number(tournamentPrizeXp),
+        targetSets: Number(tournamentTargetSets),
+        turnDurationSeconds: Number(tournamentTurnDuration),
+        tier: tournamentTier,
+        icon: tournamentFormat === '4player' ? '👥' : (tournamentFormat === '2v2_team' ? '⚔️' : (tournamentTier === 'legend' ? '👑' : tournamentTier === 'gold' ? '🥇' : '🥉')),
+      })
     })
       .then(res => res.json())
       .then(data => {
         if (data.success) {
+          setEditingTournamentId(null);
           setTournamentName('');
+          setTournamentDescription('');
           setTournaments(data.tournaments);
-          setNotification({ message: `"${tournamentName}" turnuvası kuruldu!`, type: 'success' });
+          setNotification({ message: editingTournamentId ? 'Turnuva başarıyla güncellendi!' : `"${tournamentName}" turnuvası başarıyla oluşturuldu!`, type: 'success' });
+        } else {
+          setNotification({ message: data.error || 'İşlem başarısız.', type: 'error' });
         }
       })
-      .catch(err => console.error(err));
+      .catch(err => {
+        console.error(err);
+        setNotification({ message: 'Sunucu hatası.', type: 'error' });
+      });
+  };
+
+  const handleEditTournament = (t: any) => {
+    setEditingTournamentId(t.id);
+    setTournamentName(t.name || '');
+    setTournamentDescription(t.description || '');
+    setTournamentFormat(t.format || '1v1');
+    setTournamentBotDifficulty(t.botDifficulty || 'medium');
+    setTournamentMaxParticipants(t.maxParticipants || 8);
+    setTournamentEntryFee(t.entryFee || 100);
+    setTournamentPrizeCoins(t.prizeCoins || 1000);
+    setTournamentPrizeXp(t.prizeXp || 300);
+    setTournamentTargetSets(t.targetSets || 3);
+    setTournamentTurnDuration(t.turnDurationSeconds || 30);
+    setTournamentTier(t.tier || 'gold');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    setEditingTournamentId(null);
+    setTournamentName('');
+    setTournamentDescription('');
+    setTournamentFormat('1v1');
+    setTournamentBotDifficulty('medium');
+    setTournamentMaxParticipants(8);
+    setTournamentEntryFee(100);
+    setTournamentPrizeCoins(1000);
+    setTournamentPrizeXp(300);
+    setTournamentTargetSets(3);
+    setTournamentTurnDuration(30);
   };
 
   const handleDeleteTournament = (tournamentId: string) => {
+    if (!window.confirm('Bu turnuvayı silmek istediğinize emin misiniz?')) return;
     fetch(`${API_BASE_URL}/api/admin/tournaments/delete`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -935,7 +998,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
               activeTab === 'analytics' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
             }`}
           >
-            <span>������</span> Sistem Analitiği
+            <span>������</span> Sistem Analitiği
           </button>
           <button
             onClick={() => setActiveTab('rules')}
@@ -2160,166 +2223,279 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
           {activeTab === 'tournaments' && (
             <div className="space-y-6">
               <div>
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Turnuva Bracket Tasarımcısı & Canlı Yönetim Hub'ı</h3>
-                <p className="text-xs text-slate-500 mt-1">Yeni eleme usulü turnuvalar oluşturun, turları simüle edin, botları ilerletin ve şampiyonları ödüllendirin.</p>
+                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">🏆 Turnuva Fabrikası & Katalog Yöneticisi</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Oyuncuların oynayabileceği kişiye özel bot turnuvalarını yapılandırın. Formatları (1v1, 4 Kişilik, 2v2 Takım), bot seviyelerini, kuralları ve ödülleri dilediğiniz gibi belirleyin.
+                </p>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Form: Create tournament */}
-                <div className="lg:col-span-1 bg-slate-900/30 border border-slate-800 p-5 rounded-2xl space-y-4 h-fit">
-                  <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Turnuva Kurulumu</span>
-                  <form onSubmit={handleCreateTournament} className="space-y-3">
+                {/* Form: Create or Edit Tournament */}
+                <div className="lg:col-span-1 bg-slate-900/40 border border-slate-800 p-5 rounded-2xl space-y-4 h-fit">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                    <span className="text-xs text-slate-300 uppercase tracking-wider block font-bold">
+                      {editingTournamentId ? '✏️ Turnuvayı Düzenle' : '🏆 Yeni Turnuva Oluştur'}
+                    </span>
+                    {editingTournamentId && (
+                      <button
+                        onClick={handleCancelEdit}
+                        className="text-[10px] text-rose-400 hover:underline font-bold cursor-pointer"
+                      >
+                        İptal Et
+                      </button>
+                    )}
+                  </div>
+
+                  <form onSubmit={handleSaveTournament} className="space-y-3.5">
+                    {/* Turnuva Adı */}
                     <div className="space-y-1">
                       <label className="text-[10px] text-slate-500 uppercase font-bold">Turnuva Adı</label>
                       <input
                         type="text"
                         required
-                        placeholder="Örn: Yaz Sezonu Kupası"
+                        placeholder="Örn: 🥇 Şampiyonlar Arenası"
                         value={tournamentName}
                         onChange={(e) => setTournamentName(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500 font-bold"
+                      />
+                    </div>
+
+                    {/* Turnuva Açıklaması */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-500 uppercase font-bold">Açıklama</label>
+                      <input
+                        type="text"
+                        placeholder="Örn: 8 kişilik eleme kupası. Yeni taktikleri test edin!"
+                        value={tournamentDescription}
+                        onChange={(e) => setTournamentDescription(e.target.value)}
                         className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500"
                       />
                     </div>
+
+                    {/* Turnuva Formatı */}
                     <div className="space-y-1">
-                      <label className="text-[10px] text-slate-500 uppercase font-bold">Katılımcı İsimleri (Virgülle Ayırın)</label>
-                      <textarea
-                        required
-                        rows={4}
-                        value={tournamentPlayers}
-                        onChange={(e) => setTournamentPlayers(e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
-                      />
-                      <p className="text-[9px] text-slate-500">En az 2 katılımcı girin. "Bot" kelimesini içeren isimler otomatik olarak yapay zeka tarafından oynatılır.</p>
+                      <label className="text-[10px] text-slate-500 uppercase font-bold">Oyun Formatı</label>
+                      <select
+                        value={tournamentFormat}
+                        onChange={(e) => {
+                          const fmt = e.target.value as any;
+                          setTournamentFormat(fmt);
+                          if (fmt === '2v2_team' || fmt === '4player') {
+                            setTournamentMaxParticipants(4);
+                          } else {
+                            setTournamentMaxParticipants(8);
+                          }
+                        }}
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500"
+                      >
+                        <option value="1v1">🤺 1 vs 1 Düello Elemesi</option>
+                        <option value="4player">👥 4 Kişilik Masa Turnuvası (Masa Birincileri Finalde)</option>
+                        <option value="2v2_team">⚔️ 2 vs 2 Takım Şampiyonası (Bot Partner ile)</option>
+                      </select>
                     </div>
+
+                    {/* Bot Zorluk Seviyesi */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-amber-400 uppercase font-bold flex items-center gap-1">
+                        <span>🤖 Bot Zorluk Seviyesi</span>
+                      </label>
+                      <select
+                        value={tournamentBotDifficulty}
+                        onChange={(e) => setTournamentBotDifficulty(e.target.value as any)}
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500 font-bold"
+                      >
+                        <option value="easy">🟢 Kolay (Acemi / Yeni Başlayan Botlar)</option>
+                        <option value="medium">🟡 Orta (Standart Dengeli Botlar)</option>
+                        <option value="hard">🔴 Zor (Kurnaz / Taktikçi Botlar)</option>
+                        <option value="expert">🟣 Efsane / Grandmaster (Apex Usta Botlar)</option>
+                      </select>
+                    </div>
+
+                    {/* Oyuncu Sayısı & Kademe */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-500 uppercase font-bold">Katılımcı Sayısı</label>
+                        <select
+                          value={tournamentMaxParticipants}
+                          onChange={(e) => setTournamentMaxParticipants(Number(e.target.value))}
+                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500 font-bold"
+                        >
+                          {tournamentFormat === '2v2_team' ? (
+                            <>
+                              <option value={4}>4 Katılımcı (2 Takım - Doğrudan Final)</option>
+                              <option value={8}>8 Katılımcı (4 Takım - 2 Yarı Final + Final)</option>
+                              <option value={16}>16 Katılımcı (8 Takım - 4 Çeyrek + Yarı + Final)</option>
+                              <option value={32}>32 Katılımcı (16 Takım - Son 16 + Çeyrek + Final)</option>
+                              <option value={64}>64 Katılımcı (32 Takım - Büyük Takım Ligi)</option>
+                            </>
+                          ) : tournamentFormat === '4player' ? (
+                            <>
+                              <option value={4}>4 Katılımcı (1 Masa - Tek Maç Final)</option>
+                              <option value={8}>8 Katılımcı (2 Masa - Masaların 1.leri Finalde)</option>
+                              <option value={12}>12 Katılımcı (3 Masa - Masaların 1.leri Finalde)</option>
+                              <option value={16}>16 Katılımcı (4 Masa - Masaların 1.leri Finalde)</option>
+                              <option value={32}>32 Katılımcı (8 Masa - Masaların 1.leri Yarı/Final)</option>
+                              <option value={64}>64 Katılımcı (16 Masa - Büyük Masa Şampiyonası)</option>
+                            </>
+                          ) : (
+                            <>
+                              <option value={2}>2 Katılımcı (Tek Maç Düello)</option>
+                              <option value={4}>4 Katılımcı (2 Yarı Final + Final)</option>
+                              <option value={8}>8 Katılımcı (Çeyrek + Yarı + Final)</option>
+                              <option value={16}>16 Katılımcı (Son 16 + Çeyrek + Yarı + Final)</option>
+                              <option value={32}>32 Katılımcı (Son 32 + Son 16 + Çeyrek + Final)</option>
+                              <option value={64}>64 Katılımcı (Devasa 64 Kişilik Nakavt Ligi)</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-500 uppercase font-bold">Kademe / Tier</label>
+                        <select
+                          value={tournamentTier}
+                          onChange={(e) => setTournamentTier(e.target.value as any)}
+                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500 font-bold"
+                        >
+                          <option value="bronze">🥉 Bronz Arena</option>
+                          <option value="silver">🥈 Gümüş Kupa</option>
+                          <option value="gold">🥇 Şampiyonlar Kupası</option>
+                          <option value="legend">👑 Efsaneler Turnuvası</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Oyun Kuralları: Hedef Set & Tur Süresi */}
+                    <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-indigo-400 uppercase font-bold">Hedef Set</label>
+                        <select
+                          value={tournamentTargetSets}
+                          onChange={(e) => setTournamentTargetSets(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-100 focus:outline-none"
+                        >
+                          <option value={2}>2 Tam Set (Hızlı)</option>
+                          <option value={3}>3 Tam Set (Standart)</option>
+                          <option value={4}>4 Tam Set (Uzun / Takım)</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-indigo-400 uppercase font-bold">Hamle Süresi</label>
+                        <select
+                          value={tournamentTurnDuration}
+                          onChange={(e) => setTournamentTurnDuration(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 text-xs rounded-lg bg-slate-900 border border-slate-800 text-slate-100 focus:outline-none"
+                        >
+                          <option value={20}>20 Saniye (Blitz)</option>
+                          <option value={30}>30 Saniye (Standart)</option>
+                          <option value={45}>45 Saniye (Geniş)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Ödüller & Giriş Ücreti */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-500 uppercase font-bold">Giriş (🪙)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={tournamentEntryFee}
+                          onChange={(e) => setTournamentEntryFee(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-500 uppercase font-bold">Ödül (🪙)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={tournamentPrizeCoins}
+                          onChange={(e) => setTournamentPrizeCoins(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-500 uppercase font-bold">Ödül (XP)</label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={tournamentPrizeXp}
+                          onChange={(e) => setTournamentPrizeXp(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
                     <button
                       type="submit"
-                      className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold cursor-pointer transition-all"
+                      className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-amber-600 hover:from-indigo-500 hover:to-amber-500 text-white text-xs font-black uppercase tracking-wider cursor-pointer shadow-lg shadow-indigo-600/20 active:scale-95 transition-all"
                     >
-                      Turnuva Oluştur & Kurayı Çek
+                      {editingTournamentId ? '💾 Turnuva Değişikliklerini Kaydet' : '🏆 Turnuvayı Kataloğa Ekle'}
                     </button>
                   </form>
                 </div>
 
-                {/* Tournaments List & Live Status */}
+                {/* Tournaments List & Management */}
                 <div className="lg:col-span-2 space-y-4">
-                  <div className="bg-slate-900/30 border border-slate-800 rounded-2xl p-5 space-y-4">
-                    <span className="text-xs text-slate-400 uppercase tracking-wider block font-semibold">Kayıtlı Turnuvalar ({tournaments.length})</span>
+                  <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-slate-300 uppercase tracking-wider block font-bold">
+                        Aktif Turnuva Kataloğu ({tournaments.length})
+                      </span>
+                    </div>
+
                     <div className="space-y-3">
                       {tournaments.map((t) => (
                         <div
                           key={t.id}
-                          className={`p-4 rounded-xl border transition-all ${
-                            selectedTournamentId === t.id
-                              ? 'bg-indigo-950/20 border-indigo-500/50'
-                              : 'bg-slate-900/40 border-slate-800 hover:border-slate-750'
-                          }`}
+                          className="p-4 rounded-2xl border border-slate-800 bg-slate-950/60 hover:border-slate-700 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                         >
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <h4 className="font-bold text-slate-200 text-xs">{t.name}</h4>
-                                <span className={`px-2 py-0.5 rounded text-[8px] uppercase font-bold ${
-                                  t.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
-                                }`}>
-                                  {t.status === 'completed' ? 'Tamamlandı' : `Canlı (Tur ${t.currentRound})`}
-                                </span>
-                              </div>
-                              <p className="text-[10px] text-slate-500 mt-1">
-                                Katılımcı sayısı: {t.participants.length} | Oluşturulma: {new Date(t.createdAt).toLocaleDateString('tr-TR')}
-                              </p>
-                              {t.winner && (
-                                <p className="text-[10px] text-emerald-400 font-semibold mt-1">🏆 Kazanan Şampiyon: {t.winner}</p>
-                              )}
+                          <div className="space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-base">{t.icon || '🏆'}</span>
+                              <h4 className="font-extrabold text-white text-sm">{t.name}</h4>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                                {t.format === '4player' ? '👥 4 Kişilik Masa' : (t.format === '2v2_team' ? '⚔️ 2v2 Takım' : '🤺 1v1 Düello')}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                                Bot: {t.botDifficulty || 'medium'}
+                              </span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => setSelectedTournamentId(selectedTournamentId === t.id ? null : t.id)}
-                                className="px-3 py-1.5 rounded bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 text-[10px] font-bold cursor-pointer"
-                              >
-                                {selectedTournamentId === t.id ? 'Detay Kapat' : 'Görünüm & Kontrol'}
-                              </button>
-                              <button
-                                onClick={() => handleDeleteTournament(t.id)}
-                                className="p-1.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 cursor-pointer text-[10px]"
-                              >
-                                Sil
-                              </button>
+
+                            <p className="text-xs text-slate-400 leading-relaxed max-w-xl">
+                              {t.description || 'Kişiye özel tek oyunculu bot turnuvası.'}
+                            </p>
+
+                            <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono text-slate-400 pt-1">
+                              <span>🪙 Giriş: <strong className="text-white">{t.entryFee || 0}</strong></span>
+                              <span>🏆 Ödül: <strong className="text-amber-300">{t.prizeCoins || 1000} 🪙</strong> + <strong className="text-indigo-300">{t.prizeXp || 300} XP</strong></span>
+                              <span>👥 Katılımcı: <strong className="text-white">{t.maxParticipants || 8}</strong></span>
+                              <span>🎯 Hedef: <strong className="text-white">{t.targetSets || 3} Set</strong></span>
                             </div>
                           </div>
 
-                          {/* BRACKET VISUALIZER AND ADMIN GAMEPLAY SUBMISSIONS */}
-                          {selectedTournamentId === t.id && (
-                            <div className="mt-5 border-t border-slate-800/80 pt-4 space-y-4">
-                              <div className="flex items-center justify-between border-b border-slate-900 pb-2">
-                                <span className="text-[11px] uppercase tracking-wider text-indigo-400 font-bold">Turnuva Eşleşme Şeması (Tur {t.currentRound})</span>
-                                {t.status === 'active' && (
-                                  <button
-                                    onClick={() => handleAdvanceTournamentRound(t.id)}
-                                    className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded text-[10px] transition-all cursor-pointer shadow-md"
-                                  >
-                                    🔄 Bot Karşılaşmalarını Simüle Et & Turu İlerlet
-                                  </button>
-                                )}
-                              </div>
-
-                              <div className="space-y-3">
-                                {t.rounds.map((round: any) => (
-                                  <div key={round.roundNumber} className="bg-slate-950/40 p-3 rounded-xl border border-slate-900 space-y-2">
-                                    <div className="flex justify-between items-center text-[10px] text-slate-500 border-b border-slate-900 pb-1">
-                                      <span className="font-bold uppercase">Tur {round.roundNumber}</span>
-                                      <span>{round.matches.length} Karşılaşma</span>
-                                    </div>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                      {round.matches.map((m: any) => {
-                                        const isBotMatch = m.player1?.toLowerCase().includes('bot') && m.player2?.toLowerCase().includes('bot');
-                                        return (
-                                          <div key={m.id} className="p-2.5 rounded-lg bg-slate-900/60 border border-slate-800 text-[11px] flex flex-col justify-between">
-                                            <div className="flex items-center justify-between font-mono">
-                                              <span className={m.winner === m.player1 ? 'text-emerald-400 font-bold' : 'text-slate-300'}>
-                                                {m.player1} {m.winner === m.player1 && '🏆'}
-                                              </span>
-                                              <span className="text-slate-500 text-[9px]">VS</span>
-                                              <span className={m.winner === m.player2 ? 'text-emerald-400 font-bold' : 'text-slate-300'}>
-                                                {m.player2} {m.winner === m.player2 && '🏆'}
-                                              </span>
-                                            </div>
-
-                                            {m.status === 'completed' ? (
-                                              <div className="mt-2 text-[9px] text-slate-500 text-center bg-slate-950/50 py-1 rounded">
-                                                Sonuç: {m.score1} - {m.score2} (Kazanan: <span className="text-emerald-400 font-bold">{m.winner}</span>)
-                                              </div>
-                                            ) : (
-                                              <div className="mt-2.5 border-t border-slate-900 pt-2 flex flex-col gap-1">
-                                                <span className="text-[9px] text-slate-500 block">Maç Sonucunu Gir (Admin Kararı)</span>
-                                                <div className="flex items-center gap-1">
-                                                  <button
-                                                    onClick={() => handleAdminSubmitMatchScore(t.id, m.id, m.player1, 3, 1)}
-                                                    className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[9px] transition-all cursor-pointer"
-                                                  >
-                                                    {m.player1} Kazandır
-                                                  </button>
-                                                  <button
-                                                    onClick={() => handleAdminSubmitMatchScore(t.id, m.id, m.player2, 1, 3)}
-                                                    className="flex-1 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[9px] transition-all cursor-pointer"
-                                                  >
-                                                    {m.player2} Kazandır
-                                                  </button>
-                                                </div>
-                                              </div>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                          <div className="flex sm:flex-col items-center gap-2 shrink-0 justify-end">
+                            <button
+                              onClick={() => handleEditTournament(t)}
+                              className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold cursor-pointer transition-all active:scale-95"
+                            >
+                              ✏️ Düzenle
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTournament(t.id)}
+                              className="px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold cursor-pointer transition-all active:scale-95"
+                            >
+                              🗑️ Sil
+                            </button>
+                          </div>
                         </div>
                       ))}
                       {tournaments.length === 0 && (
-                        <p className="text-slate-500 text-center py-6 text-xs">Aktif veya geçmiş turnuva kaydı bulunmamaktadır.</p>
+                        <p className="text-slate-500 text-center py-6 text-xs">Aktif veya kayıtlı turnuva şablonu bulunmamaktadır.</p>
                       )}
                     </div>
                   </div>
