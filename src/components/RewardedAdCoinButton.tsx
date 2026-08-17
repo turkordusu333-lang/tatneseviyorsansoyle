@@ -23,7 +23,7 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
   className = '',
 }) => {
   const rewardCoins = adminSettings?.rewardedAdCoinAmount ?? 100;
-  const isTesting = adminSettings?.wheelAdMobTestingMode !== false;
+  const isTesting = adminSettings?.wheelAdMobTestingMode === true;
   const androidAdUnitId = adminSettings?.wheelAdMobAndroidAdUnitId || 'ca-app-pub-5045652074166668/6893680557';
   const iosAdUnitId = adminSettings?.wheelAdMobiOSAdUnitId || 'ca-app-pub-3940256099942544/1712485313';
   const adDuration = adminSettings?.wheelAdDurationSeconds ?? 8;

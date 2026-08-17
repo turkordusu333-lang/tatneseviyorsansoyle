@@ -496,7 +496,7 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          onClick={(e) => removeSavedAccount(acc.username, e)}
+                          onClick={(e) => handleRemoveSavedAccount(e, acc.username)}
                           title={t('remove_saved_account')}
                           className="w-6 h-6 rounded-lg bg-zinc-800/80 hover:bg-rose-500/20 text-zinc-500 hover:text-rose-400 text-xs flex items-center justify-center transition-all cursor-pointer border border-transparent hover:border-rose-500/30 shrink-0"
                         >

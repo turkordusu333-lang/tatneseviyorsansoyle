@@ -35,16 +35,39 @@ class SoundSystem {
     return 1.0 + Math.min((this.comboCount - 1) * 0.12, 0.48);
   }
 
+  public resumeAudioContext(): void {
+    if (this.ctx && this.ctx.state === 'suspended') {
+      this.ctx.resume().catch(() => {});
+    }
+  }
+
   private initCtx() {
     if (!this.ctx) {
       // Create audio context lazily after user interaction
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioContextClass) {
         this.ctx = new AudioContextClass();
+        
+        // Auto-resume audio when app returns to foreground / user interacts
+        if (typeof window !== 'undefined') {
+          const handleResume = () => {
+            if (this.ctx && this.ctx.state === 'suspended') {
+              this.ctx.resume().catch(() => {});
+            }
+          };
+          window.addEventListener('focus', handleResume);
+          window.addEventListener('pointerdown', handleResume, { passive: true });
+          window.addEventListener('touchstart', handleResume, { passive: true });
+          document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+              handleResume();
+            }
+          });
+        }
       }
     }
     if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
     return this.ctx;
   }

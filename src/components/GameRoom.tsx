@@ -6270,7 +6270,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     socketRef.current?.send(JSON.stringify({ type: 'start_game', userId: profile.id, roomId }));
   };
 
+  const lastAfkResetTimeRef = React.useRef(0);
   const resetServerAfkTimer = () => {
+    const now = Date.now();
+    if (now - lastAfkResetTimeRef.current < 10000) return;
+    lastAfkResetTimeRef.current = now;
+
     if (!isOffline && socketRef.current?.readyState === WebSocket.OPEN) {
       socketRef.current.send(JSON.stringify({ type: 'reset_afk', userId: profile.id, roomId }));
     }

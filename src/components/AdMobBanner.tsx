@@ -20,8 +20,8 @@ export const AdMobBanner: React.FC<AdMobBannerProps> = ({
   const [adLoaded, setAdLoaded] = useState(false);
   const [adError, setAdError] = useState<string | null>(null);
 
-  // Settings
-  const isTesting = adminSettings?.bannerAdMobTestingMode ?? adminSettings?.wheelAdMobTestingMode ?? true;
+  // Settings (Defaults to false for real AdMob production ads)
+  const isTesting = adminSettings?.bannerAdMobTestingMode === true || adminSettings?.wheelAdMobTestingMode === true;
   const isBannerEnabled = adminSettings?.bannerAdMobEnabled !== false;
   
   // Ad Unit IDs

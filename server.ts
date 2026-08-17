@@ -388,32 +388,50 @@ async function loadUsers(): Promise<Record<string, UserProfile>> {
   return users;
 }
 
-async function saveUsers(users: Record<string, UserProfile>): Promise<void> {
-  // 1. Always save to local backup file first for durability
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
-  } catch (e) {
-    console.error('[Database] Local fallback save error:', e);
-  }
+// Promise-based async queue for file writing to prevent race conditions and concurrent write corruption
+let userSaveQueue: Promise<void> = Promise.resolve();
 
-  // 2. Save/Upsert to Supabase
-  if (supabase) {
+async function saveUsers(users: Record<string, UserProfile>): Promise<void> {
+  userSaveQueue = userSaveQueue.then(async () => {
+    // 1. Atomic write to local backup file using a temporary file first
     try {
-      const rows = Object.values(users).map((u) => ({
-        id: u.id,
-        username: u.username,
-        profile_data: u
-      }));
-      const { error } = await supabase.from('users').upsert(rows);
-      if (error) {
-        handleSupabaseError(error, 'saveUsers');
-      } else {
-        console.log(`[Database] Successfully saved ${rows.length} users to Supabase.`);
+      const tempFile = `${USERS_FILE}.tmp.${Date.now()}`;
+      const payload = JSON.stringify(users, null, 2);
+      fs.writeFileSync(tempFile, payload, 'utf8');
+      fs.renameSync(tempFile, USERS_FILE);
+    } catch (e) {
+      console.error('[Database] Local fallback save error:', e);
+      // Direct fallback if rename fails
+      try {
+        fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+      } catch (err) {
+        console.error('[Database] Critical error saving users file:', err);
       }
-    } catch (e: any) {
-      console.log('[Database] Exception handled saving users. Fallback active.');
     }
-  }
+
+    // 2. Save/Upsert to Supabase if connected
+    if (supabase) {
+      try {
+        const rows = Object.values(users).map((u) => ({
+          id: u.id,
+          username: u.username,
+          profile_data: u
+        }));
+        const { error } = await supabase.from('users').upsert(rows);
+        if (error) {
+          handleSupabaseError(error, 'saveUsers');
+        } else {
+          console.log(`[Database] Successfully saved ${rows.length} users to Supabase.`);
+        }
+      } catch (e: any) {
+        console.log('[Database] Exception handled saving users. Fallback active.');
+      }
+    }
+  }).catch((err) => {
+    console.error('[Database] Error in userSaveQueue processing:', err);
+  });
+
+  return userSaveQueue;
 }
 
 const ADMIN_SETTINGS_FILE = path.join(DATA_DIR, 'admin_settings.json');
@@ -605,12 +623,23 @@ async function loadAdminData() {
   }
 }
 
-async function saveGlobalStoreItems() {
+function safeWriteJsonFile(filePath: string, data: any) {
   try {
-    fs.writeFileSync(GLOBAL_STORE_ITEMS_FILE, JSON.stringify(globalStoreItems, null, 2), 'utf-8');
+    const tempFile = `${filePath}.tmp.${Date.now()}`;
+    const payload = JSON.stringify(data, null, 2);
+    fs.writeFileSync(tempFile, payload, 'utf8');
+    fs.renameSync(tempFile, filePath);
   } catch (e) {
-    console.error('[Database] Failed to save local store items:', e);
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    } catch (err) {
+      console.error(`[Database] Failed to write file ${filePath}:`, err);
+    }
   }
+}
+
+async function saveGlobalStoreItems() {
+  safeWriteJsonFile(GLOBAL_STORE_ITEMS_FILE, globalStoreItems);
   if (supabase) {
     try {
       const { error } = await supabase.from('admin_settings').upsert({ id: 'store_items', settings: globalStoreItems });
@@ -625,11 +654,7 @@ async function saveGlobalStoreItems() {
 
 async function saveAdminSettings(settings: any) {
   globalAdminSettings = { ...globalAdminSettings, ...settings };
-  try {
-    fs.writeFileSync(ADMIN_SETTINGS_FILE, JSON.stringify(globalAdminSettings, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('[Database] Failed to save local admin settings:', e);
-  }
+  safeWriteJsonFile(ADMIN_SETTINGS_FILE, globalAdminSettings);
   if (supabase) {
     try {
       const { error } = await supabase.from('admin_settings').upsert({ id: 'global', settings: globalAdminSettings });
@@ -643,11 +668,7 @@ async function saveAdminSettings(settings: any) {
 }
 
 async function saveGlobalQuests() {
-  try {
-    fs.writeFileSync(GLOBAL_QUESTS_FILE, JSON.stringify(globalQuests, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('[Database] Failed to save local global quests:', e);
-  }
+  safeWriteJsonFile(GLOBAL_QUESTS_FILE, globalQuests);
   if (supabase) {
     try {
       await supabase.from('global_quests').delete().neq('id', 'dummy');
@@ -671,19 +692,11 @@ async function saveGlobalQuests() {
 }
 
 async function saveGlobalAchievements() {
-  try {
-    fs.writeFileSync(GLOBAL_ACHIEVEMENTS_FILE, JSON.stringify(globalAchievements, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('[Database] Failed to save local global achievements:', e);
-  }
+  safeWriteJsonFile(GLOBAL_ACHIEVEMENTS_FILE, globalAchievements);
 }
 
 async function saveTournaments() {
-  try {
-    fs.writeFileSync(TOURNAMENTS_FILE, JSON.stringify(activeTournaments, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('[Database] Failed to save local tournaments:', e);
-  }
+  safeWriteJsonFile(TOURNAMENTS_FILE, activeTournaments);
 }
 
 // In-Memory active rooms and tournaments state
@@ -767,6 +780,43 @@ let activeTournaments: Tournament[] = [
     status: 'active',
   },
 ];
+
+async function submitTournamentMatchInternal(
+  tournamentId: string,
+  matchId: string,
+  winnerName: string,
+  score1: number = 3,
+  score2: number = 0
+): Promise<boolean> {
+  try {
+    const tournament = activeTournaments.find((t) => t.id === tournamentId);
+    if (!tournament) return false;
+
+    let foundMatch: TournamentMatch | undefined;
+    for (const round of tournament.rounds) {
+      foundMatch = round.matches.find((m) => m.id === matchId || m.id.includes(matchId));
+      if (foundMatch) break;
+    }
+
+    if (!foundMatch && tournament.rounds.length > 0) {
+      const currentRound = tournament.rounds[tournament.rounds.length - 1];
+      foundMatch = currentRound?.matches?.find((m) => m.id === matchId || m.id.includes(matchId));
+    }
+
+    if (foundMatch) {
+      foundMatch.winner = winnerName;
+      foundMatch.score1 = score1;
+      foundMatch.score2 = score2;
+      foundMatch.status = 'completed';
+      await saveTournaments();
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.error('[TournamentEngine] Error submitting match result:', e);
+    return false;
+  }
+}
 
 async function startServer() {
   const app = express();
@@ -1933,6 +1983,22 @@ async function startServer() {
     res.json({ success: true, tournament, tournaments: activeTournaments });
   });
 
+  // Admin / Manual Submit Match Result for Tournament
+  app.post('/api/tournaments/match/submit', async (req, res) => {
+    const { tournamentId, matchId, winner, winnerName, score1 = 3, score2 = 0 } = req.body;
+    const finalWinner = winnerName || winner;
+    if (!tournamentId || !matchId || !finalWinner) {
+      return res.status(400).json({ error: 'Eksik turnuva parametreleri.' });
+    }
+
+    const success = await submitTournamentMatchInternal(tournamentId, matchId, finalWinner, Number(score1), Number(score2));
+    if (!success) {
+      return res.status(404).json({ error: 'Turnuva veya maç bulunamadı.' });
+    }
+
+    res.json({ success: true, tournaments: activeTournaments });
+  });
+
   // Get system & database statistics
   app.get('/api/admin/stats', async (req, res) => {
     const users = await loadUsers();
@@ -2823,7 +2889,27 @@ async function startServer() {
     }
   }
 
-  wss.on('connection', (ws) => {
+  // WebSocket Heartbeat & Dead Client Detection
+  const heartbeatInterval = setInterval(() => {
+    wss.clients.forEach((wsClient: any) => {
+      if (wsClient.isAlive === false) {
+        return wsClient.terminate();
+      }
+      wsClient.isAlive = false;
+      wsClient.ping();
+    });
+  }, 30000);
+
+  wss.on('close', () => {
+    clearInterval(heartbeatInterval);
+  });
+
+  wss.on('connection', (ws: any) => {
+    ws.isAlive = true;
+    ws.on('pong', () => {
+      ws.isAlive = true;
+    });
+
     let clientId = `client-${Math.random().toString(36).substr(2, 5)}`;
 
     async function processClientMessage(payload: any, userId: string, roomId: string | undefined, clientId: string, ws: WebSocket) {
@@ -4312,12 +4398,39 @@ async function startServer() {
           }
 
 
-          case 'reset_afk':
+          case 'reset_afk': {
+            const match = activeMatches[roomId!];
+            if (match) {
+              const player = match.players.find(p => p.id === userId || (p as any).username === payload.username);
+              if (player) {
+                (player as any).consecutiveAfkTurns = 0;
+                const wasAfk = player.isDisconnected || (player as any).isAfk || (player as any).hasAbandoned;
+                if (wasAfk) {
+                  player.isDisconnected = false;
+                  (player as any).isAfk = false;
+                  (player as any).hasAbandoned = false;
+                  if (match.players[match.turnIndex]?.id === player.id) {
+                    clearBotTurnTimeout(roomId!);
+                    match.turnStartedAt = Date.now();
+                  }
+                  match.logs.push({
+                    id: `afk-return-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    message: `🟢 ${player.username} oyuna geri döndü!`,
+                    timestamp: Date.now(),
+                  });
+                  broadcastToRoom(roomId!, { type: 'room_update', matchState: match });
+                }
+              }
+            }
+            break;
+          }
+
           case 'return_from_afk': {
             const match = activeMatches[roomId!];
             if (match) {
               const player = match.players.find(p => p.id === userId || (p as any).username === payload.username);
               if (player) {
+                const wasAfk = player.isDisconnected || (player as any).isAfk || (player as any).hasAbandoned;
                 player.isDisconnected = false;
                 (player as any).isAfk = false;
                 (player as any).hasAbandoned = false;
@@ -4334,12 +4447,14 @@ async function startServer() {
                     match.actionRequestStartedAt = Date.now();
                   }
                 }
-                match.logs.push({
-                  id: `afk-return-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                  message: `🟢 ${player.username} oyuna geri döndü!`,
-                  timestamp: Date.now(),
-                });
-                broadcastToRoom(roomId!, { type: 'room_update', matchState: match });
+                if (wasAfk) {
+                  match.logs.push({
+                    id: `afk-return-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                    message: `🟢 ${player.username} oyuna geri döndü!`,
+                    timestamp: Date.now(),
+                  });
+                  broadcastToRoom(roomId!, { type: 'room_update', matchState: match });
+                }
               }
             }
             break;

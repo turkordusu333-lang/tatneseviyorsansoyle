@@ -30,8 +30,8 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
   const cooldownMinutes = adminSettings?.wheelCooldownMinutes ?? 60;
   const adDuration = adminSettings?.wheelAdDurationSeconds ?? 8;
 
-  // Google AdMob settings
-  const isTesting = adminSettings?.wheelAdMobTestingMode !== false;
+  // Google AdMob settings (Defaults to false for real AdMob production ads)
+  const isTesting = adminSettings?.wheelAdMobTestingMode === true;
   const androidAdUnitId = adminSettings?.wheelAdMobAndroidAdUnitId || 'ca-app-pub-5045652074166668/6893680557';
   const iosAdUnitId = adminSettings?.wheelAdMobiOSAdUnitId || 'ca-app-pub-3940256099942544/1712485313';
   
