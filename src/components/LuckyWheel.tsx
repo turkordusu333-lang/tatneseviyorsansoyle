@@ -189,21 +189,16 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
   const startSpinFlow = () => {
     if (isSpinning || isNativeAdLoading) return;
 
-    if (!canFreeSpin) {
-      // Must watch an ad to spin!
-      sounds.playPlay(profile.settings);
-      
-      if (Capacitor.isNativePlatform()) {
-        playNativeAdMobAd();
-      } else {
-        // Fallback: Web simulation
-        setAdTimer(adDuration);
-        setShowAdModal(true);
-        setAdSkippedWarning(false);
-      }
+    // Trigger Ad flow (Native AdMob on Mobile, Mock Video Player on Web)
+    sounds.playPlay(profile.settings);
+    
+    if (Capacitor.isNativePlatform()) {
+      playNativeAdMobAd();
     } else {
-      // Free spin!
-      triggerSpin(false);
+      // Web simulated ad countdown
+      setAdTimer(adDuration);
+      setShowAdModal(true);
+      setAdSkippedWarning(false);
     }
   };
 
@@ -218,50 +213,42 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
     const selectedReward = pickWeightedReward();
     
     // Calculate angle: 6 sectors, each sector is 60 degrees.
-    // Wedge 1 is 0-60 deg, centered at 30 deg.
-    // Wedge 2 is 60-120 deg, centered at 90 deg.
-    // Wedge 3 is 120-180 deg, centered at 150 deg.
-    // Wedge 4 is 180-240 deg, centered at 210 deg.
-    // Wedge 5 is 240-300 deg, centered at 270 deg.
-    // Wedge 6 is 300-360 deg, centered at 330 deg.
-    // Target pointer is at the very top (270 degrees in standard polar coords, or let's assume SVG rotated so top is 0 deg offset).
-    // Let's design the pointer at 0 deg (top).
-    // If pointer is at 0 deg (top), winning wedge is at index `selectedIdx`.
-    // The degree to align index `idx` to the top is: `360 - (idx * 60) - 30`.
+    // Wedge idx has center at (idx * 60) + 30 degrees from 12 o'clock (top).
+    // To align this wedge center with top pointer at 0 deg:
     const selectedIdx = rewards.findIndex(r => r.id === selectedReward.id);
     const targetSectorCenter = (selectedIdx * 60) + 30;
     const alignWithTopDeg = (360 - targetSectorCenter) % 360;
 
-    // Minimum 6 full spins (2160 degrees) for visual suspense
-    const extraSpins = 360 * 7; 
-    const finalAngle = extraSpins + alignWithTopDeg;
+    // Cumulative angle calculation ensuring smooth forward spinning on repeat spins
+    const currentRotMod = ((wheelAngle % 360) + 360) % 360;
+    let diff = alignWithTopDeg - currentRotMod;
+    if (diff <= 0) diff += 360;
+
+    // Minimum 6 full spins (2160 degrees) + diff for realistic suspense
+    const extraSpins = 360 * 6; 
+    const finalAngle = wheelAngle + extraSpins + diff;
 
     setWheelAngle(finalAngle);
 
-    // Audio click ticker during spin
-    let lastTickAngle = 0;
+    // Audio click ticker during spin that gradually decelerates
+    if (spinIntervalRef.current) clearTimeout(spinIntervalRef.current);
+    
     const startTime = Date.now();
     const duration = 5000; // 5 seconds spin animation
-
-    if (spinIntervalRef.current) clearInterval(spinIntervalRef.current);
     
-    spinIntervalRef.current = setInterval(() => {
+    const playTickSequence = () => {
       const elapsed = Date.now() - startTime;
-      if (elapsed >= duration) {
-        clearInterval(spinIntervalRef.current);
-        return;
-      }
+      if (elapsed >= duration) return;
 
-      // Cubic ease-out approximation for angle calculation to sync clicks
-      const t = elapsed / duration;
-      const easeOut = 1 - Math.pow(1 - t, 3);
-      const currentAngle = finalAngle * easeOut;
+      sounds.playDraw(profile.settings);
 
-      if (currentAngle - lastTickAngle >= 30) {
-        sounds.playDraw(profile.settings);
-        lastTickAngle = currentAngle;
-      }
-    }, 30);
+      // Decelerating tick interval
+      const progress = elapsed / duration;
+      const nextDelay = 45 + Math.pow(progress, 2.8) * 380; // from 45ms to ~425ms
+      spinIntervalRef.current = setTimeout(playTickSequence, nextDelay);
+    };
+
+    spinIntervalRef.current = setTimeout(playTickSequence, 45);
 
     // Stop spin and award player
     setTimeout(() => {
@@ -286,11 +273,7 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
         updatedProfile.level = Math.floor(updatedProfile.xp / 500) + 1;
       }
 
-      // Only set cooldown timestamp if it was a free spin (keeps it fair, ads are always spinnable!)
-      if (!isFromAd) {
-        updatedProfile.lastLuckyWheelSpin = new Date().toISOString();
-      }
-
+      updatedProfile.lastLuckyWheelSpin = new Date().toISOString();
       onUpdateProfile(updatedProfile);
     }, duration + 200);
   };
@@ -309,14 +292,18 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
     return (
       <div className="relative w-72 h-72 md:w-80 md:h-80 mx-auto flex items-center justify-center">
         {/* Outer glowing gold ring */}
-        <div className="absolute inset-0 rounded-full bg-gradient-to-b from-yellow-400 to-amber-600 p-1 shadow-[0_0_40px_rgba(234,179,8,0.25)] animate-pulse">
+        <div className="absolute inset-0 rounded-full bg-gradient-to-b from-yellow-400 via-amber-500 to-yellow-600 p-1.5 shadow-[0_0_40px_rgba(234,179,8,0.3)]">
           <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center overflow-hidden relative">
             
-            {/* Spinning Canvas/SVG Container */}
+            {/* Spinning Canvas/SVG Container with Framer Motion animate */}
             <motion.div
-              style={{ rotate: wheelAngle }}
-              transition={isSpinning ? { duration: 5, ease: [0.25, 0.1, 0.25, 1] } : { duration: 0 }}
-              className="w-full h-full relative"
+              animate={{ rotate: wheelAngle }}
+              transition={
+                isSpinning 
+                  ? { duration: 5, ease: [0.15, 0.9, 0.2, 1] } 
+                  : { duration: 0 }
+              }
+              className="w-full h-full relative origin-center"
             >
               <svg viewBox="0 0 200 200" className="w-full h-full">
                 {rewards.map((reward, idx) => {
@@ -372,17 +359,21 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
           </div>
         </div>
 
-        {/* Center gold pointer peg (Top indicator) */}
-        <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
-          <div className="w-0 h-0 border-l-[14px] border-l-transparent border-r-[14px] border-r-transparent border-t-[22px] border-t-yellow-400 drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]" />
-          <div className="w-2.5 h-2.5 rounded-full bg-amber-500 border border-slate-900 -mt-1" />
-        </div>
+        {/* Center gold pointer peg (Top indicator) with dynamic flick animation */}
+        <motion.div 
+          animate={isSpinning ? { rotate: [-10, 6, -8, 4, 0] } : { rotate: 0 }}
+          transition={isSpinning ? { repeat: Infinity, duration: 0.15, ease: 'easeInOut' } : { duration: 0.2 }}
+          className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center origin-top pointer-events-none"
+        >
+          <div className="w-0 h-0 border-l-[14px] border-l-transparent border-r-[14px] border-r-transparent border-t-[24px] border-t-yellow-400 drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]" />
+          <div className="w-3 h-3 rounded-full bg-amber-500 border-2 border-slate-950 -mt-1.5 shadow-md" />
+        </motion.div>
 
         {/* Center hub button */}
         <button
-          disabled={isSpinning || isNativeAdLoading || (!canFreeSpin && !isEnabled)}
+          disabled={isSpinning || isNativeAdLoading || !isEnabled}
           onClick={startSpinFlow}
-          className="absolute z-10 w-16 h-16 rounded-full bg-gradient-to-b from-yellow-300 via-amber-500 to-yellow-600 border-4 border-slate-950 flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all focus:outline-none disabled:opacity-50 disabled:scale-100 disabled:pointer-events-none"
+          className="absolute z-10 w-16 h-16 rounded-full bg-gradient-to-b from-yellow-300 via-amber-500 to-yellow-600 border-4 border-slate-950 flex items-center justify-center shadow-2xl hover:scale-105 active:scale-95 transition-all focus:outline-none disabled:opacity-50 disabled:scale-100 disabled:pointer-events-none cursor-pointer"
         >
           <div className="w-full h-full flex flex-col items-center justify-center">
             <RotateCw className={`w-6 h-6 text-slate-950 ${isSpinning || isNativeAdLoading ? 'animate-spin' : ''}`} />
@@ -432,7 +423,7 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
               <button
                 onClick={onClose}
                 disabled={isSpinning}
-                className="absolute top-5 right-5 text-slate-400 hover:text-slate-100 p-2 rounded-xl hover:bg-slate-800/50 transition focus:outline-none disabled:opacity-20"
+                className="absolute top-5 right-5 text-slate-400 hover:text-slate-100 p-2 rounded-xl hover:bg-slate-800/50 transition focus:outline-none disabled:opacity-20 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -460,7 +451,7 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
                   </div>
                   <button
                     onClick={() => setAdmobError(null)}
-                    className="p-1 px-2.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 font-extrabold transition text-[10px] uppercase"
+                    className="p-1 px-2.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 font-extrabold transition text-[10px] uppercase cursor-pointer"
                   >
                     Kapat
                   </button>
@@ -468,48 +459,23 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
               )}
 
               {/* Wheel graphics */}
-              <div className="py-4">
+              <div className="py-2">
                 {renderWheel()}
               </div>
 
               {/* Action and Timing Controls */}
               <div className="space-y-3">
-                {canFreeSpin ? (
-                  <button
-                    onClick={startSpinFlow}
-                    disabled={isSpinning}
-                    className="w-full py-4 bg-gradient-to-r from-yellow-400 via-amber-500 to-yellow-600 hover:from-yellow-300 hover:to-amber-500 text-slate-950 font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/15 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                  >
-                    <RotateCw className="w-4 h-4 animate-spin-slow" />
-                    {t('spin', profile)}
-                  </button>
-                ) : (
-                  <div className="space-y-3">
-                    {/* Cooldown Timer Alert */}
-                    <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950/40 border border-white/5 text-slate-300 text-xs">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span>Ücretsiz Çevirme Sırası Bekleniyor</span>
-                      </div>
-                      <span className="font-mono font-black text-amber-400 text-sm">
-                        {cooldownRemaining}
-                      </span>
-                    </div>
-
-                    {/* Ad Watch Bypass Button */}
-                    <button
-                      onClick={startSpinFlow}
-                      disabled={isSpinning}
-                      className="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-emerald-500/15 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-                    >
-                      <Tv className="w-4 h-4 text-emerald-100 animate-bounce" />
-                      {t('watch_ad_to_spin', profile)}
-                    </button>
-                  </div>
-                )}
+                <button
+                  onClick={startSpinFlow}
+                  disabled={isSpinning || isNativeAdLoading || !isEnabled}
+                  className="w-full py-4 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
+                >
+                  <Tv className="w-5 h-5 text-slate-950 animate-bounce" />
+                  <span>{t('watch_ad_to_spin', profile) || 'Reklam İzle ve Çevir'}</span>
+                </button>
                 
                 <span className="block text-[10px] text-slate-500 text-center">
-                  * Sponsorlu reklamlar tamamen sanal olup oyun akışını kesintisiz hızlandırır.
+                  * Sponsorlu reklamı izleyerek anında şans çarkını çevirip ödül kazanabilirsiniz.
                 </span>
               </div>
             </motion.div>

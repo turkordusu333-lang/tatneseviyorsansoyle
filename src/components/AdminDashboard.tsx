@@ -72,6 +72,9 @@ interface AdminSettings {
   bannerAdMobAndroidAdUnitId?: string;
   bannerAdMobiOSAdUnitId?: string;
   bannerAdMobTestingMode?: boolean;
+  adSenseEnabled?: boolean;
+  adSenseClientId?: string;
+  adSenseBannerSlotId?: string;
 }
 
 interface Stats {
@@ -85,10 +88,83 @@ interface Stats {
 
 interface Props {
   onSettingsUpdated?: (newSettings: AdminSettings) => void;
+  onLogout?: () => void;
 }
 
-export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'rules' | 'players' | 'quests' | 'achievements' | 'tournaments' | 'translations' | 'voices' | 'shop'>('analytics');
+export const getAdminHeaders = (extra: Record<string, string> = {}) => {
+  const token = localStorage.getItem('deal_master_admin_token') || 'deal-master-admin-token-2026-auth';
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json',
+    ...extra
+  };
+};
+
+export const getAdminAuthHeader = () => {
+  const token = localStorage.getItem('deal_master_admin_token') || 'deal-master-admin-token-2026-auth';
+  return {
+    'Authorization': `Bearer ${token}`
+  };
+};
+
+export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout }) => {
+  const [activeTab, setActiveTab] = useState<'analytics' | 'rules' | 'security' | 'players' | 'quests' | 'achievements' | 'tournaments' | 'translations' | 'voices' | 'shop'>('analytics');
+  
+  // Password Change state
+  const [currentAdminPassword, setCurrentAdminPassword] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [confirmAdminPassword, setConfirmAdminPassword] = useState('');
+  const [passwordChangeLoading, setPasswordChangeLoading] = useState(false);
+  const [passwordChangeMsg, setPasswordChangeMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const handleChangeAdminPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordChangeMsg(null);
+
+    if (!currentAdminPassword.trim()) {
+      setPasswordChangeMsg({ type: 'error', text: 'Lütfen mevcut yönetici şifrenizi giriniz.' });
+      return;
+    }
+    if (!newAdminPassword.trim()) {
+      setPasswordChangeMsg({ type: 'error', text: 'Lütfen yeni yönetici şifrenizi giriniz.' });
+      return;
+    }
+    if (newAdminPassword.trim().length < 4) {
+      setPasswordChangeMsg({ type: 'error', text: 'Yeni şifre en az 4 karakter olmalıdır.' });
+      return;
+    }
+    if (newAdminPassword !== confirmAdminPassword) {
+      setPasswordChangeMsg({ type: 'error', text: 'Yeni şifreler birbiriyle eşleşmiyor!' });
+      return;
+    }
+
+    setPasswordChangeLoading(true);
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/change-password`, {
+        method: 'POST',
+        headers: getAdminHeaders(),
+        body: JSON.stringify({
+          currentPassword: currentAdminPassword.trim(),
+          newPassword: newAdminPassword.trim()
+        })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPasswordChangeMsg({ type: 'success', text: 'Yönetici şifreniz başarıyla güncellendi!' });
+        setNotification({ message: 'Yönetici şifreniz başarıyla güncellendi!', type: 'success' });
+        setCurrentAdminPassword('');
+        setNewAdminPassword('');
+        setConfirmAdminPassword('');
+      } else {
+        setPasswordChangeMsg({ type: 'error', text: data.error || 'Şifre değiştirilemedi.' });
+      }
+    } catch (err) {
+      console.error(err);
+      setPasswordChangeMsg({ type: 'error', text: 'Sunucuyla bağlantı kurulamadı.' });
+    } finally {
+      setPasswordChangeLoading(false);
+    }
+  };
   const [settings, setSettings] = useState<AdminSettings>({
     enable3DCardFlip: true,
     enablePropertySetGlow: true,
@@ -136,7 +212,10 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     bannerAdMobEnabled: true,
     bannerAdMobAndroidAdUnitId: 'ca-app-pub-5045652074166668/1473978700',
     bannerAdMobiOSAdUnitId: '',
-    bannerAdMobTestingMode: true
+    bannerAdMobTestingMode: true,
+    adSenseEnabled: true,
+    adSenseClientId: 'ca-pub-5045652074166668',
+    adSenseBannerSlotId: ''
   });
 
   const [stats, setStats] = useState<Stats>({
@@ -235,7 +314,9 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   const [uploadLoading, setUploadLoading] = useState<string | null>(null);
 
   const fetchVoiceList = () => {
-    fetch(`${API_BASE_URL}/api/admin/voice-list`)
+    fetch(`${API_BASE_URL}/api/admin/voice-list`, {
+      headers: getAdminHeaders()
+    })
       .then((res) => {
         if (!res.ok) throw new Error('API not available yet');
         return res.json();
@@ -271,7 +352,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
 
       fetch(`${API_BASE_URL}/api/admin/upload-voice`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders(),
         body: JSON.stringify({
           lang,
           filename: item.filename,
@@ -505,7 +586,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
 
     fetch(`${API_BASE_URL}${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify(payload)
     })
       .then((res) => res.json())
@@ -532,7 +613,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
 
     fetch(`${API_BASE_URL}/api/admin/shop/delete`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({ itemId })
     })
       .then((res) => res.json())
@@ -562,7 +643,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
       const base64Data = reader.result as string;
       fetch(`${API_BASE_URL}/api/admin/shop/upload-media`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAdminHeaders(),
         body: JSON.stringify({
           filename: file.name,
           base64Data
@@ -724,7 +805,9 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   };
 
   const fetchSettings = () => {
-    fetch(`${API_BASE_URL}/api/admin/settings`)
+    fetch(`${API_BASE_URL}/api/admin/settings`, {
+      headers: getAdminHeaders()
+    })
       .then(res => res.json())
       .then(data => {
         if (data) setSettings(data);
@@ -733,7 +816,9 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   };
 
   const fetchStats = () => {
-    fetch(`${API_BASE_URL}/api/admin/stats`)
+    fetch(`${API_BASE_URL}/api/admin/stats`, {
+      headers: getAdminHeaders()
+    })
       .then(res => res.json())
       .then(data => {
         if (data) setStats(data);
@@ -742,7 +827,9 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   };
 
   const fetchPlayers = () => {
-    fetch(`${API_BASE_URL}/api/admin/players`)
+    fetch(`${API_BASE_URL}/api/admin/players`, {
+      headers: getAdminHeaders()
+    })
       .then(res => res.json())
       .then(data => {
         if (data) setPlayers(data);
@@ -751,7 +838,9 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   };
 
   const fetchQuests = () => {
-    fetch(`${API_BASE_URL}/api/admin/quests`)
+    fetch(`${API_BASE_URL}/api/admin/quests`, {
+      headers: getAdminHeaders()
+    })
       .then(res => res.json())
       .then(data => {
         if (data) setQuests(data);
@@ -760,7 +849,9 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   };
 
   const fetchAchievements = () => {
-    fetch(`${API_BASE_URL}/api/admin/achievements`)
+    fetch(`${API_BASE_URL}/api/admin/achievements`, {
+      headers: getAdminHeaders()
+    })
       .then(res => res.json())
       .then(data => {
         if (data) setAchievements(data);
@@ -780,7 +871,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   const handleSaveSettings = (updatedSettings = settings) => {
     fetch(`${API_BASE_URL}/api/admin/settings`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({ settings: updatedSettings })
     })
       .then(res => res.json())
@@ -814,7 +905,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     if (!selectedPlayer) return;
     fetch(`${API_BASE_URL}/api/admin/players/update`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({
         userId: selectedPlayer.id,
         coins: editCoins,
@@ -844,7 +935,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
 
     fetch(`${API_BASE_URL}/api/admin/quests/add`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({
         description: newQuestDesc.trim(),
         targetValue: newQuestTarget,
@@ -867,7 +958,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   const handleDeleteQuest = (questId: string) => {
     fetch(`${API_BASE_URL}/api/admin/quests/delete`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({ questId })
     })
       .then(res => res.json())
@@ -886,7 +977,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
 
     fetch(`${API_BASE_URL}/api/admin/achievements/add`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({
         title: newAchTitle.trim(),
         description: newAchDesc.trim(),
@@ -910,7 +1001,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   const handleDeleteAchievement = (achievementId: string) => {
     fetch(`${API_BASE_URL}/api/admin/achievements/delete`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({ achievementId })
     })
       .then(res => res.json())
@@ -932,7 +1023,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
 
     fetch(`${API_BASE_URL}/api/admin/tournaments/save`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({
         id: editingTournamentId || undefined,
         name: tournamentName.trim(),
@@ -1002,7 +1093,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
     if (!window.confirm('Bu turnuvayı silmek istediğinize emin misiniz?')) return;
     fetch(`${API_BASE_URL}/api/admin/tournaments/delete`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({ tournamentId })
     })
       .then(res => res.json())
@@ -1019,7 +1110,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
   const handleAdvanceTournamentRound = (tournamentId: string) => {
     fetch(`${API_BASE_URL}/api/admin/tournaments/advance`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: getAdminHeaders(),
       body: JSON.stringify({ tournamentId })
     })
       .then(res => res.json())
@@ -1107,6 +1198,14 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
             <span>⚙️</span> Oyun Kuralları
           </button>
           <button
+            onClick={() => setActiveTab('security')}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
+              activeTab === 'security' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+            }`}
+          >
+            <span>🔐</span> Güvenlik & Şifre
+          </button>
+          <button
             onClick={() => setActiveTab('players')}
             className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
               activeTab === 'players' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
@@ -1162,6 +1261,16 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
           >
             <span>🛒</span> Mağaza Ürün Yönetimi
           </button>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="w-full mt-2 px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 font-bold text-xs flex items-center justify-center gap-2 border border-rose-500/20 transition-all cursor-pointer active:scale-95"
+            >
+              <span>🔒</span>
+              <span>Yönetici Oturumunu Kapat</span>
+            </button>
+          )}
 
           <div className="mt-auto p-4 rounded-xl bg-slate-900/40 border border-slate-900 flex flex-col gap-2">
             <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">Durum Kontrolü</span>
@@ -1819,9 +1928,54 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                       />
                     </div>
 
-                    {/* Google AdMob Configuration */}
+                    {/* Google AdSense (Web) Configuration */}
                     <div className="border-t border-white/5 pt-3.5 mt-3.5 space-y-3.5">
-                      <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest block">Google AdMob Ayarları</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-amber-400 font-extrabold uppercase tracking-widest block">🌐 Google AdSense (Web Reklamları)</span>
+                        <input
+                          type="checkbox"
+                          checked={settings.adSenseEnabled ?? true}
+                          onChange={() => handleToggle('adSenseEnabled')}
+                          className="w-3.5 h-3.5 accent-amber-500 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5 space-y-2.5">
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-slate-400 font-bold uppercase">AdSense Publisher ID (Client)</label>
+                          <input
+                            type="text"
+                            placeholder="ca-pub-5045652074166668"
+                            value={settings.adSenseClientId ?? 'ca-pub-5045652074166668'}
+                            onChange={(e) => {
+                              const next = { ...settings, adSenseClientId: e.target.value };
+                              setSettings(next);
+                            }}
+                            onBlur={() => handleSaveSettings()}
+                            className="w-full px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="block text-[9px] text-slate-400 font-bold uppercase">AdSense Banner Slot ID (Opsiyonel)</label>
+                          <input
+                            type="text"
+                            placeholder="Örn: 1234567890"
+                            value={settings.adSenseBannerSlotId ?? ''}
+                            onChange={(e) => {
+                              const next = { ...settings, adSenseBannerSlotId: e.target.value };
+                              setSettings(next);
+                            }}
+                            onBlur={() => handleSaveSettings()}
+                            className="w-full px-2.5 py-1 text-xs bg-slate-950 border border-slate-800 rounded-lg text-slate-200 placeholder-slate-600 focus:outline-none focus:border-amber-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Google AdMob (Mobil Uygulama) Configuration */}
+                    <div className="border-t border-white/5 pt-3.5 mt-3.5 space-y-3.5">
+                      <span className="text-[10px] text-indigo-400 font-extrabold uppercase tracking-widest block">📱 Google AdMob (Mobil / Android & iOS)</span>
                       
                       <div className="flex items-center justify-between py-1">
                         <span className="text-xs text-slate-300 font-medium">Test Reklam Modu (Global)</span>
@@ -1868,7 +2022,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                       {/* Banner Reklamı (Banner Ads) */}
                       <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5 space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-[11px] text-indigo-400 font-bold block">📱 Banner Reklamı (Giriş / Ana Sayfa / Lobi)</span>
+                          <span className="text-[11px] text-indigo-400 font-bold block">📱 Banner Reklamı (Mobil Alt Bar)</span>
                           <input
                             type="checkbox"
                             checked={settings.bannerAdMobEnabled ?? true}
@@ -1982,6 +2136,157 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated }) => {
                     <span className="block text-[9px] text-slate-500 leading-tight">
                       * Not: Değişiklikler anında kaydedilir ve oyuncuların çark ekranında güncellenir.
                     </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB: SECURITY & PASSWORD */}
+          {activeTab === 'security' && (
+            <div className="space-y-6 max-w-4xl">
+              <div>
+                <h3 className="text-lg font-black text-white flex items-center gap-2.5 tracking-wide">
+                  <span className="text-amber-400 text-2xl">🔐</span> Yönetim Paneli Güvenliği & Şifre Değiştirme
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Yönetici paneline erişirken kullandığınız oturum şifresini buradan güncelleyebilir ve güvenlik durumunu kontrol edebilirsiniz.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {/* Password Change Form */}
+                <div className="md:col-span-2 bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden backdrop-blur-sm">
+                  <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-600/10 rounded-full filter blur-2xl pointer-events-none" />
+                  
+                  <div className="flex items-center gap-3 border-b border-slate-800/80 pb-4 mb-5">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
+                      🛡️
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-slate-200 uppercase tracking-wider">Yönetici Şifresini Güncelle</h4>
+                      <span className="text-[11px] text-slate-400">Şifreniz sunucuda güvenli şekilde güncellenecektir.</span>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handleChangeAdminPassword} className="space-y-4">
+                    {/* Current Password */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-300 block">
+                        Mevcut Yönetici Şifresi <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="••••••••"
+                        value={currentAdminPassword}
+                        onChange={(e) => setCurrentAdminPassword(e.target.value)}
+                        className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                        required
+                      />
+                    </div>
+
+                    {/* New Password */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-300 block">
+                        Yeni Yönetici Şifresi <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Yeni şifreniz (En az 4 karakter)"
+                        value={newAdminPassword}
+                        onChange={(e) => setNewAdminPassword(e.target.value)}
+                        className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                        required
+                        minLength={4}
+                      />
+                    </div>
+
+                    {/* Confirm New Password */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-slate-300 block">
+                        Yeni Şifre Tekrarı <span className="text-rose-400">*</span>
+                      </label>
+                      <input
+                        type="password"
+                        placeholder="Yeni şifreyi tekrar giriniz"
+                        value={confirmAdminPassword}
+                        onChange={(e) => setConfirmAdminPassword(e.target.value)}
+                        className="w-full bg-slate-950/80 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all font-mono"
+                        required
+                        minLength={4}
+                      />
+                    </div>
+
+                    {/* Notification Messages */}
+                    {passwordChangeMsg && (
+                      <div
+                        className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
+                          passwordChangeMsg.type === 'success'
+                            ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                            : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                        }`}
+                      >
+                        <span>{passwordChangeMsg.type === 'success' ? '✅' : '⚠️'}</span>
+                        <span>{passwordChangeMsg.text}</span>
+                      </div>
+                    )}
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="submit"
+                        disabled={passwordChangeLoading}
+                        className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider shadow-lg shadow-amber-500/20 transition-all active:scale-95 cursor-pointer flex items-center gap-2"
+                      >
+                        {passwordChangeLoading ? (
+                          <>
+                            <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                            <span>Kaydediliyor...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>💾</span>
+                            <span>Şifreyi Değiştir & Kaydet</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                {/* Security Overview & Info Card */}
+                <div className="space-y-4">
+                  <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-5 shadow-lg space-y-3">
+                    <div className="flex items-center gap-2 text-indigo-400 font-bold text-xs uppercase tracking-wider border-b border-slate-800 pb-2">
+                      <span>🔒</span> Güvenlik Durumu
+                    </div>
+                    <div className="space-y-2.5 text-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Yönetici Oturumu:</span>
+                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          Doğrulandı
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">API Koruması:</span>
+                        <span className="text-indigo-300 font-mono font-bold">Bearer Token</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-400">Gizli Giriş:</span>
+                        <span className="text-amber-400 font-semibold">Aktif (5x Tıklama)</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-500/5 border border-amber-500/20 rounded-3xl p-5 shadow-lg space-y-2">
+                    <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                      <span>💡</span> Güvenlik İpuçları
+                    </div>
+                    <ul className="text-[11px] text-slate-300 space-y-1.5 list-disc list-inside leading-relaxed">
+                      <li>Yönetici şifrenizi kimseyle paylaşmayınız.</li>
+                      <li>Şifrenizi değiştirdiğinizde hemen geçerli olur.</li>
+                      <li>İşiniz bittiğinde sol alttaki <strong>"Yönetici Oturumunu Kapat"</strong> butonuyla paneli kilitlemeniz önerilir.</li>
+                    </ul>
                   </div>
                 </div>
               </div>

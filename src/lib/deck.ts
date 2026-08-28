@@ -178,20 +178,18 @@ export function generateDeck(): Card[] {
   }
 
   // Dual Color Wildcards
-  const dualWildcards: { c1: CardColor; c2: CardColor; val: number }[] = [
-    { c1: 'darkblue', c2: 'green', val: 4 },
-    { c1: 'lightblue', c2: 'brown', val: 1 },
-    { c1: 'orange', c2: 'pink', val: 2 },
-    { c1: 'green', c2: 'railroad', val: 4 },
-    { c1: 'lightblue', c2: 'railroad', val: 2 },
-    { c1: 'utility', c2: 'railroad', val: 2 },
-    { c1: 'yellow', c2: 'red', val: 3 },
+  const dualWildcards: { c1: CardColor; c2: CardColor; val: number; count: number }[] = [
+    { c1: 'darkblue', c2: 'green', val: 4, count: 1 },
+    { c1: 'lightblue', c2: 'brown', val: 1, count: 1 },
+    { c1: 'orange', c2: 'pink', val: 2, count: 2 },
+    { c1: 'yellow', c2: 'red', val: 3, count: 2 },
+    { c1: 'green', c2: 'railroad', val: 4, count: 1 },
+    { c1: 'lightblue', c2: 'railroad', val: 2, count: 1 },
+    { c1: 'utility', c2: 'railroad', val: 2, count: 1 },
   ];
 
   dualWildcards.forEach((dw) => {
-    // Add 1 or 2 of each
-    const count = dw.c1 === 'orange' || dw.c1 === 'lightblue' ? 2 : 1;
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < dw.count; i++) {
       deck.push({
         type: 'wildcard',
         name: `${COLOR_LABELS[dw.c1]} / ${COLOR_LABELS[dw.c2]} Joker`,
@@ -335,6 +333,7 @@ export function generateDeck(): Card[] {
         value: 1,
         color: dr.c1,
         secondaryColor: dr.c2,
+        allowedColors: [dr.c1, dr.c2],
         description: `Sahip olduğun ${COLOR_LABELS[dr.c1]} veya ${COLOR_LABELS[dr.c2]} renk grubundan biri için tüm oyunculardan kira talep et.`,
       });
     }

@@ -272,6 +272,7 @@ export interface MatchState {
   deckCount: number;
   discardPile: Card[];
   turnIndex: number;
+  startingPlayerId?: string; // ID of the randomly chosen starting player
   turnNumber?: number; // Round/Turn number (starts at 1, increments when round completes)
   actionsPlayedThisTurn: number; // Max 3
   winnerId?: string;

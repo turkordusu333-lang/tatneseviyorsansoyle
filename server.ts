@@ -898,16 +898,61 @@ async function startServer() {
     }
   });
 
-  // --- ADMIN PANEL API ENDPOINTS ---
+  // --- ADMIN PANEL API & AUTHENTICATION ENDPOINTS ---
+  const ADMIN_SECRET_TOKEN = process.env.ADMIN_SECRET_TOKEN || 'deal-master-admin-token-2026-auth';
+  const getEffectiveAdminPassword = () => {
+    return (globalAdminSettings as any).adminPassword || process.env.ADMIN_PASSWORD || 'admin123';
+  };
 
-  // Admin login check
+  // Admin authorization middleware
+  const adminAuthMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const authHeader = req.headers.authorization || req.headers['x-admin-token'] || req.query.adminToken;
+    if (!authHeader) {
+      return res.status(401).json({ error: 'Yetkisiz erişim: Yönetici oturumu gereklidir.' });
+    }
+    const token = String(authHeader).replace('Bearer ', '').trim();
+    if (token !== ADMIN_SECRET_TOKEN) {
+      return res.status(403).json({ error: 'Geçersiz veya yetkisi sonlanmış oturum.' });
+    }
+    next();
+  };
+
+  // Protect all /api/admin/* endpoints (except /api/admin/login)
+  app.use('/api/admin', (req, res, next) => {
+    if (req.path === '/login') return next();
+    return adminAuthMiddleware(req, res, next);
+  });
+
+  // Secure Admin login endpoint
   app.post('/api/admin/login', (req, res) => {
     const { password } = req.body;
-    if (password === 'admin123') {
-      res.json({ success: true, token: 'admin-token-xyz' });
+    const currentAdminPassword = getEffectiveAdminPassword();
+    if (password && String(password).trim() === currentAdminPassword) {
+      res.json({ success: true, token: ADMIN_SECRET_TOKEN });
     } else {
-      res.status(401).json({ error: 'Geçersiz yönetici şifresi.' });
+      res.status(401).json({ error: 'Geçersiz veya hatalı yönetici şifresi.' });
     }
+  });
+
+  // Secure Admin change password endpoint
+  app.post('/api/admin/change-password', async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    const effectivePassword = getEffectiveAdminPassword();
+
+    if (!currentPassword || String(currentPassword).trim() !== effectivePassword) {
+      return res.status(400).json({ error: 'Mevcut yönetici şifresi hatalı!' });
+    }
+
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.trim().length < 4) {
+      return res.status(400).json({ error: 'Yeni şifre en az 4 karakter uzunluğunda olmalıdır.' });
+    }
+
+    const cleanNewPassword = newPassword.trim();
+    (globalAdminSettings as any).adminPassword = cleanNewPassword;
+    await saveAdminSettings(globalAdminSettings);
+
+    console.log('[Admin] Admin password updated successfully.');
+    res.json({ success: true, message: 'Yönetici şifresi başarıyla güncellendi.' });
   });
 
   // Get active admin settings
@@ -2836,13 +2881,17 @@ async function startServer() {
     // Save remaining deck count
     match.deckCount = fullDeck.length;
     match.status = 'playing';
-    match.turnIndex = 0;
+    
+    // Choose a random starting player
+    const startingIndex = Math.floor(Math.random() * match.players.length);
+    match.turnIndex = startingIndex;
+    match.startingPlayerId = match.players[startingIndex].id;
     match.turnNumber = 1;
     match.actionsPlayedThisTurn = 0;
     match.turnStartedAt = Date.now();
     match.logs.push({
       id: `start-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      message: `Oyun başladı! 1. Tur: Sıra ${match.players[0].username} adlı oyuncuda.`,
+      message: `🎲 Kura çekildi! Oyuna ilk olarak ${match.players[startingIndex].username} başlıyor.`,
       timestamp: Date.now(),
       turnNumber: 1,
     });
@@ -2882,10 +2931,10 @@ async function startServer() {
       matchState: match,
     });
 
-    // If first player is a bot, schedule bot turn
-    const firstPlayer = match.players[0];
-    if (firstPlayer.isBot) {
-      scheduleBotTurn(match, 1000);
+    // If first player is a bot, schedule bot turn after starting animation window
+    const firstPlayer = match.players[startingIndex];
+    if (firstPlayer && firstPlayer.isBot) {
+      scheduleBotTurn(match, 3500);
     }
   }
 
@@ -3092,13 +3141,17 @@ async function startServer() {
             // Save remaining deck count
             match.deckCount = fullDeck.length;
             match.status = 'playing';
-            match.turnIndex = 0;
+            
+            // Choose a random starting player
+            const startingIndex = Math.floor(Math.random() * match.players.length);
+            match.turnIndex = startingIndex;
+            match.startingPlayerId = match.players[startingIndex].id;
             match.turnNumber = 1;
             match.actionsPlayedThisTurn = 0;
             match.turnStartedAt = Date.now();
             match.logs.push({
               id: `start-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-              message: `Oyun başladı! 1. Tur: Sıra ${match.players[0].username} adlı oyuncuda.`,
+              message: `🎲 Kura çekildi! Oyuna ilk olarak ${match.players[startingIndex].username} başlıyor.`,
               timestamp: Date.now(),
               turnNumber: 1,
             });
@@ -3113,6 +3166,12 @@ async function startServer() {
               type: 'room_update',
               matchState: match,
             });
+
+            // If first player is a bot, schedule bot turn after starting animation window
+            const firstPlayer = match.players[startingIndex];
+            if (firstPlayer && firstPlayer.isBot) {
+              scheduleBotTurn(match, 3500);
+            }
             break;
           }
 
@@ -3738,7 +3797,10 @@ async function startServer() {
               } else {
                 // Property or wildcard
                 const updatedCard = { ...card };
-                if (updatedCard.isWildcard && updatedCard.secondaryColor && colorToUse === updatedCard.secondaryColor) {
+                if (updatedCard.isWildcard && updatedCard.allowedColors && updatedCard.allowedColors.length === 2) {
+                  updatedCard.color = colorToUse;
+                  updatedCard.secondaryColor = updatedCard.allowedColors.find((c: any) => c !== colorToUse) || updatedCard.allowedColors[0];
+                } else if (updatedCard.isWildcard && updatedCard.secondaryColor && colorToUse === updatedCard.secondaryColor) {
                   const temp = updatedCard.color;
                   updatedCard.color = colorToUse;
                   updatedCard.secondaryColor = temp;
@@ -3828,7 +3890,10 @@ async function startServer() {
 
             if (foundCard) {
               // Update card color
-              if (foundCard.isWildcard && foundCard.secondaryColor && newColor === foundCard.secondaryColor) {
+              if (foundCard.isWildcard && foundCard.allowedColors && foundCard.allowedColors.length === 2) {
+                foundCard.color = newColor;
+                foundCard.secondaryColor = foundCard.allowedColors.find((c: any) => c !== newColor) || foundCard.allowedColors[0];
+              } else if (foundCard.isWildcard && foundCard.secondaryColor && newColor === foundCard.secondaryColor) {
                 const temp = foundCard.color;
                 foundCard.color = newColor;
                 foundCard.secondaryColor = temp;

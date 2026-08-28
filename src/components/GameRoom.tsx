@@ -14,6 +14,7 @@ import { findShopItem, loadShopItems, subscribeShopItems } from '../lib/shopItem
 import { useCompactLayout } from '../hooks/useCompactLayout';
 import { getCountryByCode } from '../lib/countryData';
 import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
+import { StartingTurnRouletteOverlay } from './StartingTurnRouletteOverlay';
 
 interface Props {
   roomId: string;
@@ -535,16 +536,28 @@ const getTranslatedCardDesc = (card: any, profile: UserProfile): string => {
     return t('card_money_desc', profile, card.value);
   }
   if (card.type === 'rent') {
-    if (card.isWildcard || !card.color || (card.name && card.name.includes('Her Renk'))) {
+    const isMulticolorRent = card.isWildcard || (card.name && card.name.includes('Her Renk')) || (!card.color && !card.secondaryColor && (!card.allowedColors || card.allowedColors.length > 2));
+    if (isMulticolorRent) {
       return t('card_rent_desc_any', profile);
     }
-    return t('card_rent_desc_two', profile, getTranslatedColorLabel(card.color, profile), getTranslatedColorLabel(card.secondaryColor || card.color, profile));
+    const c1 = card.color || (card.allowedColors && card.allowedColors[0]) || 'brown';
+    const c2 = (card.secondaryColor && card.secondaryColor !== c1 ? card.secondaryColor : undefined)
+      || (card.allowedColors && card.allowedColors.find((c: any) => c !== c1))
+      || card.secondaryColor
+      || c1;
+    return t('card_rent_desc_two', profile, getTranslatedColorLabel(c1, profile), getTranslatedColorLabel(c2, profile));
   }
   if (card.isWildcard || card.type === 'wildcard') {
-    if (!card.secondaryColor) {
+    const isMulticolor = !card.secondaryColor && (!card.allowedColors || card.allowedColors.length > 2);
+    if (isMulticolor) {
       return t('card_wildcard_desc_any', profile);
     }
-    return t('card_wildcard_desc_two', profile, getTranslatedColorLabel(card.color, profile), getTranslatedColorLabel(card.secondaryColor, profile));
+    const c1 = card.color || (card.allowedColors && card.allowedColors[0]) || 'brown';
+    const c2 = (card.secondaryColor && card.secondaryColor !== c1 ? card.secondaryColor : undefined)
+      || (card.allowedColors && card.allowedColors.find((c: any) => c !== c1))
+      || card.secondaryColor
+      || c1;
+    return t('card_wildcard_desc_two', profile, getTranslatedColorLabel(c1, profile), getTranslatedColorLabel(c2, profile));
   }
   if (card.type === 'property') {
     return `${getTranslatedColorLabel(card.color, profile)} ${t('card_rent', profile).toLowerCase()}.`;
@@ -562,6 +575,7 @@ const getTranslatedCardDesc = (card: any, profile: UserProfile): string => {
 };
 
 const getTranslatedColorLabel = (col: string, profile: UserProfile): string => {
+  if (!col) return '';
   let cleanCol = col === 'lightblue' ? 'sky_blue' : col;
   if (cleanCol === 'railroad') cleanCol = 'station';
   if (cleanCol === 'darkblue') cleanCol = 'blue';
@@ -665,16 +679,19 @@ const isWildcardOrDualColorCard = (card: Card): boolean => {
 const getCardDualColors = (card: Card, fallbackColor?: CardColor): [CardColor, CardColor] | null => {
   if (!card) return null;
   const isWild = card.isWildcard || card.type === 'wildcard';
+  const isRent = card.type === 'rent';
+  if (!isWild && !isRent && !card.secondaryColor) return null;
+
   if (card.allowedColors && card.allowedColors.length === 2) {
-    return [card.allowedColors[0], card.allowedColors[1]];
+    const c1 = card.color || fallbackColor || card.allowedColors[0];
+    const c2 = card.allowedColors.find(c => c !== c1) || card.allowedColors[1];
+    return [c1, c2];
   }
   if (card.secondaryColor && (card.secondaryColor as string) !== 'any') {
     const c1 = card.color || fallbackColor || 'brown';
-    const c2 = card.secondaryColor;
-    if (c1 !== c2) return [c1, c2];
-    if (card.allowedColors && card.allowedColors.length >= 2) {
-      const other = card.allowedColors.find(ac => ac !== c1);
-      if (other) return [c1, other];
+    let c2 = card.secondaryColor;
+    if (c1 === c2 && card.allowedColors && card.allowedColors.length >= 2) {
+      c2 = card.allowedColors.find(ac => ac !== c1) || c2;
     }
     return [c1, c2];
   }
@@ -2960,6 +2977,81 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     return () => clearTimeout(timer);
   }, [showcaseCard, skipShowcase]);
 
+  // 🎲 Starting Turn Roulette State
+  const [showStartingRoulette, setShowStartingRoulette] = React.useState(false);
+  const [rouletteActiveIdx, setRouletteActiveIdx] = React.useState(0);
+  const [rouletteWinner, setRouletteWinner] = React.useState<GamePlayer | null>(null);
+  const [isRouletteFinalized, setIsRouletteFinalized] = React.useState(false);
+  const playedRouletteGameKeyRef = React.useRef<string | null>(null);
+  const rouletteTimerRef = React.useRef<any>(null);
+
+  // Trigger Starting Turn Roulette Animation when a match starts or enters 'playing' status
+  React.useEffect(() => {
+    if (!match || match.status !== 'playing' || !match.players || match.players.length < 2) {
+      return;
+    }
+
+    // Only run once per match (keyed by roomId + players length)
+    const gameKey = `${match.roomId}-${match.players.length}`;
+    if (playedRouletteGameKeyRef.current === gameKey) {
+      return;
+    }
+
+    // If turn has already progressed (e.g. reconnection mid-game), do not trigger
+    if ((match.turnNumber && match.turnNumber > 1) || match.actionsPlayedThisTurn > 0) {
+      playedRouletteGameKeyRef.current = gameKey;
+      return;
+    }
+
+    playedRouletteGameKeyRef.current = gameKey;
+    const targetWinnerIdx = match.turnIndex >= 0 && match.turnIndex < match.players.length ? match.turnIndex : 0;
+    const targetWinner = match.players[targetWinnerIdx];
+
+    setShowStartingRoulette(true);
+    setIsRouletteFinalized(false);
+    setRouletteWinner(null);
+    setRouletteActiveIdx(0);
+
+    let currentIdx = 0;
+    let speed = 80;
+    let iterations = 0;
+    const minIterations = match.players.length * 3 + targetWinnerIdx; // at least 3 full loops
+
+    const tickRoulette = () => {
+      currentIdx = (currentIdx + 1) % match.players.length;
+      setRouletteActiveIdx(currentIdx);
+      iterations++;
+
+      // Play tick sound with ascending pitch
+      sounds.playRouletteTick(profile.settings, 1.0 + (iterations * 0.02));
+
+      if (iterations >= minIterations && currentIdx === targetWinnerIdx) {
+        // Finalized
+        setIsRouletteFinalized(true);
+        setRouletteWinner(targetWinner);
+        sounds.playRouletteSelect(profile.settings);
+
+        rouletteTimerRef.current = setTimeout(() => {
+          setShowStartingRoulette(false);
+        }, 2400);
+      } else {
+        // Slow down smoothly towards end
+        if (iterations >= minIterations - 5) {
+          speed += 65;
+        } else if (iterations >= minIterations - 10) {
+          speed += 30;
+        }
+        rouletteTimerRef.current = setTimeout(tickRoulette, speed);
+      }
+    };
+
+    rouletteTimerRef.current = setTimeout(tickRoulette, speed);
+
+    return () => {
+      if (rouletteTimerRef.current) clearTimeout(rouletteTimerRef.current);
+    };
+  }, [match?.status, match?.roomId, match?.turnIndex]);
+
   // Action / Rent Toast State
   const [actionToast, setActionToast] = React.useState<{
     id: string;
@@ -4059,9 +4151,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         p.hand = fullDeck.splice(0, 5);
       });
 
-      // Player 1 draws 2 initial turn cards
+      // Choose a random starting player
+      const startingIndex = Math.floor(Math.random() * offlinePlayers.length);
+      const startingPlayer = offlinePlayers[startingIndex];
+
+      // Starting player draws 2 initial turn cards
       const initialDrawn = fullDeck.splice(0, 2);
-      offlinePlayers[0].hand.push(...initialDrawn);
+      startingPlayer.hand.push(...initialDrawn);
 
       // Setup Offline State directly in 'playing' status
       const initialMatch: MatchState = {
@@ -4070,7 +4166,8 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         players: offlinePlayers,
         deckCount: fullDeck.length,
         discardPile: [],
-        turnIndex: 0,
+        turnIndex: startingIndex,
+        startingPlayerId: startingPlayer.id,
         turnNumber: 1,
         actionsPlayedThisTurn: 0,
         turnStartedAt: Date.now(),
@@ -4084,10 +4181,10 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           {
             id: 'log-1',
             message: isTournament
-              ? `🏆 TURNUVA MAÇI BAŞLADI: ${is4p ? '4 Kişilik Masa Elemesi' : (is2v2 ? '2v2 Takım Şampiyonası' : `${tOpponent}'a karşı`)}! Hedef: ${tTargetSets} Set.`
+              ? `🏆 TURNUVA MAÇI BAŞLADI: ${is4p ? '4 Kişilik Masa Elemesi' : (is2v2 ? '2v2 Takım Şampiyonası' : `${tOpponent}'a karşı`)}! Kura çekildi: 1. Sıra ${startingPlayer.username} adlı oyuncuda. Hedef: ${tTargetSets} Set.`
               : is2v2
-                ? '⚔️ 2v2 TAKIM SAVAŞI BAŞLADI: Sadık Bot Partner ile ortaksınız!'
-                : 'Çevrimdışı Pratik Maçı Başladı! Kartlar dağıtıldı.',
+                ? `⚔️ 2v2 TAKIM SAVAŞI BAŞLADI: Kura çekildi: Oyuna ${startingPlayer.username} başlıyor!`
+                : `🎲 Oyun Başladı! Kura çekildi: İlk hamle sırası ${startingPlayer.username} adlı oyuncuda.`,
             timestamp: Date.now(),
           },
         ],
@@ -4103,6 +4200,13 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         gameMode: is2v2 ? '2v2_team' : 'classic',
       });
       setMatch(initialMatch);
+
+      // If starting player is a bot, schedule bot turn after starting roulette animation
+      if (startingPlayer.isBot) {
+        setTimeout(() => {
+          resumeBotTurnOffline();
+        }, 3200);
+      }
     } else {
       // Connect WebSocket
       isIntentionallyClosedRef.current = false;
@@ -4487,26 +4591,38 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       hand: fullDeck.splice(0, 5),
     }));
 
+    // Choose random starting player
+    const startingIndex = Math.floor(Math.random() * updatedPlayers.length);
+    const startingPlayer = updatedPlayers[startingIndex];
+
     const nextState: MatchState = {
       ...match,
       status: 'playing',
       players: updatedPlayers,
       deckCount: fullDeck.length,
       discardPile: [],
-      turnIndex: 0,
+      turnIndex: startingIndex,
+      startingPlayerId: startingPlayer.id,
       actionsPlayedThisTurn: 0,
       settings: localSettings,
       logs: [
         ...match.logs,
-        { id: `start-${Date.now()}`, message: 'Oyun başladı! İlk 5 kartınız dağıtıldı.', timestamp: Date.now() },
+        { id: `start-${Date.now()}`, message: `🎲 Kura çekildi! Oyuna ilk olarak ${startingPlayer.username} başlıyor.`, timestamp: Date.now() },
       ],
     };
 
     // Store deck count
     (nextState as any).serverDeck = fullDeck;
 
-    // Trigger draw for player 1
+    // Trigger draw for starting player
     triggerOfflineDraw(nextState);
+
+    // If starting player is a bot, schedule bot turn after starting roulette
+    if (startingPlayer.isBot) {
+      setTimeout(() => {
+        resumeBotTurnOffline();
+      }, 3200);
+    }
   };
 
   const triggerOfflineDraw = (currentState: MatchState) => {
@@ -7335,6 +7451,18 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
       {/* 1. Dynamic Canvas Particle Background */}
       <CanvasBackground theme={profile.settings.boardTheme || 'theme_classic'} />
 
+      {/* 🎲 Starting Turn Roulette Overlay (Kura Çekimi Animasyonu) */}
+      <StartingTurnRouletteOverlay
+        isOpen={showStartingRoulette}
+        players={match?.players || []}
+        activeIdx={rouletteActiveIdx}
+        winnerPlayer={rouletteWinner}
+        isFinalized={isRouletteFinalized}
+        localPlayerId={profile.id}
+        onClose={() => setShowStartingRoulette(false)}
+        language={profile.settings.language || 'tr'}
+      />
+
       {/* Smart-Reconnect Notification Banner */}
       <AnimatePresence>
         {!isOffline && (!wsConnected || isReconnecting) && (
@@ -8374,258 +8502,320 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               </div>
             )}
 
-            <div className={isOpponentsGrid
-              ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 pb-1"
-              : "flex gap-2 overflow-x-auto pb-1.5 scrollbar-thin"
-            }>
-              {match.players.filter((p) => !(hideOwnBoard && p.id === profile.id)).map((p) => {
-                const isMe = p.id === profile.id;
-                const isCurrentTurn = match.players[match.turnIndex].id === p.id;
-                const bankTotal = p.bank.reduce((sum, c) => sum + c.value, 0);
+            {(() => {
+              const visiblePlayers = match.players.filter((p) => !(hideOwnBoard && p.id === profile.id));
+              const count = visiblePlayers.length;
 
-                const bStyle = PLAYER_BOARD_STYLES[p.playerBoard || 'board_classic'] || PLAYER_BOARD_STYLES.board_classic;
-                const pBoardItem = findShopItem(p.playerBoard);
-                const isBoardVideo = pBoardItem?.mediaUrl && isVideoUrl(pBoardItem.mediaUrl, pBoardItem.mediaType);
+              // Compute ideal balanced grid layout depending on player count so there's zero right-side blank space
+              const gridColsClass = count === 1
+                ? "grid grid-cols-1 max-w-md mx-auto gap-2.5 pb-1 w-full"
+                : count === 2
+                  ? "grid grid-cols-1 sm:grid-cols-2 gap-2.5 pb-1 w-full"
+                  : count === 3
+                    ? "grid grid-cols-1 sm:grid-cols-3 gap-2.5 pb-1 w-full"
+                    : count === 4
+                      ? "grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pb-1 w-full"
+                      : "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 pb-1 w-full";
 
-                const isOpponentEligible = (() => {
-                  if (!activeActionCard) return true;
-                  if (p.id === profile.id) return false;
+              const scrollClass = count <= 3
+                ? (count === 1
+                    ? "grid grid-cols-1 max-w-md mx-auto gap-2.5 pb-1.5 w-full"
+                    : count === 2
+                      ? "grid grid-cols-1 sm:grid-cols-2 gap-2.5 pb-1.5 w-full"
+                      : "grid grid-cols-1 sm:grid-cols-3 gap-2.5 pb-1.5 w-full")
+                : (count === 4
+                    ? "grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pb-1.5 w-full"
+                    : "flex gap-2.5 overflow-x-auto pb-1.5 scrollbar-thin w-full");
 
-                  // 2v2 Friendly Fire Protection
-                  if (match.settings?.gameMode === '2v2_team') {
-                    const myTeam = localPlayer.team || (match.players.indexOf(localPlayer) % 2 === 0 ? 'team_blue' : 'team_red');
-                    const pTeam = p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red');
-                    if (myTeam === pTeam) return false;
-                  }
+              const isFullWidthCard = isOpponentsGrid || count <= 4;
 
-                  if (activeActionCard.actionType === 'sly-deal') {
-                    return Object.keys(p.properties).some((colKey) => {
-                      const col = colKey as CardColor;
-                      const set = p.properties[col];
-                      return set && set.cards.length > 0 && set.cards.length < MAX_IN_SET[col];
-                    });
-                  }
-                  if (activeActionCard.actionType === 'deal-breaker') {
-                    return Object.keys(p.properties).some((colKey) => {
-                      const col = colKey as CardColor;
-                      const set = p.properties[col];
-                      return set && set.cards.length >= MAX_IN_SET[col];
-                    });
-                  }
-                  if (activeActionCard.actionType === 'forced-deal') {
-                    const opHasStealable = Object.keys(p.properties).some((colKey) => {
-                      const col = colKey as CardColor;
-                      const set = p.properties[col];
-                      return set && set.cards.length > 0 && set.cards.length < MAX_IN_SET[col];
-                    });
-                    const myHasToGive = Object.keys(localPlayer.properties).some((colKey) => {
-                      const col = colKey as CardColor;
-                      const set = localPlayer.properties[col];
-                      return set && set.cards.length > 0 && set.cards.length < MAX_IN_SET[col];
-                    });
-                    return opHasStealable && myHasToGive;
-                  }
-                  return true;
-                })();
+              return (
+                <div className={isOpponentsGrid ? gridColsClass : scrollClass}>
+                  {visiblePlayers.map((p) => {
+                    const isMe = p.id === profile.id;
+                    const isCurrentTurn = match.players[match.turnIndex].id === p.id;
+                    const bankTotal = p.bank.reduce((sum, c) => sum + c.value, 0);
 
-                return (
-                  <motion.div
-                    key={p.id}
-                    id={`player-card-${p.id}`}
-                    variants={BOARD_REACTION_VARIANTS}
-                    animate={playerVisualStates[p.id]?.type || 'idle'}
-                    onClick={() => {
-                      playPlaySound();
-                      if (activeActionCard) {
-                        if (p.id === profile.id) return;
-                        if (isOpponentEligible) {
-                          setSelectedOpponentId(p.id);
-                        }
-                        return;
+                    const bStyle = PLAYER_BOARD_STYLES[p.playerBoard || 'board_classic'] || PLAYER_BOARD_STYLES.board_classic;
+                    const pBoardItem = findShopItem(p.playerBoard);
+                    const isBoardVideo = pBoardItem?.mediaUrl && isVideoUrl(pBoardItem.mediaUrl, pBoardItem.mediaType);
+
+                    const isOpponentEligible = (() => {
+                      if (!activeActionCard) return true;
+                      if (p.id === profile.id) return false;
+
+                      // 2v2 Friendly Fire Protection
+                      if (match.settings?.gameMode === '2v2_team') {
+                        const myTeam = localPlayer.team || (match.players.indexOf(localPlayer) % 2 === 0 ? 'team_blue' : 'team_red');
+                        const pTeam = p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red');
+                        if (myTeam === pTeam) return false;
                       }
-                      if (isMe) {
-                        setShowBankVaultModal(true);
-                      } else {
-                        setAssetsOpponentId(p.id);
-                        setShowOpponentAssetsModal(true);
-                      }
-                    }}
-                    className={`flex-shrink-0 w-[155px] sm:w-[165px] p-2 rounded-2xl border backdrop-blur-md transition-all cursor-pointer relative overflow-hidden select-none ${bStyle.bgClass} ${bStyle.textClass || 'text-slate-200'} ${playerVisualStates[p.id]?.type === 'card_gain'
-                      ? 'border-cyan-400 ring-2 ring-cyan-500 shadow-[0_0_25px_rgba(34,211,238,0.8)] scale-[1.02] z-20'
-                      : playerVisualStates[p.id]?.type === 'deal_breaker_target'
-                        ? 'border-fuchsia-500 ring-2 ring-fuchsia-600 shadow-[0_0_30px_rgba(217,70,239,0.9)] scale-[1.02] z-20'
-                        : activeHighImpactCard?.actorId === p.id
-                          ? 'border-indigo-400 ring-2 ring-indigo-500 shadow-[0_0_30px_rgba(99,102,241,0.85)] scale-[1.02] z-20 animate-pulse'
-                          : activeActionCard && !selectedOpponentId
-                            ? (isOpponentEligible
-                              ? 'border-amber-500 ring-2 ring-amber-500/50 shadow-[0_0_18px_rgba(245,158,11,0.5)] scale-[1.02] z-20 animate-pulse border-dashed'
-                              : 'opacity-25 grayscale pointer-events-none scale-95 border-slate-900')
-                            : activeActionCard && selectedOpponentId
-                              ? (p.id === selectedOpponentId
-                                ? 'border-emerald-500 ring-2 ring-emerald-500/50 shadow-[0_0_18px_rgba(16,185,129,0.4)] scale-[1.02] z-20'
-                                : 'opacity-25 grayscale pointer-events-none scale-95 border-slate-900')
-                              : isCurrentTurn
-                                ? 'border-amber-400 shadow-[0_0_22px_rgba(245,158,11,0.7)] ring-2 ring-amber-400/50 scale-[1.02] z-20'
-                                : `${bStyle.borderClass} ${bStyle.glowClass} hover:border-slate-500`
-                      }`}
-                    style={{
-                      background: pBoardItem?.gradientStart && pBoardItem?.gradientEnd
-                        ? `linear-gradient(135deg, ${pBoardItem.gradientStart}, ${pBoardItem.gradientEnd})`
-                        : pBoardItem?.previewColor || undefined,
-                      borderColor: pBoardItem?.borderColor || undefined,
-                      boxShadow: pBoardItem?.glowColor ? `0 0 15px ${pBoardItem.glowColor}` : undefined
-                    }}
-                  >
-                    {/* Dynamic visual state overlays and floating indicator symbols */}
-                    <AnimatePresence>
-                      {playerVisualStates[p.id] && (
-                        <motion.div
-                          initial={{ opacity: 0, scale: 0.8 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.9 }}
-                          transition={{ duration: 0.25 }}
-                          className="absolute inset-0 pointer-events-none z-30 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[1px]"
-                        >
-                          {playerVisualStates[p.id]!.type === 'card_gain' && (
-                            <motion.div
-                              animate={{ rotate: [-5, 5, -5], scale: [1, 1.05, 1] }}
-                              transition={{ repeat: Infinity, duration: 1.2 }}
-                              className="flex flex-col items-center relative"
-                            >
-                              <span className="text-2xl filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]">🎴</span>
-                              <span className="text-[9px] font-black text-cyan-400 tracking-widest uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">+MÜLK</span>
-                            </motion.div>
-                          )}
-                          {playerVisualStates[p.id]!.type === 'deal_breaker_target' && (
-                            <motion.div
-                              animate={{ scale: [0.9, 1.1, 0.9] }}
-                              transition={{ repeat: Infinity, duration: 0.8 }}
-                              className="flex flex-col items-center relative"
-                            >
-                              <span className="text-2xl filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]">🎯</span>
-                              <span className="text-[9px] font-black text-fuchsia-400 tracking-widest uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">ÇALINDI</span>
-                            </motion.div>
-                          )}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
 
-                    {/* Atmospheric Ambient Visual FX Overlays */}
-                    <div className="absolute inset-0 pointer-events-none opacity-50 overflow-hidden rounded-2xl z-0">
-                      {pBoardItem?.mediaUrl && (
-                        isBoardVideo ? (
-                          <HlsVideoPlayer
-                            src={pBoardItem.mediaUrl}
-                            className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-50 rounded-2xl"
-                          />
-                        ) : (
-                          <img
-                            src={pBoardItem.mediaUrl}
-                            alt="Player Board"
-                            className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-50 rounded-2xl"
-                          />
-                        )
-                      )}
-                    </div>
-
-                    {/* Active Turn Pulsing Golden Halo Wave */}
-                    {isCurrentTurn && (
-                      <motion.div
-                        className="absolute inset-0 rounded-2xl border-2 border-amber-400 pointer-events-none"
-                        animate={{
-                          boxShadow: [
-                            '0 0 4px rgba(245, 158, 11, 0.4)',
-                            '0 0 18px rgba(245, 158, 11, 0.8)',
-                            '0 0 4px rgba(245, 158, 11, 0.4)'
-                          ]
-                        }}
-                        transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
-                        style={{ zIndex: 5 }}
-                      />
-                    )}
-
-                    {/* Player Info Line */}
-                    <div className="flex items-center gap-2 justify-between relative z-10">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <AvatarWithFrame
-                          avatarId={p.avatarId || 'avatar_classic'}
-                          avatarUrl={p.avatarUrl}
-                          frameId={p.profileFrame || 'frame_none'}
-                          sizeClassName="w-7 h-7 sm:w-8 sm:h-8 text-[11px] flex-shrink-0 relative z-10"
-                        />
-                        <div className="truncate leading-none">
-                          <span className="font-extrabold text-[10px] sm:text-xs text-slate-100 truncate block flex items-center gap-1">
-                            <span className="text-[11px] shrink-0 select-none">{getCountryByCode(p.country).flag}</span>
-                            <span className="truncate">{p.username.split(' ')[0]}</span>
-                            {(p as any).isDisconnected && <span className="text-[7px] bg-red-500/20 text-red-400 px-1 py-0.2 rounded font-black uppercase">AFK</span>}
-                            {match.settings?.gameMode === '2v2_team' && (
-                              <span className={`text-[7px] font-black px-1 py-0.2 rounded uppercase shrink-0 ${(p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === 'team_blue'
-                                  ? 'bg-blue-600/40 text-blue-300 border border-blue-400/30'
-                                  : 'bg-rose-600/40 text-rose-300 border border-rose-400/30'
-                                }`}>
-                                {(p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === 'team_blue' ? '🔵 Mavi' : '🔴 Kırmızı'}
-                                {p.id !== profile.id && ((p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === (localPlayer.team || (match.players.indexOf(localPlayer) % 2 === 0 ? 'team_blue' : 'team_red'))) ? ' (Ortak)' : ''}
-                              </span>
-                            )}
-                          </span>
-                          <span className="text-[8px] sm:text-[8.5px] text-slate-300 block font-mono font-bold mt-0.5">
-                            🎴x{p.hand.length} | 🏆{countCompletedSets(p.properties)}/3 SET
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Opponent Bank Total Badge */}
-                      <span className="text-[9px] sm:text-[10px] font-black text-emerald-400 bg-emerald-950/60 px-1.5 py-0.5 rounded-lg border border-emerald-500/30 shrink-0 font-mono shadow-sm">
-                        {bankTotal}M
-                      </span>
-                    </div>
-
-                    {/* Display mini active set cards in 2 Rows */}
-                    <div className="grid grid-cols-5 gap-1 py-1 mt-1.5 border-t border-white/[0.08] relative z-10 content-start min-h-[30px]">
-                      {(() => {
-                        const activeSets = Object.keys(p.properties).filter(
-                          (colorKey) => p.properties[colorKey as CardColor]?.cards.length > 0
-                        );
-
-                        if (activeSets.length === 0) {
-                          return (
-                            <div className="col-span-5 text-center text-[7.5px] text-slate-500 py-1 font-bold italic">
-                              {profile.settings.language === 'en' ? 'No lands yet' : 'Henüz arsa yok'}
-                            </div>
-                          );
-                        }
-
-                        return activeSets.map((colorKey) => {
-                          const col = colorKey as CardColor;
+                      if (activeActionCard.actionType === 'sly-deal') {
+                        return Object.keys(p.properties).some((colKey) => {
+                          const col = colKey as CardColor;
                           const set = p.properties[col];
-                          if (!set || set.cards.length === 0) return null;
-                          const isCompleted = set.cards.length >= MAX_IN_SET[col];
-                          const opponentNeon = COLOR_HEX[col] || '#34d399';
+                          return set && set.cards.length > 0 && set.cards.length < MAX_IN_SET[col];
+                        });
+                      }
+                      if (activeActionCard.actionType === 'deal-breaker') {
+                        return Object.keys(p.properties).some((colKey) => {
+                          const col = colKey as CardColor;
+                          const set = p.properties[col];
+                          return set && set.cards.length >= MAX_IN_SET[col];
+                        });
+                      }
+                      if (activeActionCard.actionType === 'forced-deal') {
+                        const opHasStealable = Object.keys(p.properties).some((colKey) => {
+                          const col = colKey as CardColor;
+                          const set = p.properties[col];
+                          return set && set.cards.length > 0 && set.cards.length < MAX_IN_SET[col];
+                        });
+                        const myHasToGive = Object.keys(localPlayer.properties).some((colKey) => {
+                          const col = colKey as CardColor;
+                          const set = localPlayer.properties[col];
+                          return set && set.cards.length > 0 && set.cards.length < MAX_IN_SET[col];
+                        });
+                        return opHasStealable && myHasToGive;
+                      }
+                      return true;
+                    })();
 
-                          return (
-                            <div
-                              key={col}
-                              className={`w-full h-[26px] sm:h-[28px] bg-slate-950 rounded-md flex flex-col justify-between p-0.5 relative overflow-hidden shadow-sm border transition-all ${isCompleted
-                                ? 'border-amber-400 ring-1 ring-amber-400/50 shadow-[0_0_6px_rgba(251,191,36,0.4)] bg-amber-950/20'
-                                : 'border-white/20'
-                                }`}
-                              title={`${COLOR_LABELS[col]}: ${set.cards.length}/${MAX_IN_SET[col]}`}
+                    return (
+                      <motion.div
+                        key={p.id}
+                        id={`player-card-${p.id}`}
+                        variants={BOARD_REACTION_VARIANTS}
+                        animate={playerVisualStates[p.id]?.type || 'idle'}
+                        onClick={() => {
+                          playPlaySound();
+                          if (activeActionCard) {
+                            if (p.id === profile.id) return;
+                            if (isOpponentEligible) {
+                              setSelectedOpponentId(p.id);
+                            }
+                            return;
+                          }
+                          if (isMe) {
+                            setShowBankVaultModal(true);
+                          } else {
+                            setAssetsOpponentId(p.id);
+                            setShowOpponentAssetsModal(true);
+                          }
+                        }}
+                        className={`${isFullWidthCard ? 'w-full' : 'flex-shrink-0 w-[175px] sm:w-[195px]'} p-2.5 sm:p-3 rounded-2xl border backdrop-blur-xl transition-all cursor-pointer relative overflow-hidden select-none ${bStyle.bgClass} ${bStyle.textClass || 'text-slate-200'} ${playerVisualStates[p.id]?.type === 'card_gain'
+                          ? 'border-cyan-400 ring-2 ring-cyan-500 shadow-[0_0_25px_rgba(34,211,238,0.8)] scale-[1.03] z-20'
+                          : playerVisualStates[p.id]?.type === 'deal_breaker_target'
+                            ? 'border-fuchsia-500 ring-2 ring-fuchsia-600 shadow-[0_0_30px_rgba(217,70,239,0.9)] scale-[1.03] z-20'
+                            : activeHighImpactCard?.actorId === p.id
+                              ? 'border-indigo-400 ring-2 ring-indigo-500 shadow-[0_0_30px_rgba(99,102,241,0.85)] scale-[1.03] z-20 animate-pulse'
+                              : activeActionCard && !selectedOpponentId
+                                ? (isOpponentEligible
+                                  ? 'border-amber-400 ring-2 ring-amber-400/60 shadow-[0_0_22px_rgba(245,158,11,0.7)] scale-[1.03] z-20 animate-pulse border-dashed'
+                                  : 'opacity-25 grayscale pointer-events-none scale-95 border-slate-900')
+                                : activeActionCard && selectedOpponentId
+                                  ? (p.id === selectedOpponentId
+                                    ? 'border-emerald-400 ring-2 ring-emerald-500/60 shadow-[0_0_25px_rgba(16,185,129,0.7)] scale-[1.03] z-20'
+                                    : 'opacity-25 grayscale pointer-events-none scale-95 border-slate-900')
+                                  : isCurrentTurn
+                                    ? 'border-amber-400 shadow-[0_0_25px_rgba(245,158,11,0.8)] ring-2 ring-amber-400/60 scale-[1.03] z-20'
+                                    : `${bStyle.borderClass} ${bStyle.glowClass} hover:border-slate-400 hover:scale-[1.01]`
+                          }`}
+                        style={{
+                          background: pBoardItem?.gradientStart && pBoardItem?.gradientEnd
+                            ? `linear-gradient(135deg, ${pBoardItem.gradientStart}, ${pBoardItem.gradientEnd})`
+                            : pBoardItem?.previewColor || undefined,
+                          borderColor: pBoardItem?.borderColor || undefined,
+                          boxShadow: pBoardItem?.glowColor ? `0 0 18px ${pBoardItem.glowColor}` : undefined
+                        }}
+                      >
+                        {/* Dynamic visual state overlays and floating indicator symbols */}
+                        <AnimatePresence>
+                          {playerVisualStates[p.id] && (
+                            <motion.div
+                              initial={{ opacity: 0, scale: 0.8 }}
+                              animate={{ opacity: 1, scale: 1 }}
+                              exit={{ opacity: 0, scale: 0.9 }}
+                              transition={{ duration: 0.25 }}
+                              className="absolute inset-0 pointer-events-none z-30 flex flex-col items-center justify-center bg-black/50 backdrop-blur-[1px]"
                             >
-                              <div className="h-1.5 w-full rounded-t-[2px] flex-shrink-0 shadow-xs" style={{ backgroundColor: opponentNeon }} />
-                              <div className="flex-1 flex items-center justify-center leading-none">
-                                <span className={`text-[6.5px] sm:text-[7px] font-black leading-none ${isCompleted ? 'text-amber-400 font-bold' : 'text-slate-200'}`}>
-                                  {isCompleted ? '👑' : `${set.cards.length}/${MAX_IN_SET[col]}`}
+                              {playerVisualStates[p.id]!.type === 'card_gain' && (
+                                <motion.div
+                                  animate={{ rotate: [-5, 5, -5], scale: [1, 1.08, 1] }}
+                                  transition={{ repeat: Infinity, duration: 1.2 }}
+                                  className="flex flex-col items-center relative"
+                                >
+                                  <span className="text-2xl filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]">🎴</span>
+                                  <span className="text-[9px] font-black text-cyan-400 tracking-widest uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">+MÜLK</span>
+                                </motion.div>
+                              )}
+                              {playerVisualStates[p.id]!.type === 'deal_breaker_target' && (
+                                <motion.div
+                                  animate={{ scale: [0.9, 1.1, 0.9] }}
+                                  transition={{ repeat: Infinity, duration: 0.8 }}
+                                  className="flex flex-col items-center relative"
+                                >
+                                  <span className="text-2xl filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.5)]">🎯</span>
+                                  <span className="text-[9px] font-black text-fuchsia-400 tracking-widest uppercase drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)]">ÇALINDI</span>
+                                </motion.div>
+                              )}
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+
+                        {/* Atmospheric Ambient Visual FX Overlays with Vignette Mask */}
+                        <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl z-0">
+                          {pBoardItem?.mediaUrl && (
+                            <>
+                              {isBoardVideo ? (
+                                <HlsVideoPlayer
+                                  src={pBoardItem.mediaUrl}
+                                  className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-45 rounded-2xl"
+                                />
+                              ) : (
+                                <img
+                                  src={pBoardItem.mediaUrl}
+                                  alt="Player Board"
+                                  className="absolute inset-0 w-full h-full object-cover pointer-events-none opacity-45 rounded-2xl"
+                                  loading="lazy"
+                                  decoding="async"
+                                />
+                              )}
+                              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-slate-950/30 pointer-events-none" />
+                            </>
+                          )}
+                        </div>
+
+                        {/* Active Turn Pulsing Golden Halo Wave */}
+                        {isCurrentTurn && (
+                          <motion.div
+                            className="absolute inset-0 rounded-2xl border-2 border-amber-400 pointer-events-none"
+                            animate={{
+                              boxShadow: [
+                                '0 0 4px rgba(245, 158, 11, 0.4)',
+                                '0 0 20px rgba(245, 158, 11, 0.9)',
+                                '0 0 4px rgba(245, 158, 11, 0.4)'
+                              ]
+                            }}
+                            transition={{ repeat: Infinity, duration: 2, ease: "easeInOut" }}
+                            style={{ zIndex: 5 }}
+                          />
+                        )}
+
+                        {/* Player Header Line (Responsive for Mobile & Desktop) */}
+                        <div className="flex items-center gap-2.5 sm:gap-3 justify-between relative z-10 w-full mb-2">
+                          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+                            <AvatarWithFrame
+                              avatarId={p.avatarId || 'avatar_classic'}
+                              avatarUrl={p.avatarUrl}
+                              frameId={p.profileFrame || 'frame_none'}
+                              sizeClassName="w-9 h-9 sm:w-11 sm:h-11 text-xs sm:text-sm flex-shrink-0 relative z-10 shadow-md"
+                            />
+                            <div className="min-w-0 flex-1 flex flex-col justify-center">
+                              {/* Top Name & Badges Row */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[13px] sm:text-sm shrink-0 select-none" title={profile.settings.language === 'en' ? getCountryByCode(p.country).nameEn : getCountryByCode(p.country).nameTr}>
+                                  {getCountryByCode(p.country).flag}
+                                </span>
+                                <span className="font-extrabold text-[11.5px] sm:text-[13px] text-white truncate max-w-[110px] sm:max-w-[150px]">
+                                  {p.username.split(' ')[0]}
+                                </span>
+                                {(p as any).isDisconnected && <span className="text-[7.5px] sm:text-[8px] bg-red-500/25 text-red-400 px-1.5 py-0.5 rounded font-black uppercase tracking-wider">AFK</span>}
+                                {p.isBot && <span className="text-[10px] text-amber-400 shrink-0" title="Bot">🤖</span>}
+                                {match.settings?.gameMode === '2v2_team' && (
+                                  <span className={`text-[7.5px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase shrink-0 ${(p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === 'team_blue'
+                                      ? 'bg-blue-600/40 text-blue-300 border border-blue-400/40'
+                                      : 'bg-rose-600/40 text-rose-300 border border-rose-400/40'
+                                    }`}>
+                                    {(p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === 'team_blue' ? '🔵 Mavi' : '🔴 Kırmızı'}
+                                    {p.id !== profile.id && ((p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === (localPlayer.team || (match.players.indexOf(localPlayer) % 2 === 0 ? 'team_blue' : 'team_red'))) ? ' (Ortak)' : ''}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Secondary Stats Row */}
+                              <div className="flex items-center gap-1.5 sm:gap-2 text-[9px] sm:text-[10px] font-mono font-bold mt-1">
+                                <span className="text-amber-300 bg-amber-950/40 border border-amber-500/30 px-1.5 py-0.2 rounded-md">
+                                  🎴x{p.hand.length}
+                                </span>
+                                <span className="text-yellow-400 bg-amber-950/40 border border-yellow-500/30 px-1.5 py-0.2 rounded-md">
+                                  👑 {countCompletedSets(p.properties)}/3
                                 </span>
                               </div>
                             </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </div>
+                          </div>
+
+                          {/* Bank Total Badge */}
+                          <div className="flex flex-col items-end shrink-0 pl-1">
+                            <span className="text-[7px] sm:text-[8px] uppercase tracking-wider font-extrabold text-emerald-400/80">
+                              {profile.settings.language === 'en' ? 'BANK' : 'KASA'}
+                            </span>
+                            <span className="text-[11px] sm:text-xs md:text-sm font-black font-mono text-emerald-300 bg-gradient-to-r from-emerald-950/90 to-teal-950/90 px-2 py-0.5 rounded-lg border border-emerald-500/40 shadow-sm drop-shadow-[0_0_6px_rgba(52,211,153,0.3)]">
+                              {bankTotal}M
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Display Active Set Cards Grid (Spacious Height for Mobile & Web) */}
+                        <div className="pt-2 border-t border-white/[0.1] relative z-10 w-full">
+                          {(() => {
+                            const activeSets = Object.keys(p.properties).filter(
+                              (colorKey) => p.properties[colorKey as CardColor]?.cards.length > 0
+                            );
+
+                            if (activeSets.length === 0) {
+                              return (
+                                <div className="w-full h-[36px] sm:h-[42px] rounded-xl border border-dashed border-white/10 bg-slate-950/40 flex items-center justify-center text-[8.5px] sm:text-[9.5px] text-slate-400/80 font-bold italic">
+                                  {profile.settings.language === 'en' ? 'No properties yet' : 'Henüz arsa yok'}
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <div className="grid grid-cols-5 gap-1.5 sm:gap-2 w-full">
+                                {activeSets.map((colorKey) => {
+                                  const col = colorKey as CardColor;
+                                  const set = p.properties[col];
+                                  if (!set || set.cards.length === 0) return null;
+                                  const isCompleted = set.cards.length >= MAX_IN_SET[col];
+                                  const opponentNeon = COLOR_HEX[col] || '#34d399';
+
+                                  return (
+                                    <div
+                                      key={col}
+                                      className={`w-full h-[36px] sm:h-[42px] md:h-[46px] bg-slate-950/95 rounded-lg flex flex-col justify-between p-1 relative overflow-hidden shadow-md border transition-all hover:scale-105 ${isCompleted
+                                        ? 'border-amber-400 ring-1 ring-amber-400/70 shadow-[0_0_10px_rgba(251,191,36,0.6)] bg-gradient-to-b from-amber-950/40 to-slate-950/90'
+                                        : 'border-white/20 hover:border-white/40'
+                                        }`}
+                                      title={`${COLOR_LABELS[col]}: ${set.cards.length}/${MAX_IN_SET[col]}${set.hasHotel ? ' (+Otel)' : set.hasHouse ? ' (+Ev)' : ''}`}
+                                    >
+                                      {/* Top Color Banner */}
+                                      <div 
+                                        className="h-2 sm:h-2.5 w-full rounded-t-[3px] flex-shrink-0 shadow-sm" 
+                                        style={{ backgroundColor: opponentNeon, boxShadow: `0 0 6px ${opponentNeon}66` }} 
+                                      />
+                                      
+                                      {/* Card Count & Building Indicators */}
+                                      <div className="flex-1 flex items-center justify-center gap-1 leading-none py-0.5">
+                                        <span className={`text-[8.5px] sm:text-[10px] font-black font-mono leading-none ${isCompleted ? 'text-amber-400 font-bold' : 'text-slate-100'}`}>
+                                          {isCompleted ? '👑' : `${set.cards.length}/${MAX_IN_SET[col]}`}
+                                        </span>
+                                        {set.hasHotel && <span className="text-[7.5px] sm:text-[9px]">🏨</span>}
+                                        {!set.hasHotel && set.hasHouse && <span className="text-[7.5px] sm:text-[9px]">🏠</span>}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
 
           {/* Middle Game Info Bar / Arena: Toggleable between Mini Bar and 3D Visual Arena */}
@@ -8965,19 +9155,53 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           <div className="flex-1 min-h-0 flex flex-col justify-start px-2 sm:px-3 pt-0.5 pb-0.5 transition-all">
 
             {/* BENİM VARLIKLARIM (My Assets - Full-Width Modern Luxury Board) */}
-            <div className={`bg-gradient-to-b from-[#0d1322]/40 via-[#070b14]/50 to-[#04060a]/60 border border-white/10 rounded-2xl flex flex-col flex-1 min-h-0 transition-all shadow-2xl backdrop-blur-md relative overflow-hidden ${isCompactLayout ? 'p-1 sm:p-1.5' : 'p-1 sm:p-1.5'
-              }`}>
-              {/* Subtle background ambient glow */}
-              <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none" />
-              <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.02)_1px,transparent_1px)] [background-size:12px_12px] opacity-30 pointer-events-none" />
+            {(() => {
+              const myBoardKey = localPlayer.playerBoard || profile.settings.playerBoard || 'board_classic';
+              const myBoardStyle = PLAYER_BOARD_STYLES[myBoardKey] || PLAYER_BOARD_STYLES.board_classic;
+              const myBoardItem = findShopItem(myBoardKey);
+              const isMyBoardVideo = myBoardItem?.mediaUrl && isVideoUrl(myBoardItem.mediaUrl, myBoardItem.mediaType);
 
-              {/* Unified Header with Interactive Bank Vault Badge & Set Progress */}
-              {(() => {
-                const bankTotal = localPlayer.bank.reduce((sum, c) => sum + c.value, 0);
-                const completedSets = countCompletedSets(localPlayer.properties);
-                const targetSets = match?.settings?.targetSets || 3;
+              const bankTotal = localPlayer.bank.reduce((sum, c) => sum + c.value, 0);
+              const completedSets = countCompletedSets(localPlayer.properties);
+              const targetSets = match?.settings?.targetSets || 3;
 
-                return (
+              return (
+                <div
+                  className={`border rounded-2xl flex flex-col flex-1 min-h-0 transition-all shadow-2xl backdrop-blur-xl relative overflow-hidden ${isCompactLayout ? 'p-1 sm:p-1.5' : 'p-1 sm:p-1.5'} ${myBoardStyle.bgClass} ${myBoardStyle.borderClass} ${myBoardStyle.glowClass}`}
+                  style={{
+                    background: myBoardItem?.gradientStart && myBoardItem?.gradientEnd
+                      ? `linear-gradient(135deg, ${myBoardItem.gradientStart}, ${myBoardItem.gradientEnd})`
+                      : myBoardItem?.previewColor || undefined,
+                    borderColor: myBoardItem?.borderColor || undefined,
+                    boxShadow: myBoardItem?.glowColor ? `0 0 25px ${myBoardItem.glowColor}` : undefined
+                  }}
+                >
+                  {/* Custom Media (GIF, Image, Video) Background for Local Player's Board */}
+                  {myBoardItem?.mediaUrl && (
+                    <div className="absolute inset-0 pointer-events-none opacity-40 overflow-hidden rounded-2xl z-0">
+                      {isMyBoardVideo ? (
+                        <HlsVideoPlayer
+                          src={myBoardItem.mediaUrl}
+                          className="absolute inset-0 w-full h-full object-cover pointer-events-none rounded-2xl"
+                        />
+                      ) : (
+                        <img
+                          src={myBoardItem.mediaUrl}
+                          alt="Board Media"
+                          className="absolute inset-0 w-full h-full object-cover pointer-events-none rounded-2xl"
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-slate-950/40 pointer-events-none" />
+                    </div>
+                  )}
+
+                  {/* Subtle background ambient glow */}
+                  <div className="absolute top-0 left-1/4 right-1/4 h-[1px] bg-gradient-to-r from-transparent via-amber-400/40 to-transparent pointer-events-none z-[1]" />
+                  <div className="absolute inset-0 bg-[radial-gradient(rgba(255,255,255,0.02)_1px,transparent_1px)] [background-size:12px_12px] opacity-30 pointer-events-none z-[1]" />
+
+                  {/* Unified Header with Interactive Bank Vault Badge & Set Progress */}
                   <div className="flex items-center justify-between text-[8px] sm:text-[9px] uppercase tracking-wider font-bold mb-1 px-0.5 select-none relative z-10 w-full gap-2 flex-shrink-0">
                     {/* Interactive Bank Vault Button */}
                     <button
@@ -8985,7 +9209,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         playPlaySound();
                         setShowBankVaultModal(true);
                       }}
-                      className="flex items-center gap-2 bg-gradient-to-r from-emerald-950/50 via-slate-900/55 to-slate-950/60 hover:from-emerald-900/60 hover:to-slate-900/70 border border-emerald-500/30 hover:border-emerald-400 text-emerald-300 font-black px-2.5 sm:px-3 py-0.75 rounded-xl text-[8.5px] sm:text-[9.5px] transition-all hover:scale-105 shadow-md shadow-emerald-950/20 active:scale-95 cursor-pointer group backdrop-blur-sm"
+                      className="flex items-center gap-2 bg-gradient-to-r from-emerald-950/60 via-slate-900/65 to-slate-950/70 hover:from-emerald-900/70 hover:to-slate-900/80 border border-emerald-500/40 hover:border-emerald-400 text-emerald-300 font-black px-2.5 sm:px-3 py-0.75 rounded-xl text-[8.5px] sm:text-[9.5px] transition-all hover:scale-105 shadow-md shadow-emerald-950/30 active:scale-95 cursor-pointer group backdrop-blur-sm"
                       title={profile.settings.language === 'en' ? 'Click to inspect your Bank Vault' : 'Bankadaki paralarınızı görmek için tıklayın'}
                     >
                       <span className="text-xs sm:text-sm group-hover:scale-110 transition-transform">🏦</span>
@@ -8996,14 +9220,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         <strong className="text-white font-mono font-black text-[9.5px] sm:text-[10.5px] drop-shadow-[0_0_8px_rgba(52,211,153,0.4)]">
                           {bankTotal}M
                         </strong>
-                        <span className="bg-emerald-500/20 text-emerald-300 text-[6.5px] sm:text-[7.5px] font-mono px-1 py-0.2 rounded border border-emerald-500/30">
+                        <span className="bg-emerald-500/25 text-emerald-300 text-[6.5px] sm:text-[7.5px] font-mono px-1 py-0.2 rounded border border-emerald-500/30">
                           {localPlayer.bank.length} {profile.settings.language === 'en' ? 'cards' : 'kart'}
                         </span>
                       </div>
                     </button>
 
                     {/* Set Completion Progress Badge */}
-                    <div className="flex items-center gap-2 bg-gradient-to-r from-slate-950/60 via-slate-900/55 to-amber-950/50 border border-amber-400/30 px-2.5 sm:px-3 py-0.75 rounded-xl shadow-md shadow-amber-950/20 backdrop-blur-sm">
+                    <div className="flex items-center gap-2 bg-gradient-to-r from-slate-950/70 via-slate-900/65 to-amber-950/60 border border-amber-400/40 px-2.5 sm:px-3 py-0.75 rounded-xl shadow-md shadow-amber-950/30 backdrop-blur-sm">
                       <div className="flex items-center gap-1">
                         {Array.from({ length: targetSets }).map((_, i) => (
                           <span key={i} className={`text-[9px] sm:text-[10px] transition-all ${i < completedSets ? 'text-amber-400 animate-bounce scale-110 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]' : 'text-slate-600 opacity-60'
@@ -9020,8 +9244,6 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                       </div>
                     </div>
                   </div>
-                );
-              })()}
 
               {/* Content Row: Full Width Properties Drop Zone with Options Trigger */}
               <div className="flex-1 min-h-0 flex flex-col w-full relative z-10">
@@ -9809,7 +10031,9 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                 </AnimatePresence>
               </div>
             </div>
-          </div>
+          );
+        })()}
+      </div>
 
           {(() => {
             const hasActiveAction = match.activeActionRequest || (match.activeActionRequests && match.activeActionRequests.length > 0);

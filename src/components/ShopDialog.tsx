@@ -167,6 +167,50 @@ export const PLAYER_BOARD_STYLES: Record<string, { bgClass: string; borderClass:
     nameEn: 'Abyssal Void Board',
     descTr: 'Derin boşluktan çıkan mor aura ve gizemli karanlık.',
     descEn: 'Mysterious dark aura rising from the infinite void.'
+  },
+  board_emerald: {
+    bgClass: 'bg-gradient-to-br from-emerald-950/95 via-teal-950/95 to-black/95',
+    borderClass: 'border-emerald-400 border-2',
+    textClass: 'text-emerald-100',
+    glowClass: 'shadow-[0_0_18px_rgba(16,185,129,0.5)] ring-1 ring-emerald-400/30',
+    icon: '💎',
+    nameTr: 'Zümrüt İmparatorluk Tahtası',
+    nameEn: 'Emerald Empire Board',
+    descTr: 'Lüks zümrüt ve yeşim taşlarıyla parıldayan imparatorluk masası.',
+    descEn: 'Imperial board glowing with luxurious emerald and jade gems.'
+  },
+  board_matrix: {
+    bgClass: 'bg-gradient-to-br from-green-950/95 via-black to-slate-950/95',
+    borderClass: 'border-green-400 border-2',
+    textClass: 'text-green-100',
+    glowClass: 'shadow-[0_0_18px_rgba(34,197,94,0.5)] ring-1 ring-green-400/30',
+    icon: '💻',
+    nameTr: 'Siber Kod Matrisi',
+    nameEn: 'Cyber Matrix Grid',
+    descTr: 'Sürekli akan yeşil siber kodlar ve dijital şifreleme aurası.',
+    descEn: 'Streaming green digital code lines and cyber matrix aura.'
+  },
+  board_dragon: {
+    bgClass: 'bg-gradient-to-br from-rose-950/95 via-red-950/95 to-amber-950/95',
+    borderClass: 'border-red-500 border-2',
+    textClass: 'text-rose-100',
+    glowClass: 'shadow-[0_0_18px_rgba(239,68,68,0.5)] ring-1 ring-red-500/30',
+    icon: '🐉',
+    nameTr: 'Ejderha Pulları Tahtası',
+    nameEn: 'Dragon Scale Board',
+    descTr: 'Kızgın kırmızı ejderha pulları ve alevli kor kaplaması.',
+    descEn: 'Crimson dragon scales infused with burning embers.'
+  },
+  board_synthwave: {
+    bgClass: 'bg-gradient-to-br from-fuchsia-950/95 via-purple-950/95 to-cyan-950/95',
+    borderClass: 'border-fuchsia-400 border-2',
+    textClass: 'text-fuchsia-100',
+    glowClass: 'shadow-[0_0_18px_rgba(232,121,249,0.5)] ring-1 ring-fuchsia-400/30',
+    icon: '🌆',
+    nameTr: '80s Synthwave Tahtası',
+    nameEn: '80s Synthwave Board',
+    descTr: 'Retro neon gün batımı ızgarası ve pembe-camgöbeği ışıltı.',
+    descEn: 'Retro neon sunset grid with pink and cyan glow.'
   }
 };
 
@@ -1415,6 +1459,10 @@ export const ShopDialog: React.FC<Props> = ({ profile, onUpdateProfile, adminSet
                   <option value="board_galaxy">🌌 Nebula Galaksi</option>
                   <option value="board_ice">❄️ Kutup Ayazı</option>
                   <option value="board_void">🌀 Karanlık Rift</option>
+                  <option value="board_emerald">💎 Zümrüt Krallık</option>
+                  <option value="board_matrix">💻 Siber Matris</option>
+                  <option value="board_dragon">🐉 Ejderha Alevi</option>
+                  <option value="board_synthwave">🌆 Synthwave Neon</option>
                 </select>
               </div>
             </div>

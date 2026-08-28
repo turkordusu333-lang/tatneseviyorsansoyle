@@ -335,13 +335,26 @@ const GameCardComponent: React.FC<GameCardProps> = ({
   const skinItem = findShopItem(cardSkin);
   const isSkinVideo = skinItem?.mediaUrl && isVideoUrl(skinItem.mediaUrl, skinItem.mediaType);
 
-  const getColorLabel = (c: CardColor): string => {
+  const getColorLabel = (c?: CardColor | string): string => {
     if (!c) return '';
-    let key = c as string;
+    let key = String(c).toLowerCase().trim();
     if (key === 'lightblue') key = 'sky_blue';
     if (key === 'railroad') key = 'station';
     if (key === 'darkblue') key = 'blue';
-    return translate(`color_${key}`).toUpperCase();
+    const translated = translate(`color_${key}`);
+    if (translated && translated !== `color_${key}`) return translated.toUpperCase();
+    return (COLOR_LABELS[key as CardColor] || key).toUpperCase();
+  };
+
+  const resolveDualColors = (): [CardColor, CardColor | undefined] => {
+    const c1 = (card.color || (card.allowedColors && card.allowedColors[0]) || 'brown') as CardColor;
+    let c2: CardColor | undefined = card.secondaryColor as CardColor | undefined;
+    if (!c2 || c2 === c1) {
+      if (card.allowedColors && card.allowedColors.length >= 2) {
+        c2 = card.allowedColors.find(c => c !== c1) as CardColor;
+      }
+    }
+    return [c1, c2];
   };
 
   const getSkinOverlayClass = () => {
@@ -647,7 +660,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
     if (isMoney) {
       typeLabel = translate('money_label');
       icon = '💵';
-      shortDesc = translate('card_money_desc', null, card.value);
+      shortDesc = translate('card_money_desc', card.value);
       description = shortDesc;
       if (card.value === 10) bgColor = '#FF9800'; // Vibrant Orange
       else if (card.value === 5) bgColor = '#9C27B0'; // Purple
@@ -665,10 +678,12 @@ const GameCardComponent: React.FC<GameCardProps> = ({
       typeLabel = translate('joker_label');
       icon = '🃏';
       name = translate('card_wildcard_name');
-      if (!card.secondaryColor) {
+      const isMulticolor = !card.secondaryColor && (!card.allowedColors || card.allowedColors.length > 2);
+      if (isMulticolor) {
         shortDesc = translate('card_wildcard_desc_any');
       } else {
-        shortDesc = translate('card_wildcard_desc_two', null, getColorLabel(card.color!), getColorLabel(card.secondaryColor!));
+        const [c1, c2] = resolveDualColors();
+        shortDesc = translate('card_wildcard_desc_two', getColorLabel(c1), getColorLabel(c2 || c1));
       }
       description = shortDesc;
     } else if (isAction) {
@@ -738,11 +753,13 @@ const GameCardComponent: React.FC<GameCardProps> = ({
       typeLabel = translate('rent_label');
       icon = '💰';
       name = translate('card_rent_name');
-      if (card.name.includes('Her Renk') || !card.color) {
+      const isMulticolorRent = card.name.includes('Her Renk') || (!card.color && !card.secondaryColor && (!card.allowedColors || card.allowedColors.length > 2));
+      if (isMulticolorRent) {
         description = translate('card_rent_desc_any');
         shortDesc = description;
       } else {
-        description = translate('card_rent_desc_two', null, getColorLabel(card.color), getColorLabel(card.secondaryColor!));
+        const [c1, c2] = resolveDualColors();
+        description = translate('card_rent_desc_two', getColorLabel(c1), getColorLabel(c2 || c1));
         shortDesc = description;
       }
     }
@@ -751,8 +768,9 @@ const GameCardComponent: React.FC<GameCardProps> = ({
   };
 
   const details = getCardDetails();
-  const primaryColorHex = card.color ? COLOR_HEX[card.color] : '#475569';
-  const secondaryColorHex = card.secondaryColor ? COLOR_HEX[card.secondaryColor] : undefined;
+  const [activeC1, activeC2] = resolveDualColors();
+  const primaryColorHex = activeC1 ? COLOR_HEX[activeC1] : '#475569';
+  const secondaryColorHex = activeC2 ? COLOR_HEX[activeC2] : undefined;
 
   const getValueBadgeStyles = (val: number) => {
     switch (val) {
@@ -1398,14 +1416,14 @@ const GameCardComponent: React.FC<GameCardProps> = ({
               <div className="absolute top-1.5 inset-x-1.5 z-10 bg-white border border-black rounded px-1 py-0.5 flex justify-between items-center">
                 <span className="text-[5.5px] font-black text-slate-900 uppercase">{translate('joker_label').toUpperCase()}:</span>
                 <span className="text-[5.5px] font-black px-1 rounded text-white" style={{ backgroundColor: primaryColorHex }}>
-                  {getColorLabel(card.color!)}
+                  {getColorLabel(activeC1)}
                 </span>
               </div>
 
               <div className="absolute bottom-1.5 inset-x-1.5 z-10 bg-white border border-black rounded px-1 py-0.5 flex justify-between items-center flex-row-reverse">
                 <span className="text-[5.5px] font-black text-slate-900 uppercase">{translate('joker_label').toUpperCase()}:</span>
-                <span className="text-[5.5px] font-black px-1 rounded text-white" style={{ backgroundColor: secondaryColorHex }}>
-                  {getColorLabel(card.secondaryColor!)}
+                <span className="text-[5.5px] font-black px-1 rounded text-white" style={{ backgroundColor: secondaryColorHex || primaryColorHex }}>
+                  {getColorLabel(activeC2 || activeC1)}
                 </span>
               </div>
 

@@ -143,14 +143,36 @@ const AvatarWithFrameComponent: React.FC<AvatarWithFrameProps> = ({
     }
   }
   
+  const [imgLoadError, setImgLoadError] = React.useState(false);
+  const dynamicFrame = frameId && frameId !== 'frame_none' ? findShopItem(frameId) : undefined;
+  const isFrameVideo = dynamicFrame?.mediaUrl && isVideoUrl(dynamicFrame.mediaUrl, dynamicFrame.mediaType);
+
   return (
     <div 
       id={`avatar-frame-${frameId}`}
-      className={`${sizeClassName} rounded-full flex items-center justify-center font-bold text-white shadow-xl relative transition-all duration-300 p-0.5 overflow-hidden ${frameClass}`}
+      className={`${sizeClassName} rounded-full flex items-center justify-center font-bold text-white shadow-xl relative transition-all duration-300 p-0.5 overflow-hidden select-none ${frameClass}`}
       style={glowStyle}
     >
-      <div className="w-full h-full rounded-full bg-slate-900/95 flex items-center justify-center overflow-hidden">
-        {effectiveUrl ? (
+      {/* Custom Dynamic Frame Media Overlay (if frame has GIF/Video/Image) */}
+      {dynamicFrame?.mediaUrl && (
+        <div className="absolute inset-0 pointer-events-none rounded-full z-20 overflow-hidden">
+          {isFrameVideo ? (
+            <HlsVideoPlayer
+              src={dynamicFrame.mediaUrl}
+              className="w-full h-full object-cover rounded-full mix-blend-screen opacity-90 pointer-events-none"
+            />
+          ) : (
+            <img
+              src={dynamicFrame.mediaUrl}
+              alt="Frame Overlay"
+              className="w-full h-full object-cover rounded-full mix-blend-screen opacity-90 pointer-events-none"
+            />
+          )}
+        </div>
+      )}
+
+      <div className="w-full h-full rounded-full bg-slate-900/95 flex items-center justify-center overflow-hidden relative z-10">
+        {effectiveUrl && !imgLoadError ? (
           isVideoUrl(effectiveUrl) ? (
             <HlsVideoPlayer
               src={effectiveUrl}
@@ -162,10 +184,13 @@ const AvatarWithFrameComponent: React.FC<AvatarWithFrameProps> = ({
               alt="Avatar" 
               className="w-full h-full object-cover rounded-full"
               referrerPolicy="no-referrer"
+              onError={() => setImgLoadError(true)}
+              loading="lazy"
+              decoding="async"
             />
           )
         ) : (
-          <span className="select-none scale-110">{emoji}</span>
+          <span className="select-none scale-110 drop-shadow-sm">{emoji}</span>
         )}
       </div>
     </div>

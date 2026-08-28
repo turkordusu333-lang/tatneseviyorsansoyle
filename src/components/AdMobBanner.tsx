@@ -1,35 +1,57 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { adMobService } from '../lib/adMobService';
+
+declare global {
+  interface Window {
+    adsbygoogle?: any[];
+  }
+}
 
 interface AdMobBannerProps {
   adminSettings?: any;
   visible?: boolean;
   position?: 'top' | 'bottom';
   className?: string;
+  adSlot?: string;
+  adFormat?: 'auto' | 'horizontal' | 'rectangle';
 }
 
+/**
+ * SmartAdBanner / AdMobBanner:
+ * - On Native Android & iOS (Capacitor): Renders Native Google AdMob Banner
+ * - On Web Browsers: Renders Google AdSense Ad Unit (ca-pub-5045652074166668)
+ */
 export const AdMobBanner: React.FC<AdMobBannerProps> = ({
   adminSettings,
   visible = true,
   position = 'bottom',
   className = '',
+  adSlot,
+  adFormat = 'auto',
 }) => {
   const isNative = Capacitor.isNativePlatform();
   const platform = Capacitor.getPlatform();
   const [adLoaded, setAdLoaded] = useState(false);
   const [adError, setAdError] = useState<string | null>(null);
 
-  // Settings (Defaults to false for real AdMob production ads)
+  // Settings
   const isTesting = adminSettings?.bannerAdMobTestingMode === true || adminSettings?.wheelAdMobTestingMode === true;
   const isBannerEnabled = adminSettings?.bannerAdMobEnabled !== false;
-  
-  // Ad Unit IDs
+  const isAdSenseEnabled = adminSettings?.adSenseEnabled !== false;
+  const adSenseClient = adminSettings?.adSenseClientId || 'ca-pub-5045652074166668';
+  const effectiveAdSlot = adSlot || adminSettings?.adSenseBannerSlotId || '';
+
+  // AdMob Ad Unit IDs (Mobile)
   const androidAdUnitId = adminSettings?.bannerAdMobAndroidAdUnitId || 'ca-app-pub-5045652074166668/1473978700';
   const iosAdUnitId = adminSettings?.bannerAdMobiOSAdUnitId || 'ca-app-pub-3940256099942544/2934735716';
-
   const activeAdUnitId = platform === 'ios' ? iosAdUnitId : androidAdUnitId;
 
+  // Ref to prevent multiple AdSense pushes on same element
+  const adRef = useRef<HTMLModElement | null>(null);
+  const pushedRef = useRef(false);
+
+  // --- NATIVE ADMOB LIFECYCLE ---
   useEffect(() => {
     if (!isNative || !isBannerEnabled || !visible) {
       if (isNative) {
@@ -67,8 +89,25 @@ export const AdMobBanner: React.FC<AdMobBannerProps> = ({
     };
   }, [isNative, isBannerEnabled, visible, activeAdUnitId, isTesting, position]);
 
+  // --- WEB ADSENSE LIFECYCLE ---
+  useEffect(() => {
+    if (isNative || !isAdSenseEnabled || !visible) return;
+
+    if (adRef.current && !pushedRef.current) {
+      try {
+        if (typeof window !== 'undefined') {
+          (window.adsbygoogle = window.adsbygoogle || []).push({});
+          pushedRef.current = true;
+          setAdLoaded(true);
+        }
+      } catch (e) {
+        console.warn('[AdSense] adsbygoogle push error:', e);
+      }
+    }
+  }, [isNative, isAdSenseEnabled, visible]);
+
   // If not visible or disabled, render nothing
-  if (!visible || !isBannerEnabled) {
+  if (!visible || (isNative && !isBannerEnabled) || (!isNative && !isAdSenseEnabled)) {
     return null;
   }
 
@@ -78,24 +117,83 @@ export const AdMobBanner: React.FC<AdMobBannerProps> = ({
     return <div className="h-14 w-full shrink-0 pointer-events-none" aria-hidden="true" />;
   }
 
-  // On Web Browser preview: Render a clean visual AdMob Banner bar
+  // On Web Browser: Render real Google AdSense ad container
   return (
-    <div className={`w-full max-w-lg mx-auto my-2 px-3 py-2 bg-slate-900/80 border border-amber-500/20 rounded-xl flex items-center justify-between shadow-lg text-xs backdrop-blur-md ${className}`}>
-      <div className="flex items-center gap-2">
-        <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/30 text-[10px] font-black text-amber-400 uppercase tracking-wider">
-          AdMob
+    <div className={`w-full max-w-2xl mx-auto my-2 overflow-hidden flex flex-col items-center justify-center text-center ${className}`}>
+      {/* Google AdSense ins element */}
+      <ins
+        ref={adRef}
+        className="adsbygoogle"
+        style={{ display: 'block', minHeight: '60px', width: '100%' }}
+        data-ad-client={adSenseClient}
+        data-ad-slot={effectiveAdSlot || undefined}
+        data-ad-format={adFormat}
+        data-full-width-responsive="true"
+      />
+
+      {/* Fallback preview indicator if running in development or ad blocked */}
+      <div className="w-full py-1 px-3 bg-slate-950/40 border border-white/5 rounded-lg flex items-center justify-between text-[10px] text-slate-500 mt-1">
+        <span className="flex items-center gap-1.5 font-bold text-amber-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+          Google AdSense (Web)
         </span>
-        <div className="flex flex-col">
-          <span className="font-bold text-slate-200 text-[11px]">Deal Card Sponsorlu Reklam</span>
-          <span className="text-[9px] text-slate-400 font-mono truncate max-w-[220px]">
-            {isTesting ? 'Google Test Banner (Aktif)' : activeAdUnitId}
-          </span>
-        </div>
+        <span className="font-mono text-[9px] text-slate-400">
+          {adSenseClient}
+        </span>
       </div>
-      <div className="text-[10px] text-emerald-400 font-bold flex items-center gap-1 bg-emerald-500/10 px-2 py-1 rounded-lg border border-emerald-500/20">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-        <span>Banner Hazır</span>
-      </div>
+    </div>
+  );
+};
+
+/**
+ * Dedicated Google AdSense Ad component for Web Pages
+ */
+export const AdSenseAd: React.FC<{
+  adClient?: string;
+  adSlot?: string;
+  adFormat?: 'auto' | 'fluid' | 'rectangle' | 'horizontal';
+  fullWidthResponsive?: boolean;
+  className?: string;
+  minHeight?: string;
+}> = ({
+  adClient = 'ca-pub-5045652074166668',
+  adSlot,
+  adFormat = 'auto',
+  fullWidthResponsive = true,
+  className = '',
+  minHeight = '90px',
+}) => {
+  const adRef = useRef<HTMLModElement | null>(null);
+  const pushedRef = useRef(false);
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return;
+
+    if (adRef.current && !pushedRef.current) {
+      try {
+        if (typeof window !== 'undefined') {
+          (window.adsbygoogle = window.adsbygoogle || []).push({});
+          pushedRef.current = true;
+        }
+      } catch (e) {
+        console.warn('[AdSenseAd] push error:', e);
+      }
+    }
+  }, []);
+
+  if (Capacitor.isNativePlatform()) return null;
+
+  return (
+    <div className={`adsense-container w-full overflow-hidden my-3 text-center ${className}`}>
+      <ins
+        ref={adRef}
+        className="adsbygoogle"
+        style={{ display: 'block', minHeight }}
+        data-ad-client={adClient}
+        data-ad-slot={adSlot || undefined}
+        data-ad-format={adFormat}
+        data-full-width-responsive={fullWidthResponsive ? 'true' : 'false'}
+      />
     </div>
   );
 };

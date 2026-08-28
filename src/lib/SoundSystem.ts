@@ -199,6 +199,20 @@ class SoundSystem {
     this.playTone([440.00, 440.00], [0.08, 0.08], type, volume, pitch);
   }
 
+  playRouletteTick(settings?: UserSettings, pitchModifier: number = 1.0) {
+    const s = settings || this.getDefaultSettings();
+    const volume = (s.soundVolume / 100) * 0.45;
+    const pitch = s.soundPitch * pitchModifier;
+    this.playTone([650 * pitch, 880 * pitch], [0.03, 0.04], 'triangle', volume, pitch);
+  }
+
+  playRouletteSelect(settings?: UserSettings) {
+    const s = settings || this.getDefaultSettings();
+    const volume = (s.soundVolume / 100) * 0.7;
+    const pitch = s.soundPitch;
+    this.playTone([523.25, 659.25, 783.99, 1046.50, 1318.51], [0.08, 0.08, 0.08, 0.12, 0.4], 'triangle', volume, pitch);
+  }
+
   playCardDraw(settings: UserSettings) {
     const volume = settings.soundVolume / 100;
     const pitch = settings.soundPitch;

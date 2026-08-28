@@ -10,6 +10,7 @@ import { AdminDashboard } from './AdminDashboard';
 import { ProfileOperationsModal } from './ProfileOperationsModal';
 import { HowToPlayModal } from './HowToPlayModal';
 import { LuckyWheel } from './LuckyWheel';
+import { AdMobBanner } from './AdMobBanner';
 import { motion, AnimatePresence } from 'motion/react';
 import { t, changeLanguage } from '../lib/TranslationSystem';
 import { API_BASE_URL, WS_BASE_URL } from '../lib/apiConfig';
@@ -404,11 +405,81 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
     return () => clearInterval(interval);
   }, []);
 
-  // Admin login custom states
+  // Admin authentication state & secure secret triggers
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = React.useState(() => {
+    return localStorage.getItem('deal_master_admin_token') === 'deal-master-admin-token-2026-auth';
+  });
   const [showAdminLoginModal, setShowAdminLoginModal] = React.useState(false);
   const [adminPasswordInput, setAdminPasswordInput] = React.useState('');
   const [adminLoginError, setAdminLoginError] = React.useState('');
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = React.useState(false);
+  const [adminLoginLoading, setAdminLoginLoading] = React.useState(false);
+  const [adminClickCount, setAdminClickCount] = React.useState(0);
+  const adminClickTimerRef = React.useRef<any>(null);
+
+  // Keyboard shortcut (Ctrl+Shift+A or Alt+Shift+A) for admin login
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') || (e.altKey && e.shiftKey && e.key.toLowerCase() === 'a')) {
+        e.preventDefault();
+        setShowAdminLoginModal(true);
+        setAdminPasswordInput('');
+        setAdminLoginError('');
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Secret logo/footer clicks trigger (5 rapid clicks)
+  const handleSecretAdminTrigger = () => {
+    setAdminClickCount((prev) => {
+      const next = prev + 1;
+      if (next >= 5) {
+        setShowAdminLoginModal(true);
+        setAdminPasswordInput('');
+        setAdminLoginError('');
+        return 0;
+      }
+      if (adminClickTimerRef.current) clearTimeout(adminClickTimerRef.current);
+      adminClickTimerRef.current = setTimeout(() => {
+        setAdminClickCount(0);
+      }, 2500);
+      return next;
+    });
+  };
+
+  const handleAdminLoginSubmit = async () => {
+    if (!adminPasswordInput.trim() || adminLoginLoading) return;
+    setAdminLoginLoading(true);
+    setAdminLoginError('');
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminPasswordInput })
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.token) {
+        localStorage.setItem('deal_master_admin_token', data.token);
+        setIsAdminAuthenticated(true);
+        setActiveTab('admin');
+        setShowAdminLoginModal(false);
+        sounds.playCoin(profile.settings);
+      } else {
+        setAdminLoginError(data.error || (profile.settings.language === 'en' ? 'Invalid password! Access denied.' : 'Hatalı şifre girdiniz! Erişim reddedildi.'));
+      }
+    } catch (e) {
+      setAdminLoginError('Sunucuya bağlanılamadı.');
+    } finally {
+      setAdminLoginLoading(false);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    localStorage.removeItem('deal_master_admin_token');
+    setIsAdminAuthenticated(false);
+    setActiveTab('play');
+  };
 
   // Room joining custom password states
   const [showRoomPasswordModal, setShowRoomPasswordModal] = React.useState(false);
@@ -479,7 +550,7 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
 
       {/* Top Header bar */}
       <header className="border-b border-zinc-900/60 bg-zinc-950/50 backdrop-blur-xl px-2.5 sm:px-8 py-2.5 sm:py-3.5 flex items-center justify-between sticky top-0 z-40 max-w-full overflow-hidden">
-        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+        <div onClick={handleSecretAdminTrigger} className="flex items-center gap-2 sm:gap-3 flex-shrink-0 cursor-pointer select-none" title="Deal Master PRO">
           <div className="w-8 h-8 sm:w-9 sm:h-9 bg-gradient-to-br from-red-600 to-red-800 rounded-xl flex items-center justify-center font-black text-base sm:text-lg shadow-lg shadow-red-900/10 text-white italic tracking-tighter">
             D
           </div>
@@ -633,7 +704,7 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
               { id: 'customization', label: t('tab_customize', profile) || '🎨 Özelleştir', icon: Layout, color: 'hover:text-red-400' },
               { id: 'profile', label: t('tab_profile', profile) || '👤 Profil', icon: UserIcon, color: 'hover:text-red-400' },
               { id: 'rules', label: t('tab_rules', profile) || '📖 Kurallar', icon: BookOpen, color: 'hover:text-red-400' },
-              { id: 'admin', label: t('tab_admin', profile) || '🛡️ Yönetici', icon: Shield, color: 'hover:text-amber-500' },
+              isAdminAuthenticated && { id: 'admin', label: t('tab_admin', profile) || '🛡️ Yönetici Paneli', icon: Shield, color: 'hover:text-amber-500', special: true },
             ].filter(Boolean).map((tab: any) => {
               const IconComp = tab.icon;
               const isActive = activeTab === tab.id;
@@ -641,18 +712,6 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                 <button
                   key={tab.id}
                   onClick={() => {
-                    if (tab.id === 'admin') {
-                      if (isAdminAuthenticated) {
-                        setActiveTab('admin');
-                        sounds.playPlay(profile.settings);
-                      } else {
-                        setAdminPasswordInput('');
-                        setAdminLoginError('');
-                        setShowAdminLoginModal(true);
-                        sounds.playPlay(profile.settings);
-                      }
-                      return;
-                    }
                     setActiveTab(tab.id as any);
                     sounds.playPlay(profile.settings);
                   }}
@@ -1844,7 +1903,7 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
 
               {/* TAB 9: Admin Dashboard */}
               {activeTab === 'admin' && (
-                <AdminDashboard onSettingsUpdated={onUpdateAdminSettings} />
+                <AdminDashboard onSettingsUpdated={onUpdateAdminSettings} onLogout={handleAdminLogout} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -1987,20 +2046,7 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                     }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter') {
-                        // Submit login
-                        const isCorrect = adminPasswordInput === 'admin123';
-                        if (isCorrect) {
-                          sounds.playCoin(profile.settings);
-                          setIsAdminAuthenticated(true);
-                          setActiveTab('admin');
-                          setShowAdminLoginModal(false);
-                        } else {
-                          setAdminLoginError(
-                            profile.settings.language === 'en'
-                              ? 'Invalid password! Access denied.'
-                              : 'Hatalı şifre girdiniz! Erişim reddedildi.'
-                          );
-                        }
+                        handleAdminLoginSubmit();
                       }
                     }}
                     className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/30 transition-all font-mono"
@@ -2031,24 +2077,18 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
                   {profile.settings.language === 'en' ? 'Cancel' : 'İptal'}
                 </button>
                 <button
-                  onClick={() => {
-                    const isCorrect = adminPasswordInput === 'admin123';
-                    if (isCorrect) {
-                      sounds.playCoin(profile.settings);
-                      setIsAdminAuthenticated(true);
-                      setActiveTab('admin');
-                      setShowAdminLoginModal(false);
-                    } else {
-                      setAdminLoginError(
-                        profile.settings.language === 'en'
-                          ? 'Invalid password! Access denied.'
-                          : 'Hatalı şifre girdiniz! Erişim reddedildi.'
-                      );
-                    }
-                  }}
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg shadow-amber-500/10 cursor-pointer"
+                  disabled={adminLoginLoading}
+                  onClick={handleAdminLoginSubmit}
+                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider transition-all active:scale-95 shadow-lg shadow-amber-500/10 cursor-pointer flex items-center gap-2"
                 >
-                  {profile.settings.language === 'en' ? 'Unlock Access' : 'Giriş Yap'}
+                  {adminLoginLoading ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                      <span>Kontrol Ediliyor...</span>
+                    </>
+                  ) : (
+                    <span>{profile.settings.language === 'en' ? 'Unlock Access' : 'Giriş Yap'}</span>
+                  )}
                 </button>
               </div>
             </motion.div>
@@ -2155,8 +2195,13 @@ export const MainMenu: React.FC<Props> = ({ profile, onUpdateProfile, onJoinRoom
         adminSettings={adminSettings}
       />
 
-      {/* Footer credits line */}
-      <footer className="border-t border-white/10 py-4 text-center text-[10px] text-slate-500 bg-black/40 mt-8 z-10">
+      {/* Smart Ad Banner (Google AdSense on Web / Google AdMob on App) */}
+      <div className="px-4 mt-6">
+        <AdMobBanner adminSettings={adminSettings} />
+      </div>
+
+      {/* Footer credits line with secret admin trigger */}
+      <footer onClick={handleSecretAdminTrigger} className="border-t border-white/10 py-4 text-center text-[10px] text-slate-500 bg-black/40 mt-8 z-10 select-none cursor-pointer">
         © 2026 Deal Master PRO Deal Online. Tüm Hakları Saklıdır. Responsive & Fullstack UI.
       </footer>
     </div>
