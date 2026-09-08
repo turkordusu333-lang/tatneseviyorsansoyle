@@ -1,21 +1,43 @@
 import { Card, GamePlayer, MatchState, CardColor } from '../types';
-import { MAX_IN_SET, RENT_VALUES } from './deck';
+import { MAX_IN_SET, RENT_VALUES, getBaseColor, getAllSetKeysForColor, findAvailableSetKey } from './deck';
 
 /**
  * Heuristics-based AI Decision Engine for Deal Master PRO Deal Bot
  */
 export class BotEngine {
   /**
-   * Helper to calculate rent value of a color set for a player
+   * Helper to calculate rent value of a color set for a player.
+   * If player has multiple sets of that color, returns the maximum rent value among them.
    */
   static getRentValue(player: GamePlayer, color: CardColor): number {
-    const set = player.properties[color];
-    if (!set || set.cards.length === 0) return 0;
-    const count = Math.min(set.cards.length, MAX_IN_SET[color]);
-    let val = RENT_VALUES[color]?.[count - 1] || 1;
-    if (set.hasHouse) val += 3;
-    if (set.hasHotel) val += 4;
-    return val;
+    const setKeys = getAllSetKeysForColor(player.properties, color);
+    if (setKeys.length === 0) {
+      // Check fallback base key
+      const baseSet = player.properties[color];
+      if (!baseSet || baseSet.cards.length === 0) return 0;
+      const count = Math.min(baseSet.cards.length, MAX_IN_SET[color]);
+      let val = RENT_VALUES[color]?.[count - 1] || 1;
+      if (baseSet.cards.length >= MAX_IN_SET[color]) {
+        if (baseSet.hasHouse) val += 3;
+        if (baseSet.hasHotel) val += 4;
+      }
+      return val;
+    }
+
+    let maxVal = 0;
+    for (const setKey of setKeys) {
+      const set = player.properties[setKey];
+      if (!set || set.cards.length === 0) continue;
+      const count = Math.min(set.cards.length, MAX_IN_SET[color]);
+      let val = RENT_VALUES[color]?.[count - 1] || 1;
+      const isCompleted = set.cards.length >= MAX_IN_SET[color];
+      if (isCompleted) {
+        if (set.hasHouse) val += 3;
+        if (set.hasHotel) val += 4;
+      }
+      if (val > maxVal) maxVal = val;
+    }
+    return maxVal;
   }
 
   /**
@@ -97,29 +119,31 @@ export class BotEngine {
     if (dealBreaker && otherPlayers.length > 0) {
       // Find completed sets to steal
       let bestTargetPlayer: GamePlayer | null = null;
+      let bestSetKey: string | null = null;
       let bestColor: CardColor | null = null;
       let highestVal = 0;
 
       otherPlayers.forEach((op) => {
-        Object.keys(op.properties).forEach((colorKey) => {
-          const col = colorKey as CardColor;
-          const propSet = op.properties[col];
+        Object.keys(op.properties).forEach((setKey) => {
+          const col = getBaseColor(setKey);
+          const propSet = op.properties[setKey];
           if (propSet && propSet.cards.length >= MAX_IN_SET[col]) {
             const setVal = propSet.cards.reduce((sum, c) => sum + c.value, 0);
             if (setVal > highestVal) {
               highestVal = setVal;
               bestTargetPlayer = op;
+              bestSetKey = setKey;
               bestColor = col;
             }
           }
         });
       });
 
-      if (bestTargetPlayer && bestColor) {
+      if (bestTargetPlayer && (bestSetKey || bestColor)) {
         return {
           cardId: dealBreaker.id,
           targetZone: 'action',
-          payload: { targetPlayerId: (bestTargetPlayer as GamePlayer).id, targetColor: bestColor }
+          payload: { targetPlayerId: (bestTargetPlayer as GamePlayer).id, targetColor: bestColor, targetSetKey: bestSetKey || bestColor }
         };
       }
     }
@@ -133,9 +157,9 @@ export class BotEngine {
       let highestCardVal = 0;
 
       otherPlayers.forEach((op) => {
-        Object.keys(op.properties).forEach((colorKey) => {
-          const col = colorKey as CardColor;
-          const propSet = op.properties[col];
+        Object.keys(op.properties).forEach((setKey) => {
+          const col = getBaseColor(setKey);
+          const propSet = op.properties[setKey];
           if (propSet && propSet.cards.length > 0 && propSet.cards.length < MAX_IN_SET[col]) {
             propSet.cards.forEach((c) => {
               if (c.value > highestCardVal) {
@@ -164,9 +188,9 @@ export class BotEngine {
       let myCardToGive: Card | null = null;
       let lowestMyVal = 999;
 
-      Object.keys(botPlayer.properties).forEach((colorKey) => {
-        const col = colorKey as CardColor;
-        const propSet = botPlayer.properties[col];
+      Object.keys(botPlayer.properties).forEach((setKey) => {
+        const col = getBaseColor(setKey);
+        const propSet = botPlayer.properties[setKey];
         if (propSet && propSet.cards.length > 0 && propSet.cards.length < MAX_IN_SET[col]) {
           propSet.cards.forEach((c) => {
             if (c.value < lowestMyVal) {
@@ -184,9 +208,9 @@ export class BotEngine {
         let highestOpVal = 0;
 
         otherPlayers.forEach((op) => {
-          Object.keys(op.properties).forEach((colorKey) => {
-            const col = colorKey as CardColor;
-            const propSet = op.properties[col];
+          Object.keys(op.properties).forEach((setKey) => {
+            const col = getBaseColor(setKey);
+            const propSet = op.properties[setKey];
             if (propSet && propSet.cards.length > 0 && propSet.cards.length < MAX_IN_SET[col]) {
               propSet.cards.forEach((c) => {
                 if (c.value > highestOpVal) {
@@ -339,11 +363,17 @@ export class BotEngine {
     const propertyCards: { id: string; value: number; isProperty: boolean; isCompletedSet: boolean }[] = [];
 
     for (const colorKey in botPlayer.properties) {
-      const color = colorKey as CardColor;
-      const propSet = botPlayer.properties[color];
-      if (!propSet) continue;
+      const baseColor = getBaseColor(colorKey);
+      const propSet = botPlayer.properties[colorKey];
+      if (!propSet || propSet.cards.length === 0) continue;
 
-      const isCompleted = propSet.cards.length >= MAX_IN_SET[color];
+      const isCompleted = propSet.cards.length >= MAX_IN_SET[baseColor];
+      if (propSet.hasHotel) {
+        propertyCards.push({ id: `hotel_${colorKey}`, value: 4, isProperty: true, isCompletedSet: isCompleted });
+      }
+      if (propSet.hasHouse) {
+        propertyCards.push({ id: `house_${colorKey}`, value: 3, isProperty: true, isCompletedSet: isCompleted });
+      }
       propSet.cards.forEach((c) => {
         propertyCards.push({ id: c.id, value: c.value, isProperty: true, isCompletedSet: isCompleted });
       });

@@ -119,7 +119,7 @@ export const AdMobBanner: React.FC<AdMobBannerProps> = ({
 
   // On Web Browser: Render real Google AdSense ad container
   return (
-    <div className={`w-full max-w-2xl mx-auto my-2 overflow-hidden flex flex-col items-center justify-center text-center ${className}`}>
+    <div className={`w-full max-w-2xl mx-auto my-1.5 overflow-hidden flex flex-col items-center justify-center text-center ${className}`}>
       {/* Google AdSense ins element */}
       <ins
         ref={adRef}
@@ -130,17 +130,6 @@ export const AdMobBanner: React.FC<AdMobBannerProps> = ({
         data-ad-format={adFormat}
         data-full-width-responsive="true"
       />
-
-      {/* Fallback preview indicator if running in development or ad blocked */}
-      <div className="w-full py-1 px-3 bg-slate-950/40 border border-white/5 rounded-lg flex items-center justify-between text-[10px] text-slate-500 mt-1">
-        <span className="flex items-center gap-1.5 font-bold text-amber-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-          Google AdSense (Web)
-        </span>
-        <span className="font-mono text-[9px] text-slate-400">
-          {adSenseClient}
-        </span>
-      </div>
     </div>
   );
 };

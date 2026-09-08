@@ -217,16 +217,16 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
           friends: data.friends,
         };
         onUpdateProfile(updated);
-        setFriendSuccess(`${friendUsername} arkadaş olarak başarıyla eklendi!`);
+        setFriendSuccess(profile.settings.language === 'en' ? `${friendUsername} successfully added as friend!` : `${friendUsername} arkadaş olarak başarıyla eklendi!`);
         setFriendUsername('');
         sounds.playCoin(profile.settings);
       } else {
         const err = await response.json();
-        setFriendError(err.error || 'Arkadaş ekleme başarısız.');
+        setFriendError(err.error || (profile.settings.language === 'en' ? 'Failed to add friend.' : 'Arkadaş ekleme başarısız.'));
         sounds.playAlert(profile.settings);
       }
     } catch (err) {
-      setFriendError('Sunucu bağlantı hatası oluştu.');
+      setFriendError(profile.settings.language === 'en' ? 'Server connection error occurred.' : 'Sunucu bağlantı hatası oluştu.');
       sounds.playAlert(profile.settings);
     }
   };
@@ -444,7 +444,7 @@ export const ProfilePanel: React.FC<Props> = ({ profile, onUpdateProfile }) => {
                     type="submit"
                     className="bg-red-600 hover:bg-red-500 text-white font-bold px-4 py-2 rounded-xl text-sm transition-all transform active:scale-95 cursor-pointer"
                   >
-                    Ekle
+                    {profile.settings.language === 'en' ? 'Add' : 'Ekle'}
                   </button>
                 </div>
                 {friendError && <p className="text-xs text-red-400 mt-1">{friendError}</p>}

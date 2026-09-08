@@ -30,13 +30,30 @@
   padding-right: max(0.5rem, env(safe-area-inset-right, 0px)) !important;
 }
 
+html {
+  min-height: 100%;
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
 body {
   font-family: var(--font-sans);
   background-color: #0A0C10;
   color: #F1F5F9;
-  overflow-x: hidden;
-  position: relative;
   min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  overflow-y: auto;
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+}
+
+#root {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 body::before {
@@ -72,6 +89,52 @@ body::before {
 
 .immersive-glow-green {
   box-shadow: 0 0 25px -5px rgba(16, 185, 129, 0.2), 0 0 10px -2px rgba(16, 185, 129, 0.1);
+}
+
+/* Premium Login Redesign Classes */
+.login-glass-card {
+  background: radial-gradient(130% 100% at 50% 0%, rgba(30, 35, 45, 0.72) 0%, rgba(10, 12, 16, 0.88) 100%);
+  backdrop-filter: blur(28px) saturate(180%);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px -10px rgba(239, 68, 68, 0.12), inset 0 1px 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.login-glass-chip {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.login-btn-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.login-btn-shimmer::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -60%;
+  width: 50%;
+  height: 200%;
+  background: linear-gradient(
+    60deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: rotate(25deg);
+  animation: btn-shine-loop 4s infinite ease-in-out;
+}
+
+@keyframes btn-shine-loop {
+  0%, 75% {
+    left: -60%;
+  }
+  100% {
+    left: 140%;
+  }
 }
 
 /* Holographic Shimmer Effect */

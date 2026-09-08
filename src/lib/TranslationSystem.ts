@@ -16,10 +16,17 @@ export const initTranslations = async (): Promise<any> => {
     if (res.ok) {
       const data = await res.json();
       if (data && typeof data === 'object') {
-        translations = {
-          ...translations,
-          ...data
+        const defaultDict = (defaultTranslations as any) || {};
+        const merged: Record<string, Record<string, string>> = {
+          tr: { ...(defaultDict.tr || {}), ...(translations.tr || {}), ...(data.tr || {}) },
+          en: { ...(defaultDict.en || {}), ...(translations.en || {}), ...(data.en || {}) },
         };
+        for (const langKey of Object.keys(data)) {
+          if (langKey !== 'tr' && langKey !== 'en') {
+            merged[langKey] = { ...(translations[langKey] || {}), ...(data[langKey] || {}) };
+          }
+        }
+        translations = merged;
         notifyListeners();
       }
     }
@@ -72,12 +79,14 @@ export const changeLanguage = (lang: string) => {
 };
 
 export const t = (key: string, profile?: UserProfile | null, ...args: any[]): string => {
+  if (!key) return '';
   const lang = getCurrentLanguage(profile);
-  const langDict = translations[lang] || translations['tr'] || {};
-  let val = langDict[key] || translations['tr']?.[key] || key;
+  const defaultDict = (defaultTranslations as any) || {};
+  const langDict = translations[lang] || defaultDict[lang] || translations['tr'] || defaultDict['tr'] || {};
+  let val = langDict[key] ?? defaultDict[lang]?.[key] ?? translations['tr']?.[key] ?? defaultDict['tr']?.[key] ?? key;
 
   // Replace args {0}, {1} etc.
-  if (args.length > 0) {
+  if (args.length > 0 && typeof val === 'string') {
     args.forEach((arg, idx) => {
       val = val.replace(new RegExp(`\\{${idx}\\}`, 'g'), String(arg));
     });

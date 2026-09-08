@@ -2,15 +2,61 @@ import express from 'express';
 import http from 'http';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer as createViteServer } from 'vite';
-import { generateDeck, shuffleDeck, checkWinner, MAX_IN_SET } from './src/lib/deck';
+import { generateDeck, shuffleDeck, checkWinner, MAX_IN_SET, COLOR_LABELS, RENT_VALUES, getBaseColor, getSetDisplayName, getAllSetKeysForColor, findAvailableSetKey, sanitizePropertySets } from './src/lib/deck';
 import { BotEngine } from './src/lib/BotEngine';
 import { UserProfile, MatchState, GamePlayer, Card, CardColor, GameLog, Friend, FriendRequest, Tournament, TournamentMatch, ActionRequest } from './src/types';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 
 dotenv.config();
+
+/**
+ * Secure password hashing using PBKDF2/scrypt with per-user salt
+ */
+function hashPassword(password: string): string {
+  if (!password || typeof password !== 'string') return '';
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(password.trim(), salt, 64).toString('hex');
+  return `scrypt:${salt}:${hash}`;
+}
+
+/**
+ * Verifies password against scrypt hash or legacy plaintext with auto-upgrade support
+ */
+function verifyPassword(password: string, storedHash: string): boolean {
+  if (!storedHash || !password) return false;
+  const cleanPassword = password.trim();
+  
+  if (!storedHash.startsWith('scrypt:')) {
+    // Legacy plaintext support (exact match)
+    return cleanPassword === storedHash.trim();
+  }
+
+  const parts = storedHash.split(':');
+  if (parts.length !== 3) return false;
+  const [_, salt, originalHash] = parts;
+  try {
+    const computedHash = crypto.scryptSync(cleanPassword, salt, 64).toString('hex');
+    return crypto.timingSafeEqual(Buffer.from(computedHash, 'hex'), Buffer.from(originalHash, 'hex'));
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Sanitizes user profile to never expose password hashes to client
+ */
+function sanitizeProfile(user: UserProfile): UserProfile {
+  if (!user) return user;
+  const sanitized = { ...user };
+  if (sanitized.password) {
+    delete sanitized.password;
+  }
+  return sanitized;
+}
 
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
@@ -32,29 +78,18 @@ function countTeamCompletedSets(players: GamePlayer[], team: 'team_blue' | 'team
   const teamPlayers = players.filter((p, idx) => (p.team || (idx % 2 === 0 ? 'team_blue' : 'team_red')) === team);
   if (teamPlayers.length === 0) return 0;
 
-  // Combine property cards of each color across teammates
-  const combinedCardsByColor: Record<string, number> = {};
+  let totalCompletedSets = 0;
   teamPlayers.forEach((tp) => {
     if (tp.properties) {
-      for (const colorKey in tp.properties) {
-        const col = colorKey as CardColor;
-        const set = tp.properties[col];
-        if (set && set.cards) {
-          combinedCardsByColor[col] = (combinedCardsByColor[col] || 0) + set.cards.length;
+      for (const setKey in tp.properties) {
+        const baseCol = setKey.split('_')[0] as CardColor;
+        const set = tp.properties[setKey];
+        if (set && set.cards && set.cards.length >= (MAX_IN_SET[baseCol] || 3)) {
+          totalCompletedSets++;
         }
       }
     }
   });
-
-  let totalCompletedSets = 0;
-  for (const colorKey in combinedCardsByColor) {
-    const col = colorKey as CardColor;
-    const count = combinedCardsByColor[col];
-    const required = MAX_IN_SET[col];
-    if (required && required > 0) {
-      totalCompletedSets += Math.floor(count / required);
-    }
-  }
 
   return totalCompletedSets;
 }
@@ -393,19 +428,23 @@ let userSaveQueue: Promise<void> = Promise.resolve();
 
 async function saveUsers(users: Record<string, UserProfile>): Promise<void> {
   userSaveQueue = userSaveQueue.then(async () => {
-    // 1. Atomic write to local backup file using a temporary file first
+    // 1. Atomic async write to local backup file using a temporary file first
+    const payload = JSON.stringify(users, null, 2);
+    const tempFile = `${USERS_FILE}.tmp.${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     try {
-      const tempFile = `${USERS_FILE}.tmp.${Date.now()}`;
-      const payload = JSON.stringify(users, null, 2);
-      fs.writeFileSync(tempFile, payload, 'utf8');
-      fs.renameSync(tempFile, USERS_FILE);
+      await fs.promises.writeFile(tempFile, payload, 'utf8');
+      await fs.promises.rename(tempFile, USERS_FILE);
     } catch (e) {
       console.error('[Database] Local fallback save error:', e);
       // Direct fallback if rename fails
       try {
-        fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf8');
+        await fs.promises.writeFile(USERS_FILE, payload, 'utf8');
       } catch (err) {
         console.error('[Database] Critical error saving users file:', err);
+      }
+    } finally {
+      if (fs.existsSync(tempFile)) {
+        try { await fs.promises.unlink(tempFile); } catch (_) {}
       }
     }
 
@@ -623,23 +662,27 @@ async function loadAdminData() {
   }
 }
 
-function safeWriteJsonFile(filePath: string, data: any) {
+async function safeWriteJsonFile(filePath: string, data: any): Promise<void> {
+  const payload = JSON.stringify(data, null, 2);
+  const tempFile = `${filePath}.tmp.${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   try {
-    const tempFile = `${filePath}.tmp.${Date.now()}`;
-    const payload = JSON.stringify(data, null, 2);
-    fs.writeFileSync(tempFile, payload, 'utf8');
-    fs.renameSync(tempFile, filePath);
+    await fs.promises.writeFile(tempFile, payload, 'utf8');
+    await fs.promises.rename(tempFile, filePath);
   } catch (e) {
     try {
-      fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+      await fs.promises.writeFile(filePath, payload, 'utf8');
     } catch (err) {
       console.error(`[Database] Failed to write file ${filePath}:`, err);
+    }
+  } finally {
+    if (fs.existsSync(tempFile)) {
+      try { await fs.promises.unlink(tempFile); } catch (_) {}
     }
   }
 }
 
 async function saveGlobalStoreItems() {
-  safeWriteJsonFile(GLOBAL_STORE_ITEMS_FILE, globalStoreItems);
+  await safeWriteJsonFile(GLOBAL_STORE_ITEMS_FILE, globalStoreItems);
   if (supabase) {
     try {
       const { error } = await supabase.from('admin_settings').upsert({ id: 'store_items', settings: globalStoreItems });
@@ -654,7 +697,7 @@ async function saveGlobalStoreItems() {
 
 async function saveAdminSettings(settings: any) {
   globalAdminSettings = { ...globalAdminSettings, ...settings };
-  safeWriteJsonFile(ADMIN_SETTINGS_FILE, globalAdminSettings);
+  await safeWriteJsonFile(ADMIN_SETTINGS_FILE, globalAdminSettings);
   if (supabase) {
     try {
       const { error } = await supabase.from('admin_settings').upsert({ id: 'global', settings: globalAdminSettings });
@@ -668,7 +711,7 @@ async function saveAdminSettings(settings: any) {
 }
 
 async function saveGlobalQuests() {
-  safeWriteJsonFile(GLOBAL_QUESTS_FILE, globalQuests);
+  await safeWriteJsonFile(GLOBAL_QUESTS_FILE, globalQuests);
   if (supabase) {
     try {
       await supabase.from('global_quests').delete().neq('id', 'dummy');
@@ -692,11 +735,11 @@ async function saveGlobalQuests() {
 }
 
 async function saveGlobalAchievements() {
-  safeWriteJsonFile(GLOBAL_ACHIEVEMENTS_FILE, globalAchievements);
+  await safeWriteJsonFile(GLOBAL_ACHIEVEMENTS_FILE, globalAchievements);
 }
 
 async function saveTournaments() {
-  safeWriteJsonFile(TOURNAMENTS_FILE, activeTournaments);
+  await safeWriteJsonFile(TOURNAMENTS_FILE, activeTournaments);
 }
 
 // In-Memory active rooms and tournaments state
@@ -844,60 +887,34 @@ async function startServer() {
   // Load administrative settings and custom quests from Supabase/Backup
   await loadAdminData();
 
+  // --- IN-MEMORY RATE LIMITER ---
+  const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+  const createRateLimiter = (maxRequests: number, windowMs: number) => {
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const ip = req.ip || (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+      const key = `${req.path}_${ip}`;
+      const now = Date.now();
+      const record = rateLimitMap.get(key);
+
+      if (!record || now > record.resetTime) {
+        rateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
+        return next();
+      }
+
+      if (record.count >= maxRequests) {
+        return res.status(429).json({ error: 'Çok fazla istek gönderildi. Lütfen biraz bekleyin.' });
+      }
+
+      record.count += 1;
+      next();
+    };
+  };
+
+  const authLimiter = createRateLimiter(20, 60000); // 20 requests / min
+  const adminLoginLimiter = createRateLimiter(10, 60000); // 10 attempts / min
+
   // --- API ROUTES ---
-
-  // --- USER SETTINGS SAVE ENDPOINT ---
-  app.post('/api/settings/save', async (req, res) => {
-    const { userId, settings } = req.body;
-    if (!userId || !settings) return res.status(400).json({ error: 'Geçersiz parametreler.' });
-
-    try {
-      const users = await loadUsers();
-      const user = users[userId];
-      if (user) {
-        user.settings = { ...user.settings, ...settings };
-        if (settings.avatarId) user.avatarId = settings.avatarId;
-        users[userId] = user;
-        await saveUsers(users);
-        return res.json({ success: true, user });
-      }
-      res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-    } catch (e) {
-      console.error('[Server] Failed to save settings:', e);
-      res.status(500).json({ error: 'Ayarlar kaydedilemedi.' });
-    }
-  });
-
-  // --- TRANSLATIONS API ENDPOINTS ---
-  const TRANSLATIONS_FILE = path.join(process.cwd(), 'translations.json');
-
-  app.get('/api/translations', (req, res) => {
-    try {
-      if (fs.existsSync(TRANSLATIONS_FILE)) {
-        const raw = fs.readFileSync(TRANSLATIONS_FILE, 'utf-8');
-        return res.json(JSON.parse(raw));
-      }
-    } catch (e) {
-      console.error('[Server] Failed to read translations.json:', e);
-    }
-    res.json({ tr: {}, en: {} });
-  });
-
-  app.post('/api/translations/save', async (req, res) => {
-    try {
-      const { translations } = req.body;
-      if (!translations || typeof translations !== 'object') {
-        return res.status(400).json({ error: 'Geçersiz çeviri verisi.' });
-      }
-      fs.writeFileSync(TRANSLATIONS_FILE, JSON.stringify(translations, null, 2), 'utf-8');
-      console.log('[Server] Saved updated translations to translations.json');
-      res.json({ success: true });
-    } catch (e) {
-      console.error('[Server] Failed to save translations.json:', e);
-      res.status(500).json({ error: 'Çeviriler kaydedilemedi.' });
-    }
-  });
-
+  
   // --- ADMIN PANEL API & AUTHENTICATION ENDPOINTS ---
   const ADMIN_SECRET_TOKEN = process.env.ADMIN_SECRET_TOKEN || 'deal-master-admin-token-2026-auth';
   const getEffectiveAdminPassword = () => {
@@ -923,8 +940,8 @@ async function startServer() {
     return adminAuthMiddleware(req, res, next);
   });
 
-  // Secure Admin login endpoint
-  app.post('/api/admin/login', (req, res) => {
+  // Secure Admin login endpoint with rate limiting
+  app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
     const { password } = req.body;
     const currentAdminPassword = getEffectiveAdminPassword();
     if (password && String(password).trim() === currentAdminPassword) {
@@ -2077,33 +2094,38 @@ async function startServer() {
   // --- STANDARD API ROUTES ---
 
   // Auth / Get Profile
-  app.post('/api/auth', async (req, res) => {
+  app.post('/api/auth', authLimiter, async (req, res) => {
     const { username, password } = req.body;
     if (!username || username.trim() === '') {
       return res.status(400).json({ error: 'Kullanıcı adı geçerli olmalıdır.' });
     }
 
     const users = await loadUsers();
-    let user = Object.values(users).find((u) => u.username.toLowerCase() === username.toLowerCase());
+    let user = Object.values(users).find((u) => u.username.toLowerCase() === username.toLowerCase().trim());
 
     if (user) {
-      // If user has a password set, verify it
+      let profileUpdated = false;
+      // If user has a password set, verify it securely
       if (user.password && user.password.trim() !== '') {
-        if (!password || password.trim() !== user.password) {
+        if (!password || !verifyPassword(password, user.password)) {
           return res.status(401).json({ error: 'Bu kullanıcı adı şifre korumalıdır. Lütfen doğru şifreyi giriniz.' });
+        }
+        // Auto-upgrade legacy plaintext password to secure scrypt hash
+        if (!user.password.startsWith('scrypt:')) {
+          user.password = hashPassword(password);
+          profileUpdated = true;
         }
       }
       // Ensure gamesHistory & rankPoints exist for legacy profiles
-      let legacyUpdated = false;
       if (!user.gamesHistory) {
         user.gamesHistory = [];
-        legacyUpdated = true;
+        profileUpdated = true;
       }
       if (user.rankPoints === undefined) {
         user.rankPoints = 0;
-        legacyUpdated = true;
+        profileUpdated = true;
       }
-      if (legacyUpdated) {
+      if (profileUpdated) {
         users[user.id] = user;
         await saveUsers(users);
       }
@@ -2114,7 +2136,7 @@ async function startServer() {
         id: newId,
         username: username.trim(),
         country: 'TR',
-        password: password && password.trim() !== '' ? password.trim() : undefined,
+        password: password && password.trim() !== '' ? hashPassword(password) : undefined,
         coins: 500, // starting coins
         level: 1,
         xp: 0,
@@ -2164,7 +2186,7 @@ async function startServer() {
       await saveUsers(users);
     }
 
-    res.json(user);
+    res.json(sanitizeProfile(user));
   });
 
   // Shop purchase
@@ -2276,10 +2298,10 @@ async function startServer() {
     }
   };
 
-  const saveTranslations = (data: any) => {
+  const saveTranslations = async (data: any) => {
+    translationsCache = data;
     try {
-      fs.writeFileSync(TRANSLATIONS_PATH, JSON.stringify(data, null, 2), 'utf8');
-      translationsCache = data;
+      await safeWriteJsonFile(TRANSLATIONS_PATH, data);
     } catch (e) {
       console.error('Failed to save translations file', e);
     }
@@ -2289,15 +2311,16 @@ async function startServer() {
   loadTranslations();
 
   app.get('/api/translations', (req, res) => {
+    loadTranslations();
     res.json(translationsCache);
   });
 
-  app.post('/api/translations/save', (req, res) => {
+  app.post('/api/translations/save', async (req, res) => {
     const { translations } = req.body;
     if (!translations) {
       return res.status(400).json({ error: 'Geçersiz veri gönderildi.' });
     }
-    saveTranslations(translations);
+    await saveTranslations(translations);
     res.json({ success: true, translations: translationsCache });
   });
 
@@ -2359,7 +2382,9 @@ async function startServer() {
     if (stats !== undefined) user.stats = { ...user.stats, ...stats };
     if (dailyQuests !== undefined) user.dailyQuests = dailyQuests;
     if (achievements !== undefined) user.achievements = achievements;
-    if (password !== undefined) user.password = password;
+    if (password !== undefined) {
+      user.password = password && password.trim() !== '' ? hashPassword(password) : undefined;
+    }
     if (country !== undefined) user.country = country;
     if (lastLuckyWheelSpin !== undefined) user.lastLuckyWheelSpin = lastLuckyWheelSpin;
     if (settings !== undefined) user.settings = { ...user.settings, ...settings };
@@ -2386,7 +2411,7 @@ async function startServer() {
       }
     });
 
-    res.json(user);
+    res.json(sanitizeProfile(user));
   });
 
   // Claim Daily Quest
@@ -2461,7 +2486,7 @@ async function startServer() {
   // --- GOOGLE PLAY DATA DELETION & PRIVACY POLICY PUBLIC ROUTES ---
 
   // Account & Data Deletion API Endpoint
-  app.post('/api/user/delete-account-request', async (req, res) => {
+  app.post('/api/user/delete-account-request', authLimiter, async (req, res) => {
     try {
       const { username, password, userId, reason } = req.body;
       if (!username || typeof username !== 'string' || username.trim() === '') {
@@ -2490,7 +2515,7 @@ async function startServer() {
 
       // Verify password if user has password set
       if (targetUser.password && targetUser.password.trim() !== '') {
-        if (!password || password.trim() !== targetUser.password.trim()) {
+        if (!password || !verifyPassword(password, targetUser.password)) {
           return res.status(401).json({ error: 'Hesabınızı silmek için geçerli şifrenizi doğru girmelisiniz.' });
         }
       }
@@ -3782,17 +3807,28 @@ async function startServer() {
               // Add to collection
               player.hand.splice(cardIdx, 1);
 
-              let colorToUse: CardColor = (card.isWildcard && extraColor) ? extraColor : (card.color || extraColor || 'brown');
+              let rawColor = (card.isWildcard && extraColor) ? extraColor : (card.color || extraColor || 'brown');
+              let colorToUse: CardColor = getBaseColor(rawColor as string);
+              let targetSetKey = payload.targetSetKey || extraColor || colorToUse;
+              if (card.type === 'house-hotel') {
+                targetSetKey = payload.targetSetKey || extraColor || colorToUse;
+              } else {
+                const maxAllowed = MAX_IN_SET[colorToUse] || 3;
+                const currentTargetSet = player.properties[targetSetKey];
+                if (!currentTargetSet || currentTargetSet.cards.length >= maxAllowed) {
+                  targetSetKey = findAvailableSetKey(player.properties, colorToUse);
+                }
+              }
 
-              if (!player.properties[colorToUse]) {
-                player.properties[colorToUse] = { cards: [], hasHouse: false, hasHotel: false };
+              if (!player.properties[targetSetKey]) {
+                player.properties[targetSetKey] = { cards: [], hasHouse: false, hasHotel: false };
               }
 
               if (card.type === 'house-hotel') {
                 if (card.actionType === 'house') {
-                  player.properties[colorToUse]!.hasHouse = true;
+                  player.properties[targetSetKey]!.hasHouse = true;
                 } else {
-                  player.properties[colorToUse]!.hasHotel = true;
+                  player.properties[targetSetKey]!.hasHotel = true;
                 }
               } else {
                 // Property or wildcard
@@ -3807,12 +3843,13 @@ async function startServer() {
                 } else {
                   updatedCard.color = colorToUse;
                 }
-                player.properties[colorToUse]!.cards.push(updatedCard);
+                player.properties[targetSetKey]!.cards.push(updatedCard);
               }
 
+              const setDisplayName = getSetDisplayName(targetSetKey);
               match.logs.push({
                 id: `play-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                message: `${player.username}, ${COLOR_LABELS[colorToUse]} grubuna ${card.name} kartını yerleştirdi.`,
+                message: `${player.username}, ${setDisplayName} grubuna ${card.name} kartını yerleştirdi.`,
                 timestamp: Date.now(),
               });
               match.actionsPlayedThisTurn++;
@@ -3846,10 +3883,7 @@ async function startServer() {
               match.turnStartedAt = Math.min(Date.now(), match.turnStartedAt + bonusSec * 1000);
             }
 
-            broadcastToRoom(roomId, {
-              type: 'room_update',
-              matchState: match,
-            });
+            broadcastMatchState(match);
             break;
           }
 
@@ -3872,8 +3906,7 @@ async function startServer() {
             let foundCard: Card | null = null;
 
             for (const colKey in player.properties) {
-              const col = colKey as CardColor;
-              const propSet = player.properties[col];
+              const propSet = player.properties[colKey];
               if (propSet) {
                 const idx = propSet.cards.findIndex((c) => c.id === cardId);
                 if (idx !== -1) {
@@ -3881,7 +3914,7 @@ async function startServer() {
 
                   // Clean up set if empty
                   if (propSet.cards.length === 0) {
-                    delete player.properties[col];
+                    delete player.properties[colKey];
                   }
                   break;
                 }
@@ -3902,11 +3935,13 @@ async function startServer() {
               }
 
               // Insert into the new property set
-              if (!player.properties[newColor]) {
-                player.properties[newColor] = { cards: [], hasHouse: false, hasHotel: false };
+              const targetSetKey = findAvailableSetKey(player.properties, newColor);
+              if (!player.properties[targetSetKey]) {
+                player.properties[targetSetKey] = { cards: [], hasHouse: false, hasHotel: false };
               }
-              player.properties[newColor]!.cards.push(foundCard);
+              player.properties[targetSetKey]!.cards.push(foundCard);
 
+              const setDisplayName = getSetDisplayName(targetSetKey);
               match.logs.push({
                 id: `change-col-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
                 message: `${player.username}, ${foundCard.name} kartının rengini ${COLOR_LABELS[newColor]} olarak değiştirdi.`,
@@ -4928,8 +4963,29 @@ async function startServer() {
       const isTeammate = (p: GamePlayer) => (p.team || (match.players.indexOf(p) % 2 === 0 ? 'team_blue' : 'team_red')) === playerTeam;
 
       const chosenColor = payload.extraColor || payload.color || card.color || 'brown';
-      // Find rent value based on property count
-      const propSet = player.properties[chosenColor];
+      const setKeys = getAllSetKeysForColor(player.properties, chosenColor);
+      let targetSetKey = payload.targetSetKey || chosenColor;
+      let maxRentVal = 0;
+
+      if (setKeys.length > 0) {
+        for (const sKey of setKeys) {
+          const sObj = player.properties[sKey];
+          if (sObj && sObj.cards.length > 0) {
+            const count = Math.min(sObj.cards.length, MAX_IN_SET[chosenColor]);
+            let r = RENT_VALUES[chosenColor][count - 1] || 1;
+            if (sObj.cards.length >= MAX_IN_SET[chosenColor]) {
+              if (sObj.hasHouse) r += 3;
+              if (sObj.hasHotel) r += 4;
+            }
+            if (r >= maxRentVal) {
+              maxRentVal = r;
+              targetSetKey = sKey;
+            }
+          }
+        }
+      }
+
+      const propSet = player.properties[targetSetKey];
       if (propSet && propSet.cards.length > 0) {
         const count = Math.min(propSet.cards.length, MAX_IN_SET[chosenColor]);
         let rentVal = RENT_VALUES[chosenColor][count - 1] || 1;
@@ -5019,14 +5075,14 @@ async function startServer() {
           // Execute immediately for bots
           let stolenCard: Card | null = null;
           for (const colKey in targetPlayer.properties) {
-            const col = colKey as CardColor;
-            const propSet = targetPlayer.properties[col];
-            if (propSet && propSet.cards.length < MAX_IN_SET[col]) {
+            const propSet = targetPlayer.properties[colKey];
+            const baseCol = getBaseColor(colKey);
+            if (propSet && propSet.cards.length < MAX_IN_SET[baseCol]) {
               const idx = propSet.cards.findIndex((c) => c.id === cardIdToSteal);
               if (idx !== -1) {
                 stolenCard = propSet.cards.splice(idx, 1)[0];
                 if (propSet.cards.length === 0) {
-                  delete targetPlayer.properties[col];
+                  delete targetPlayer.properties[colKey];
                 }
                 break;
               }
@@ -5034,10 +5090,11 @@ async function startServer() {
           }
           if (stolenCard) {
             const col = stolenCard.color || 'brown';
-            if (!player.properties[col]) {
-              player.properties[col] = { cards: [], hasHouse: false, hasHotel: false };
+            const targetSetKey = findAvailableSetKey(player.properties, col);
+            if (!player.properties[targetSetKey]) {
+              player.properties[targetSetKey] = { cards: [], hasHouse: false, hasHotel: false };
             }
-            player.properties[col]!.cards.push(stolenCard);
+            player.properties[targetSetKey]!.cards.push(stolenCard);
             match.logs.push({
               id: `sly-${Date.now()}`,
               message: `${player.username}, ${targetPlayer.username}'den ${stolenCard.name} mülkünü sinsi anlaşma ile çaldı!`,
@@ -5073,7 +5130,7 @@ async function startServer() {
       }
     } else if (card.actionType === 'deal-breaker') {
       const targetId = payload.targetPlayerId;
-      const targetColor = payload.targetColor as CardColor;
+      const targetColor = (payload.targetSetKey || payload.targetColor) as string;
       if (!targetId || !targetColor) return;
 
       const targetPlayer = match.players.find((p) => p.id === targetId);
@@ -5081,11 +5138,13 @@ async function startServer() {
         if (targetPlayer.isBot || targetPlayer.isDisconnected) {
           const propSet = targetPlayer.properties[targetColor];
           if (propSet) {
-            player.properties[targetColor] = propSet;
+            const baseCol = getBaseColor(targetColor);
+            const myTargetKey = findAvailableSetKey(player.properties, baseCol);
+            player.properties[myTargetKey] = propSet;
             delete targetPlayer.properties[targetColor];
             match.logs.push({
               id: `db-${Date.now()}`,
-              message: `${player.username}, ${targetPlayer.username} adlı oyuncunun tamamlanmış ${COLOR_LABELS[targetColor]} setini Anlaşma Bozan kartı ile çaldı!`,
+              message: `${player.username}, ${targetPlayer.username} adlı oyuncunun tamamlanmış ${getSetDisplayName(targetColor)} setini Anlaşma Bozan kartı ile çaldı!`,
               timestamp: Date.now(),
             });
             if (checkWinnerForMatch(match, player)) {
@@ -5101,17 +5160,18 @@ async function startServer() {
             targetPlayerId: targetId,
             actionCard: card,
             amountDue: 0,
-            targetColor: targetColor,
+            targetColor: targetColor as any,
+            targetSetKey: targetColor,
             originalAction: {
               type: 'deal-breaker',
-              payload: { targetPlayerId: targetId, targetColor: targetColor }
+              payload: { targetPlayerId: targetId, targetColor: targetColor, targetSetKey: targetColor }
             },
             jsnCount: 0
           };
           match.actionRequestStartedAt = Date.now();
           match.logs.push({
             id: `db-req-${Date.now()}`,
-            message: `📣 ${player.username}, ${targetPlayer.username} adlı oyuncunun tamamlanmış ${COLOR_LABELS[targetColor]} setini çalan bir Anlaşma Bozan kartı oynadı!`,
+            message: `📣 ${player.username}, ${targetPlayer.username} adlı oyuncunun tamamlanmış ${getSetDisplayName(targetColor)} setini çalan bir Anlaşma Bozan kartı oynadı!`,
             timestamp: Date.now(),
           });
         }
@@ -5132,15 +5192,14 @@ async function startServer() {
           let givenColor: CardColor | null = null;
 
           for (const colKey in targetPlayer.properties) {
-            const col = colKey as CardColor;
-            const propSet = targetPlayer.properties[col];
+            const propSet = targetPlayer.properties[colKey];
             if (propSet) {
               const idx = propSet.cards.findIndex((c) => c.id === cardIdToSteal);
               if (idx !== -1) {
                 stolenCard = propSet.cards.splice(idx, 1)[0];
-                stolenColor = col;
+                stolenColor = getBaseColor(colKey);
                 if (propSet.cards.length === 0) {
-                  delete targetPlayer.properties[col];
+                  delete targetPlayer.properties[colKey];
                 }
                 break;
               }
@@ -5148,15 +5207,14 @@ async function startServer() {
           }
 
           for (const colKey in player.properties) {
-            const col = colKey as CardColor;
-            const propSet = player.properties[col];
+            const propSet = player.properties[colKey];
             if (propSet) {
               const idx = propSet.cards.findIndex((c) => c.id === myCardIdToGive);
               if (idx !== -1) {
                 givenCard = propSet.cards.splice(idx, 1)[0];
-                givenColor = col;
+                givenColor = getBaseColor(colKey);
                 if (propSet.cards.length === 0) {
-                  delete player.properties[col];
+                  delete player.properties[colKey];
                 }
                 break;
               }
@@ -5165,16 +5223,18 @@ async function startServer() {
 
           if (stolenCard && givenCard) {
             const colS = stolenCard.color || stolenColor || 'brown';
-            if (!player.properties[colS]) {
-              player.properties[colS] = { cards: [], hasHouse: false, hasHotel: false };
+            const sTargetKey = findAvailableSetKey(player.properties, colS);
+            if (!player.properties[sTargetKey]) {
+              player.properties[sTargetKey] = { cards: [], hasHouse: false, hasHotel: false };
             }
-            player.properties[colS]!.cards.push(stolenCard);
+            player.properties[sTargetKey]!.cards.push(stolenCard);
 
             const colG = givenCard.color || givenColor || 'brown';
-            if (!targetPlayer.properties[colG]) {
-              targetPlayer.properties[colG] = { cards: [], hasHouse: false, hasHotel: false };
+            const gTargetKey = findAvailableSetKey(targetPlayer.properties, colG);
+            if (!targetPlayer.properties[gTargetKey]) {
+              targetPlayer.properties[gTargetKey] = { cards: [], hasHouse: false, hasHotel: false };
             }
-            targetPlayer.properties[colG]!.cards.push(givenCard);
+            targetPlayer.properties[gTargetKey]!.cards.push(givenCard);
 
             match.logs.push({
               id: `forced-${Date.now()}`,
@@ -5428,6 +5488,11 @@ async function startServer() {
     let payloadToSend = message;
     if (message && message.type === 'room_update' && message.matchState) {
       const match = message.matchState;
+      if (match.players) {
+        match.players.forEach((p: any) => {
+          p.properties = sanitizePropertySets(p.properties);
+        });
+      }
       const now = Date.now();
       const hasActiveAction = match.activeActionRequest || (match.activeActionRequests && match.activeActionRequests.length > 0);
       const actionDurationLimit = (globalAdminSettings.actionTimeoutSeconds || 20) * 1000;
@@ -5663,15 +5728,14 @@ async function executeOriginalActionServer(match: any, req: any) {
     let stolenColor: CardColor | null = null;
 
     for (const colKey in targetPlayer.properties) {
-      const col = colKey as CardColor;
-      const propSet = targetPlayer.properties[col];
+      const propSet = targetPlayer.properties[colKey];
       if (propSet) {
         const idx = propSet.cards.findIndex((c: any) => c.id === cardIdToSteal);
         if (idx !== -1) {
           stolenCard = propSet.cards.splice(idx, 1)[0];
-          stolenColor = col;
+          stolenColor = getBaseColor(colKey);
           if (propSet.cards.length === 0) {
-            delete targetPlayer.properties[col];
+            delete targetPlayer.properties[colKey];
           }
           break;
         }
@@ -5680,10 +5744,11 @@ async function executeOriginalActionServer(match: any, req: any) {
 
     if (stolenCard) {
       const col = stolenCard.color || stolenColor || 'brown';
-      if (!sourcePlayer.properties[col]) {
-        sourcePlayer.properties[col] = { cards: [], hasHouse: false, hasHotel: false };
+      const targetSetKey = findAvailableSetKey(sourcePlayer.properties, col);
+      if (!sourcePlayer.properties[targetSetKey]) {
+        sourcePlayer.properties[targetSetKey] = { cards: [], hasHouse: false, hasHotel: false };
       }
-      sourcePlayer.properties[col]!.cards.push(stolenCard);
+      sourcePlayer.properties[targetSetKey]!.cards.push(stolenCard);
 
       match.logs.push({
         id: `sly-res-${Date.now()}`,
@@ -5697,16 +5762,18 @@ async function executeOriginalActionServer(match: any, req: any) {
     }
 
   } else if (type === 'deal-breaker') {
-    const targetColor = req.targetColor;
-    if (targetColor) {
-      const propSet = targetPlayer.properties[targetColor];
+    const targetSetKey = req.targetSetKey || req.targetColor;
+    if (targetSetKey) {
+      const propSet = targetPlayer.properties[targetSetKey];
       if (propSet) {
-        sourcePlayer.properties[targetColor] = { ...propSet };
-        delete targetPlayer.properties[targetColor];
+        const baseCol = getBaseColor(targetSetKey);
+        const myTargetKey = findAvailableSetKey(sourcePlayer.properties, baseCol);
+        sourcePlayer.properties[myTargetKey] = { ...propSet };
+        delete targetPlayer.properties[targetSetKey];
 
         match.logs.push({
           id: `db-res-${Date.now()}`,
-          message: `${sourcePlayer.username}, ${targetPlayer.username} adlı oyuncunun tamamlanmış ${COLOR_LABELS[targetColor]} setini çaldı!`,
+          message: `${sourcePlayer.username}, ${targetPlayer.username} adlı oyuncunun tamamlanmış ${getSetDisplayName(targetSetKey)} setini çaldı!`,
           timestamp: Date.now(),
         });
 
@@ -5726,15 +5793,14 @@ async function executeOriginalActionServer(match: any, req: any) {
     let givenColor: CardColor | null = null;
 
     for (const colKey in targetPlayer.properties) {
-      const col = colKey as CardColor;
-      const propSet = targetPlayer.properties[col];
+      const propSet = targetPlayer.properties[colKey];
       if (propSet) {
         const idx = propSet.cards.findIndex((c: any) => c.id === cardIdToSteal);
         if (idx !== -1) {
           stolenCard = propSet.cards.splice(idx, 1)[0];
-          stolenColor = col;
+          stolenColor = getBaseColor(colKey);
           if (propSet.cards.length === 0) {
-            delete targetPlayer.properties[col];
+            delete targetPlayer.properties[colKey];
           }
           break;
         }
@@ -5742,15 +5808,14 @@ async function executeOriginalActionServer(match: any, req: any) {
     }
 
     for (const colKey in sourcePlayer.properties) {
-      const col = colKey as CardColor;
-      const propSet = sourcePlayer.properties[col];
+      const propSet = sourcePlayer.properties[colKey];
       if (propSet) {
         const idx = propSet.cards.findIndex((c: any) => c.id === myCardIdToGive);
         if (idx !== -1) {
           givenCard = propSet.cards.splice(idx, 1)[0];
-          givenColor = col;
+          givenColor = getBaseColor(colKey);
           if (propSet.cards.length === 0) {
-            delete sourcePlayer.properties[col];
+            delete sourcePlayer.properties[colKey];
           }
           break;
         }
@@ -5759,16 +5824,18 @@ async function executeOriginalActionServer(match: any, req: any) {
 
     if (stolenCard && givenCard) {
       const colS = stolenCard.color || stolenColor || 'brown';
-      if (!sourcePlayer.properties[colS]) {
-        sourcePlayer.properties[colS] = { cards: [], hasHouse: false, hasHotel: false };
+      const sTargetKey = findAvailableSetKey(sourcePlayer.properties, colS);
+      if (!sourcePlayer.properties[sTargetKey]) {
+        sourcePlayer.properties[sTargetKey] = { cards: [], hasHouse: false, hasHotel: false };
       }
-      sourcePlayer.properties[colS]!.cards.push(stolenCard);
+      sourcePlayer.properties[sTargetKey]!.cards.push(stolenCard);
 
       const colG = givenCard.color || givenColor || 'brown';
-      if (!targetPlayer.properties[colG]) {
-        targetPlayer.properties[colG] = { cards: [], hasHouse: false, hasHotel: false };
+      const gTargetKey = findAvailableSetKey(targetPlayer.properties, colG);
+      if (!targetPlayer.properties[gTargetKey]) {
+        targetPlayer.properties[gTargetKey] = { cards: [], hasHouse: false, hasHotel: false };
       }
-      targetPlayer.properties[colG]!.cards.push(givenCard);
+      targetPlayer.properties[gTargetKey]!.cards.push(givenCard);
 
       match.logs.push({
         id: `forced-res-${Date.now()}`,

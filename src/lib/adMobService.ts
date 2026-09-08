@@ -58,6 +58,8 @@ class AdMobService {
   private isBannerShowing = false;
   private activeListeners: { remove: () => Promise<void> | void }[] = [];
 
+  private bannerListenersSetup = false;
+
   /**
    * Initializes the AdMob SDK safely once across the entire application lifecycle.
    */
@@ -96,6 +98,36 @@ class AdMobService {
       await AdMob.initialize({
         initializeForTesting: testingMode,
       });
+
+      // 3. Set up Banner lifecycle listeners once
+      if (!this.bannerListenersSetup) {
+        this.bannerListenersSetup = true;
+        try {
+          const lLoaded = await AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
+            console.log('[AdMobService] ✅ Banner Ad Loaded & Displayed successfully!');
+            this.isBannerShowing = true;
+          });
+          this.activeListeners.push(lLoaded);
+
+          const lFailed = await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (err: any) => {
+            console.warn('[AdMobService] ❌ Banner Ad Failed to Load (AdMob response):', JSON.stringify(err));
+            this.isBannerShowing = false;
+          });
+          this.activeListeners.push(lFailed);
+
+          const lOpened = await AdMob.addListener(BannerAdPluginEvents.Opened, () => {
+            console.log('[AdMobService] ℹ️ Banner Ad Opened / Clicked');
+          });
+          this.activeListeners.push(lOpened);
+
+          const lClosed = await AdMob.addListener(BannerAdPluginEvents.Closed, () => {
+            console.log('[AdMobService] ℹ️ Banner Ad Closed');
+          });
+          this.activeListeners.push(lClosed);
+        } catch (listenerErr) {
+          console.warn('[AdMobService] Error setting up banner listeners:', listenerErr);
+        }
+      }
 
       this.isInitialized = true;
       console.log('[AdMobService] Successfully initialized Google Mobile Ads SDK');
@@ -171,7 +203,7 @@ class AdMobService {
       };
 
       try {
-        // Set a safety timeout for loading (15 seconds)
+        // Set a safety timeout for loading (16 seconds)
         loadTimeoutTimer = setTimeout(() => {
           console.warn('[AdMobService] Rewarded ad loading timed out.');
           finish({
@@ -259,14 +291,28 @@ class AdMobService {
     try {
       await this.initialize(isTesting);
       const adId = this.getAdUnitId('banner', customAdUnitId, isTesting);
+      const bannerPosition = position === 'top' ? BannerAdPosition.TOP_CENTER : BannerAdPosition.BOTTOM_CENTER;
 
-      await AdMob.showBanner({
-        adId,
-        adSize: BannerAdSize.ADAPTIVE_BANNER,
-        position: position === 'top' ? BannerAdPosition.TOP_CENTER : BannerAdPosition.BOTTOM_CENTER,
-        margin: 0,
-        isTesting,
-      });
+      console.log(`[AdMobService] Showing banner ad | Unit: ${adId} | Testing: ${isTesting} | Pos: ${position}`);
+
+      try {
+        await AdMob.showBanner({
+          adId,
+          adSize: BannerAdSize.ADAPTIVE_BANNER,
+          position: bannerPosition,
+          margin: 0,
+          isTesting,
+        });
+      } catch (adaptiveErr) {
+        console.warn('[AdMobService] Adaptive banner failed, trying standard BANNER fallback...', adaptiveErr);
+        await AdMob.showBanner({
+          adId,
+          adSize: BannerAdSize.BANNER,
+          position: bannerPosition,
+          margin: 0,
+          isTesting,
+        });
+      }
 
       this.isBannerShowing = true;
       return true;
@@ -284,6 +330,7 @@ class AdMobService {
     try {
       await AdMob.hideBanner();
       this.isBannerShowing = false;
+      console.log('[AdMobService] Banner hidden.');
     } catch (error) {
       // Ignore hide errors
     }

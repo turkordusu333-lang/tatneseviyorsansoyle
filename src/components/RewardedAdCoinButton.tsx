@@ -120,6 +120,8 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
     }
   };
 
+  const isEn = profile?.settings?.language === 'en' || localStorage.getItem('language') === 'en';
+
   // Render trigger button depending on variant
   const renderTrigger = () => {
     if (variant === 'badge') {
@@ -134,7 +136,7 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
           ) : (
             <Tv className="w-3.5 h-3.5 text-amber-400 animate-bounce" />
           )}
-          <span>+{rewardCoins} Altın Kazan</span>
+          <span>{isEn ? `+${rewardCoins} Gold Earn` : `+${rewardCoins} Altın Kazan`}</span>
         </button>
       );
     }
@@ -155,14 +157,16 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black text-slate-100 uppercase tracking-wider">
-                  AdMob Ödüllü Reklam
+                  {isEn ? 'AdMob Rewarded Video' : 'AdMob Ödüllü Reklam'}
                 </span>
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[10px] font-black uppercase">
-                  ÜCRETSİZ
+                  {isEn ? 'FREE' : 'ÜCRETSİZ'}
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5 leading-snug">
-                Sponsorlu kısa videoyu izleyerek anında <strong className="text-amber-400">+{rewardCoins} Altın</strong> hesabına ekle!
+                {isEn
+                  ? `Watch a short sponsored video to immediately add +${rewardCoins} Gold to your account!`
+                  : `Sponsorlu kısa videoyu izleyerek anında +${rewardCoins} Altın hesabına ekle!`}
               </p>
             </div>
           </div>
@@ -175,12 +179,12 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
             {isLoading ? (
               <>
                 <RotateCw className="w-4 h-4 animate-spin text-slate-950" />
-                <span>Yükleniyor...</span>
+                <span>{isEn ? 'Loading...' : 'Yükleniyor...'}</span>
               </>
             ) : (
               <>
                 <Coins className="w-4 h-4 text-slate-950" />
-                <span>Reklam İzle & +{rewardCoins} Kazan</span>
+                <span>{isEn ? `Watch Ad & Earn +${rewardCoins}` : `Reklam İzle & +${rewardCoins} Kazan`}</span>
               </>
             )}
           </button>
@@ -200,7 +204,7 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
         ) : (
           <Tv className="w-4 h-4 text-slate-950" />
         )}
-        <span>🎥 +{rewardCoins} Altın</span>
+        <span>🎥 {isEn ? `+${rewardCoins} Gold` : `+${rewardCoins} Altın`}</span>
       </button>
     );
   };
@@ -263,10 +267,12 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
                 </div>
                 
                 <h4 className="text-sm font-black text-amber-300 uppercase tracking-widest text-center animate-pulse">
-                  +{rewardCoins} Altın Ödülü Yükleniyor...
+                  {isEn ? `+${rewardCoins} Gold Reward Loading...` : `+${rewardCoins} Altın Ödülü Yükleniyor...`}
                 </h4>
                 <p className="text-[11px] text-slate-500 text-center max-w-xs mt-1.5 leading-relaxed">
-                  Reklam tamamlandığında hesabınıza anında {rewardCoins} Altın tanımlanacaktır.
+                  {isEn
+                    ? `Once the ad is complete, ${rewardCoins} Gold will be added to your account.`
+                    : `Reklam tamamlandığında hesabınıza anında ${rewardCoins} Altın tanımlanacaktır.`}
                 </p>
               </div>
 
@@ -277,7 +283,7 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
                     <Volume2 className="w-3.5 h-3.5 text-amber-400" /> AdMob Video Audio Stream
                   </span>
                   <span className="font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 border border-amber-500/25 rounded-md">
-                    Kapanış: {adTimer}s
+                    {isEn ? 'Closing in:' : 'Kapanış:'} {adTimer}s
                   </span>
                 </div>
 
@@ -303,9 +309,13 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
                   >
                     <AlertCircle className="w-12 h-12 text-rose-500 animate-bounce" />
                     <div className="space-y-1">
-                      <h3 className="text-sm font-extrabold text-slate-100">Reklamı Kapatmak İstiyor Musunuz?</h3>
+                      <h3 className="text-sm font-extrabold text-slate-100">
+                        {isEn ? 'Do you want to close the ad?' : 'Reklamı Kapatmak İstiyor Musunuz?'}
+                      </h3>
                       <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-                        Erken kapatırsanız +{rewardCoins} Altın ödülünü kazanamazsınız.
+                        {isEn
+                          ? `If you close early, you will not receive the +${rewardCoins} Gold reward.`
+                          : `Erken kapatırsanız +${rewardCoins} Altın ödülünü kazanamazsınız.`}
                       </p>
                     </div>
 
@@ -314,7 +324,7 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
                         onClick={() => setAdSkippedWarning(false)}
                         className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs uppercase tracking-wider rounded-xl transition cursor-pointer"
                       >
-                        İzlemeye Devam Et
+                        {isEn ? 'Continue Watching' : 'İzlemeye Devam Et'}
                       </button>
                       <button
                         onClick={() => {
@@ -323,7 +333,7 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
                         }}
                         className="px-4 py-2 bg-transparent hover:bg-slate-900 text-rose-400 hover:text-rose-300 font-bold text-xs uppercase tracking-wider rounded-xl transition border border-rose-500/20 cursor-pointer"
                       >
-                        Ödülden Vazgeç
+                        {isEn ? 'Forfeit Reward' : 'Ödülden Vazgeç'}
                       </button>
                     </div>
                   </motion.div>
@@ -359,15 +369,17 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
 
                 <div className="space-y-1">
                   <h3 className="text-lg font-black text-slate-100 tracking-tight uppercase">
-                    TEBRİKLER!
+                    {isEn ? 'CONGRATULATIONS!' : 'TEBRİKLER!'}
                   </h3>
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    AdMob Ödüllü Reklamını başarıyla izledin ve ödülünü kaptın!
+                    {isEn
+                      ? 'You successfully watched the AdMob Rewarded Ad and claimed your reward!'
+                      : 'AdMob Ödüllü Reklamını başarıyla izledin ve ödülünü kaptın!'}
                   </p>
                 </div>
 
                 <div className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-slate-950/70 border border-amber-500/30 text-amber-400 text-2xl font-black shadow-inner animate-pulse">
-                  💰 +{rewardCoins} Altın
+                  💰 +{rewardCoins} {isEn ? 'Gold' : 'Altın'}
                 </div>
               </div>
 
@@ -375,7 +387,7 @@ export const RewardedAdCoinButton: React.FC<RewardedAdCoinButtonProps> = ({
                 onClick={() => setShowVictoryModal(false)}
                 className="w-full py-3.5 bg-gradient-to-r from-yellow-400 to-amber-500 hover:from-yellow-300 hover:to-amber-400 text-slate-950 font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg active:scale-95 transition-all cursor-pointer"
               >
-                Harika!
+                {isEn ? 'Awesome!' : 'Harika!'}
               </button>
             </motion.div>
           </div>

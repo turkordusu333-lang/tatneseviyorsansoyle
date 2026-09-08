@@ -386,14 +386,22 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
           <div className="absolute inset-0 rounded-full bg-slate-950/90 backdrop-blur-sm z-30 flex flex-col items-center justify-center p-6 text-center space-y-3 border-2 border-indigo-500/30">
             <RotateCw className="w-8 h-8 text-indigo-400 animate-spin" />
             <div className="space-y-0.5">
-              <span className="block text-xs font-black text-indigo-300 uppercase tracking-wider">Reklam Yükleniyor</span>
-              <span className="text-[10px] text-slate-400 leading-tight">Lütfen bekleyin, Google AdMob reklamı yükleniyor...</span>
+              <span className="block text-xs font-black text-indigo-300 uppercase tracking-wider">
+                {profile?.settings?.language === 'en' ? 'Loading Ad' : 'Reklam Yükleniyor'}
+              </span>
+              <span className="text-[10px] text-slate-400 leading-tight">
+                {profile?.settings?.language === 'en'
+                  ? 'Please wait, Google AdMob ad is loading...'
+                  : 'Lütfen bekleyin, Google AdMob reklamı yükleniyor...'}
+              </span>
             </div>
           </div>
         )}
       </div>
     );
   };
+
+  const isEn = profile?.settings?.language === 'en';
 
   return (
     <>
@@ -435,7 +443,7 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
                   {t('lucky_wheel', profile)}
                 </div>
                 <h2 className="text-xl font-black text-slate-100 tracking-tight">
-                  Talihini Dene, Altınları Kap!
+                  {isEn ? 'Try Your Luck, Win Big Gold!' : 'Talihini Dene, Altınları Kap!'}
                 </h2>
                 <p className="text-xs text-slate-400 leading-relaxed max-w-xs mx-auto">
                   {t('lucky_wheel_desc', profile)}
@@ -453,7 +461,7 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
                     onClick={() => setAdmobError(null)}
                     className="p-1 px-2.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 font-extrabold transition text-[10px] uppercase cursor-pointer"
                   >
-                    Kapat
+                    {isEn ? 'Close' : 'Kapat'}
                   </button>
                 </div>
               )}
@@ -471,11 +479,13 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
                   className="w-full py-4 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm uppercase tracking-wider rounded-2xl shadow-xl shadow-amber-500/20 active:scale-[0.98] transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 disabled:pointer-events-none"
                 >
                   <Tv className="w-5 h-5 text-slate-950 animate-bounce" />
-                  <span>{t('watch_ad_to_spin', profile) || 'Reklam İzle ve Çevir'}</span>
+                  <span>{t('watch_ad_to_spin', profile) || (isEn ? 'Watch Ad & Spin' : 'Reklam İzle ve Çevir')}</span>
                 </button>
                 
                 <span className="block text-[10px] text-slate-500 text-center">
-                  * Sponsorlu reklamı izleyerek anında şans çarkını çevirip ödül kazanabilirsiniz.
+                  {isEn
+                    ? '* Watch a sponsored ad to spin the lucky wheel instantly and earn rewards.'
+                    : '* Sponsorlu reklamı izleyerek anında şans çarkını çevirip ödül kazanabilirsiniz.'}
                 </span>
               </div>
             </motion.div>
@@ -519,7 +529,9 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
                   {t('ad_playing', profile)}
                 </h4>
                 <p className="text-[11px] text-slate-500 text-center max-w-xs mt-1.5 leading-relaxed">
-                  Çevrimiçi arenalara girmeden önce mülk setinizi büyütün! Deal Master kart tasarımları mağazada sizi bekliyor.
+                  {isEn
+                    ? 'Grow your property sets before entering online arenas! Deal Master card designs are waiting for you in the shop.'
+                    : 'Çevrimiçi arenalara girmeden önce mülk setinizi büyütün! Deal Master kart tasarımları mağazada sizi bekliyor.'}
                 </p>
               </div>
 
@@ -556,9 +568,13 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
                   >
                     <AlertCircle className="w-12 h-12 text-rose-500 animate-bounce" />
                     <div className="space-y-1">
-                      <h3 className="text-sm font-extrabold text-slate-100">Reklamı Kapatmak İstiyor Musunuz?</h3>
+                      <h3 className="text-sm font-extrabold text-slate-100">
+                        {isEn ? 'Do You Want to Close the Ad?' : 'Reklamı Kapatmak İstiyor Musunuz?'}
+                      </h3>
                       <p className="text-xs text-slate-400 max-w-xs leading-relaxed">
-                        Reklamı şimdi kapatırsanız bekleme süresini atlayamaz ve ücretsiz çark çevirme hakkı elde edemezsiniz.
+                        {isEn
+                          ? 'If you close the ad now, you will not skip the cooldown and will forfeit the free spin reward.'
+                          : 'Reklamı şimdi kapatırsanız bekleme süresini atlayamaz ve ücretsiz çark çevirme hakkı elde edemezsiniz.'}
                       </p>
                     </div>
 
@@ -567,13 +583,13 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
                         onClick={() => setAdSkippedWarning(false)}
                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs uppercase tracking-wider rounded-xl transition"
                       >
-                        İzlemeye Devam Et
+                        {isEn ? 'Continue Watching' : 'İzlemeye Devam Et'}
                       </button>
                       <button
                         onClick={forceCloseAd}
                         className="px-4 py-2 bg-transparent hover:bg-slate-900 text-rose-400 hover:text-rose-300 font-bold text-xs uppercase tracking-wider rounded-xl transition border border-rose-500/20"
                       >
-                        Yine de Kapat
+                        {isEn ? 'Close Anyway' : 'Yine de Kapat'}
                       </button>
                     </div>
                   </motion.div>
@@ -622,14 +638,18 @@ export const LuckyWheel: React.FC<LuckyWheelProps> = ({
                     {t('congratulations', profile)}
                   </h3>
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    Şans Çarkı sana bugün harika bir ödül getirdi!
+                    {isEn
+                      ? 'The Lucky Wheel brought you an amazing reward today!'
+                      : 'Şans Çarkı sana bugün harika bir ödül getirdi!'}
                   </p>
                 </div>
 
                 {/* Amount display label */}
                 <div className="inline-flex items-center gap-2 px-5 py-3 rounded-2xl bg-slate-950/60 border border-yellow-500/25 text-yellow-400 text-2xl font-black shadow-inner animate-pulse">
                   {rewardWon.type === 'coins' ? '💰' : '✨'}
-                  <span>+{rewardWon.val} {rewardWon.label}</span>
+                  <span>
+                    +{rewardWon.val} {rewardWon.type === 'coins' ? (isEn ? (rewardWon.isSpecial ? 'Mega Gold' : 'Gold') : (rewardWon.isSpecial ? 'Mega Altın' : 'Altın')) : 'XP'}
+                  </span>
                 </div>
               </div>
 

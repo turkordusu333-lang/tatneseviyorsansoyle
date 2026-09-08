@@ -18,10 +18,10 @@ export const COLOR_HEX: Record<CardColor, string> = {
   lightblue: '#29B6F6',
   pink: '#EC407A',
   orange: '#FF9800',
-  red: '#EF5350',
+  red: '#e22323ff',
   yellow: '#FFEE58',
   green: '#4CAF50',
-  darkblue: '#1A237E',
+  darkblue: '#0b125cff',
   railroad: '#37474F',
   utility: '#827717',
 };
@@ -51,6 +51,124 @@ export const MAX_IN_SET: Record<CardColor, number> = {
   railroad: 4,
   utility: 2,
 };
+
+/**
+ * Extract the base CardColor from a setKey (e.g. 'green' -> 'green', 'green_2' -> 'green')
+ */
+export function getBaseColor(setKey: string): CardColor {
+  if (!setKey) return 'brown';
+  const base = setKey.split('_')[0];
+  return (base as CardColor) || 'brown';
+}
+
+/**
+ * Get the 1-based index of a set (e.g. 'green' -> 1, 'green_2' -> 2, 'green_3' -> 3)
+ */
+export function getSetIndex(setKey: string): number {
+  if (!setKey || !setKey.includes('_')) return 1;
+  const parts = setKey.split('_');
+  const num = parseInt(parts[parts.length - 1], 10);
+  return isNaN(num) ? 1 : num;
+}
+
+/**
+ * Format user-facing set display name (e.g. 'Yeşil Set #1', 'Green Set #2')
+ */
+export function getSetDisplayName(setKey: string, lang: string = 'tr'): string {
+  const baseCol = getBaseColor(setKey);
+  const idx = getSetIndex(setKey);
+  const colName = COLOR_LABELS[baseCol] || baseCol;
+  if (lang === 'en') {
+    const enNames: Record<CardColor, string> = {
+      brown: 'Brown',
+      lightblue: 'Light Blue',
+      pink: 'Pink',
+      orange: 'Orange',
+      red: 'Red',
+      yellow: 'Yellow',
+      green: 'Green',
+      darkblue: 'Dark Blue',
+      railroad: 'Railroad',
+      utility: 'Utility',
+    };
+    const enName = enNames[baseCol] || baseCol;
+    return idx > 1 ? `${enName} Set #${idx}` : `${enName} Set`;
+  }
+  return idx > 1 ? `${colName} Set #${idx}` : `${colName} Seti`;
+}
+
+/**
+ * Get all existing setKeys for a given color from player's properties
+ */
+export function getAllSetKeysForColor(properties: Record<string, any> | undefined, color: CardColor): string[] {
+  if (!properties) return [];
+  return Object.keys(properties).filter((k) => getBaseColor(k) === color && properties[k]?.cards?.length > 0);
+}
+
+/**
+ * Find the optimal set key to place a new card of this color.
+ * 1. Checks existing sets of this color: if one is incomplete (< MAX_IN_SET), returns it.
+ * 2. If all existing sets of this color are full (completed), returns the next new set key (e.g. 'green_2', 'green_3').
+ */
+export function findAvailableSetKey(properties: Record<string, any> | undefined, color: CardColor): string {
+  if (!properties) return color;
+  const maxReq = MAX_IN_SET[color] || 3;
+
+  // Check base set first
+  const baseSet = properties[color];
+  if (!baseSet || baseSet.cards.length === 0 || baseSet.cards.length < maxReq) {
+    return color;
+  }
+
+  // Check indexed sets: color_2, color_3, etc.
+  let idx = 2;
+  while (true) {
+    const key = `${color}_${idx}`;
+    const setObj = properties[key];
+    if (!setObj || setObj.cards.length === 0 || setObj.cards.length < maxReq) {
+      return key;
+    }
+    idx++;
+  }
+}
+
+/**
+ * Automatically splits any oversized property sets (e.g. 5 red cards) into multiple sets (red, red_2).
+ */
+export function sanitizePropertySets(properties: Record<string, any> | undefined): Record<string, any> {
+  if (!properties) return {};
+  const cleaned: Record<string, any> = {};
+
+  for (const setKey of Object.keys(properties)) {
+    const setObj = properties[setKey];
+    if (!setObj || !setObj.cards || setObj.cards.length === 0) continue;
+
+    const baseColor = getBaseColor(setKey);
+    const maxReq = MAX_IN_SET[baseColor] || 3;
+
+    if (setObj.cards.length <= maxReq) {
+      cleaned[setKey] = setObj;
+    } else {
+      const firstBatch = setObj.cards.slice(0, maxReq);
+      const excessCards = setObj.cards.slice(maxReq);
+
+      cleaned[setKey] = {
+        ...setObj,
+        cards: firstBatch
+      };
+
+      for (const card of excessCards) {
+        const nextKey = findAvailableSetKey(cleaned, baseColor);
+        if (!cleaned[nextKey]) {
+          cleaned[nextKey] = { cards: [], hasHouse: false, hasHotel: false };
+        }
+        cleaned[nextKey].cards.push(card);
+      }
+    }
+  }
+
+  return cleaned;
+}
 
 // Generates a full standard Deal Master PRO Deal deck (106 cards)
 export function generateDeck(): Card[] {
@@ -356,21 +474,17 @@ export function shuffleDeck(cards: Card[]): Card[] {
   return result;
 }
 
-// Check if a player has won (complete property sets of different colors based on targetSets)
+// Check if a player has won (complete property sets based on targetSets)
 export function checkWinner(properties: GamePlayer['properties'], targetSets: number = 3): boolean {
   let completedSetsCount = 0;
-  const completedColors: CardColor[] = [];
 
-  for (const colorKey in properties) {
-    const color = colorKey as CardColor;
-    const propSet = properties[color];
+  for (const setKey in properties) {
+    const baseColor = getBaseColor(setKey);
+    const propSet = properties[setKey];
     if (propSet && propSet.cards.length > 0) {
-      // Find maximum cards required to complete this color
-      const maxCount = MAX_IN_SET[color];
-      // Note: wildcards might match colors. In standard rules, wildcards are placed in a set.
-      if (propSet.cards.length >= maxCount) {
+      const maxCount = MAX_IN_SET[baseColor];
+      if (maxCount && propSet.cards.length >= maxCount) {
         completedSetsCount++;
-        completedColors.push(color);
       }
     }
   }

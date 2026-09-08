@@ -10,6 +10,8 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({ stats }) => 
   const donutRef = useRef<SVGSVGElement>(null);
   const barRef = useRef<SVGSVGElement>(null);
 
+  const isEn = localStorage.getItem('language') === 'en';
+
   const gamesPlayed = stats.gamesPlayed || 0;
   const gamesWon = stats.gamesWon || 0;
   const winRate = gamesPlayed > 0 ? Math.round((gamesWon / gamesPlayed) * 100) : 0;
@@ -18,11 +20,11 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({ stats }) => 
   const getCardTypeStats = () => {
     const multiplier = Math.max(1, gamesPlayed);
     return [
-      { type: 'Para', count: Math.round(multiplier * 18.4), label: '💵 Para', color: '#10B981' },
-      { type: 'Mülk', count: Math.round(multiplier * 12.2) + (stats.totalSetsCompleted * 3), label: '🏢 Mülk', color: '#3B82F6' },
-      { type: 'Hamle', count: Math.round(multiplier * 14.5) + stats.totalCardsStolen, label: '⚡ Hamle', color: '#8B5CF6' },
-      { type: 'Kira', count: Math.round(multiplier * 8.1) + stats.totalRentCollected, label: '💰 Kira', color: '#F59E0B' },
-      { type: 'Joker', count: Math.round(multiplier * 3.6), label: '🃏 Joker', color: '#EC4899' },
+      { type: isEn ? 'Money' : 'Para', count: Math.round(multiplier * 18.4), label: isEn ? '💵 Money' : '💵 Para', color: '#10B981' },
+      { type: isEn ? 'Property' : 'Mülk', count: Math.round(multiplier * 12.2) + (stats.totalSetsCompleted * 3), label: isEn ? '🏢 Property' : '🏢 Mülk', color: '#3B82F6' },
+      { type: isEn ? 'Action' : 'Hamle', count: Math.round(multiplier * 14.5) + stats.totalCardsStolen, label: isEn ? '⚡ Action' : '⚡ Hamle', color: '#8B5CF6' },
+      { type: isEn ? 'Rent' : 'Kira', count: Math.round(multiplier * 8.1) + stats.totalRentCollected, label: isEn ? '💰 Rent' : '💰 Kira', color: '#F59E0B' },
+      { type: isEn ? 'Wildcard' : 'Joker', count: Math.round(multiplier * 3.6), label: isEn ? '🃏 Wildcard' : '🃏 Joker', color: '#EC4899' },
     ].sort((a, b) => b.count - a.count);
   };
 
@@ -112,16 +114,16 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({ stats }) => 
       .attr('dy', '18px')
       .attr('fill', '#94A3B8')
       .attr('class', 'text-[10px] font-bold uppercase tracking-wider')
-      .text('Kazanma');
+      .text(isEn ? 'Win Rate' : 'Kazanma');
 
     g.append('text')
       .attr('text-anchor', 'middle')
       .attr('dy', '30px')
       .attr('fill', '#EF4444')
       .attr('class', 'text-[9px] font-black uppercase tracking-widest')
-      .text(`${gamesWon}G / ${gamesPlayed}M`);
+      .text(`${gamesWon}${isEn ? 'W' : 'G'} / ${gamesPlayed}${isEn ? 'M' : 'M'}`);
 
-  }, [winRate, gamesPlayed, gamesWon]);
+  }, [winRate, gamesPlayed, gamesWon, isEn]);
 
   useEffect(() => {
     if (!barRef.current) return;
@@ -208,11 +210,11 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({ stats }) => 
       .textTween(function(d) {
         const i = d3.interpolateRound(0, d.count);
         return function(t) {
-          return `${i(t)} adet`;
+          return `${i(t)} ${isEn ? 'pcs' : 'adet'}`;
         };
       });
 
-  }, [cardData]);
+  }, [cardData, isEn]);
 
   return (
     <div 
@@ -223,7 +225,9 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({ stats }) => 
         
         {/* Left Widget: Win Rate Donut */}
         <div className="flex flex-col items-center text-center flex-shrink-0">
-          <span className="text-xs text-slate-400 font-extrabold uppercase tracking-widest mb-3">Kazanma Oranı Analizi</span>
+          <span className="text-xs text-slate-400 font-extrabold uppercase tracking-widest mb-3">
+            {isEn ? 'Win Rate Analysis' : 'Kazanma Oranı Analizi'}
+          </span>
           <div className="relative flex items-center justify-center bg-slate-950/20 rounded-full p-2 border border-white/5 shadow-inner">
             <svg ref={donutRef} className="overflow-visible" />
           </div>
@@ -232,7 +236,7 @@ export const PerformanceChart: React.FC<PerformanceChartProps> = ({ stats }) => 
         {/* Right Widget: Card Types Horizontal Bars */}
         <div className="flex-1 w-full">
           <span className="text-xs text-slate-400 font-extrabold uppercase tracking-widest mb-3 block text-center lg:text-left">
-            En Çok Kullanılan Kart Türleri
+            {isEn ? 'Most Used Card Types' : 'En Çok Kullanılan Kart Türleri'}
           </span>
           <div className="w-full flex justify-center lg:justify-start overflow-x-auto scrollbar-none">
             <svg ref={barRef} className="overflow-visible" />

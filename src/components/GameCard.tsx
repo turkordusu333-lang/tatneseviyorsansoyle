@@ -297,22 +297,22 @@ const getSkinStyles = (cardBack?: string) => {
       };
     case 'back_classic':
       return {
-        borderClass: 'border-white bg-white text-slate-800 font-sans shadow-2xl',
-        fontClass: 'font-sans',
+        borderClass: 'border-slate-300 bg-white text-slate-800 font-sans shadow-md',
+        fontClass: 'font-sans text-slate-800',
         cardBg: 'bg-white',
-        bgOverlay: '',
-        borderColor: 'border-black/20',
+        bgOverlay: 'bg-gradient-to-br from-white via-slate-50 to-slate-100',
+        borderColor: 'border-slate-300',
         symbol: '◆'
       };
     default:
       // Custom card back from store fallback
       return {
-        borderClass: 'border-amber-400/80 bg-slate-950 text-amber-200 font-sans shadow-[0_4px_16px_rgba(245,158,11,0.4)]',
-        fontClass: 'font-sans font-extrabold text-amber-300',
-        cardBg: 'bg-slate-950',
-        bgOverlay: 'bg-gradient-to-br from-amber-950/30 via-purple-950/25 to-slate-950',
-        borderColor: 'border-amber-400/30',
-        symbol: '👑'
+        borderClass: 'border-slate-300 bg-white text-slate-900 font-sans shadow-md',
+        fontClass: 'font-sans font-extrabold text-slate-800',
+        cardBg: 'bg-white',
+        bgOverlay: 'bg-gradient-to-br from-white via-slate-50 to-slate-100',
+        borderColor: 'border-slate-300',
+        symbol: '◆'
       };
   }
 };
@@ -433,10 +433,10 @@ const GameCardComponent: React.FC<GameCardProps> = ({
       <div
         onClick={onClick}
         style={(skin as any).customStyle}
-        className={`relative select-none flex flex-col justify-between overflow-hidden shadow-2xl transition-all duration-200 border-2 ${skin.borderClass} ${
-          size === 'normal' ? 'w-24 h-36 sm:w-28 sm:h-44 p-2 sm:p-2.5 rounded-2xl' :
+        className={`relative select-none flex flex-col justify-between overflow-hidden shadow-md transition-all duration-200 border-2 bg-white ${skin.borderClass || 'border-slate-300'} ${
+          size === 'normal' ? 'w-24 h-36 sm:w-28 sm:h-44 p-2 sm:p-2.5 rounded-xl' :
           size === 'medium' ? 'w-14 h-20 sm:w-16 sm:h-24 p-1 sm:p-1.5 rounded-md' :
-          'w-10 h-14 sm:w-12 sm:h-16 p-0.5 sm:p-1 rounded-lg'
+          'w-9 h-13 sm:w-10 sm:h-14 p-0.5 rounded-md'
         } ${className}`}
       >
         {(skin as any).mediaUrl ? (
@@ -453,24 +453,24 @@ const GameCardComponent: React.FC<GameCardProps> = ({
             />
           )
         ) : (
-          <div className={`absolute inset-0 ${skin.bgOverlay}`} />
+          <div className={`absolute inset-0 ${skin.bgOverlay || 'bg-gradient-to-br from-white via-slate-50 to-slate-100'}`} />
         )}
 
         <div className="flex justify-between items-center z-10 opacity-70">
-          <span className="text-[5px] sm:text-[6px] font-black uppercase tracking-widest text-white/80 drop-shadow">PRO</span>
-          <span className="text-[7px] sm:text-[8px] text-white/90 drop-shadow">{skin.symbol || '◆'}</span>
+          <span className="text-[5px] sm:text-[6px] font-black uppercase tracking-widest text-slate-800">PRO</span>
+          <span className="text-[7px] sm:text-[8px] text-slate-900 font-bold">{skin.symbol || '◆'}</span>
         </div>
         <div className="flex flex-col items-center justify-center my-auto z-10 text-center">
           {!(skin as any).mediaUrl && (
-            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full border border-white/20 bg-black/40 backdrop-blur-sm flex items-center justify-center shadow-inner my-0.5">
-              <span className="text-xs sm:text-sm">{skin.symbol || '🃏'}</span>
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full border border-slate-300 bg-white/90 backdrop-blur-sm flex items-center justify-center shadow-sm my-0.5">
+              <span className="text-xs sm:text-sm text-slate-900">{skin.symbol || '🃏'}</span>
             </div>
           )}
-          <span className="text-[5px] sm:text-[6.5px] font-black uppercase tracking-widest text-white/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">DEAL MASTER</span>
+          <span className="text-[5px] sm:text-[6.5px] font-black uppercase tracking-widest text-slate-900 drop-shadow-xs">DEAL MASTER</span>
         </div>
         <div className="flex justify-between items-center z-10 opacity-70">
-          <span className="text-[7px] sm:text-[8px] text-white/90 drop-shadow">{skin.symbol || '◆'}</span>
-          <span className="text-[5px] sm:text-[6px] font-black uppercase tracking-widest text-white/80 drop-shadow">CARD</span>
+          <span className="text-[7px] sm:text-[8px] text-slate-900 font-bold">{skin.symbol || '◆'}</span>
+          <span className="text-[5px] sm:text-[6px] font-black uppercase tracking-widest text-slate-800">CARD</span>
         </div>
       </div>
     );
@@ -932,47 +932,75 @@ const GameCardComponent: React.FC<GameCardProps> = ({
   // ---------------------------------------------------------
   if (size === 'mini') {
     const renderMiniBody = () => {
+      const currentLang = localStorage.getItem('language') || 'tr';
+
       if (details.isMoney) {
         return (
           <div
             id={`card-mini-${card.id}`}
             onClick={onClick}
-            className={`w-[40px] h-[58px] rounded-lg border border-black/40 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${className}`}
-            style={{ backgroundColor: details.bgColor }}
-            title={`${card.value}M ${localStorage.getItem('language') === 'en' ? 'Cash' : 'Para'}`}
+            className={`w-[38px] h-[56px] sm:w-[42px] sm:h-[62px] rounded-md border border-slate-300 bg-white flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-108 transition-all shadow-xs select-none shrink-0 ${className}`}
+            style={{ 
+              background: `radial-gradient(circle at 50% 35%, rgba(255,255,255,0.4) 0%, transparent 65%), ${details.bgColor}` 
+            }}
+            title={`${card.value}M ${currentLang === 'en' ? 'Cash' : 'Para'}`}
           >
-            <div className="absolute inset-0 bg-gradient-to-tr from-black/10 via-transparent to-white/10 pointer-events-none" />
-            <div className="w-5 h-5 rounded-full border border-black/20 bg-white/90 flex items-center justify-center mx-auto mt-0.5 shadow-sm">
-              <span className="text-[8.5px] font-black text-slate-800 leading-none">{card.value}</span>
+            {/* Top Corner Miniature Value */}
+            <div className="flex justify-between items-center w-full px-0.5">
+              <span className="text-[7px] sm:text-[7.5px] font-black text-slate-900 drop-shadow-xs leading-none font-mono">
+                {card.value}M
+              </span>
+              <span className="text-[6.5px]">💵</span>
             </div>
-            <span className="text-[8.5px] font-black text-white text-center drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)] leading-none mt-auto mb-0.5">
-              {card.value}M
-            </span>
+
+            {/* Center Embossed Coin */}
+            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full border border-slate-900/40 bg-white flex items-center justify-center mx-auto shadow-xs">
+              <span className="text-[9px] sm:text-[10px] font-black text-slate-950 leading-none font-mono">
+                {card.value}
+              </span>
+            </div>
+
+            {/* Bottom Currency Tag */}
+            <div className="bg-white/90 border border-slate-300 rounded py-0.2 text-center shadow-xs">
+              <span className="text-[6.5px] sm:text-[7px] font-black font-mono text-slate-900 leading-none block">
+                {card.value}M
+              </span>
+            </div>
           </div>
         );
       }
 
       if (details.isWildcard) {
         const isMulticolor = !card.secondaryColor;
-        const currentLang = localStorage.getItem('language') || 'tr';
         return (
           <div
             id={`card-mini-${card.id}`}
             onClick={onClick}
-            className={`w-[40px] h-[58px] rounded-lg border border-black/30 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${holoClass} ${className}`}
+            className={`w-[38px] h-[56px] sm:w-[42px] sm:h-[62px] rounded-md border border-slate-300 bg-white flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-108 transition-all shadow-xs select-none shrink-0 ${holoClass} ${className}`}
             style={{
               background: isMulticolor
-                ? 'linear-gradient(135deg, #EF5350, #FF9800, #FFEE58, #4CAF50, #29B6F6, #9C27B0)'
-                : `linear-gradient(135deg, ${primaryColorHex} 48%, #ffffff 48%, #ffffff 52%, ${secondaryColorHex || primaryColorHex} 52%)`
+                ? 'linear-gradient(135deg, #ef4444 0%, #f97316 20%, #eab308 40%, #22c55e 60%, #0ea5e9 80%, #a855f7 100%)'
+                : `linear-gradient(135deg, ${primaryColorHex} 48%, rgba(255,255,255,0.95) 48%, rgba(255,255,255,0.95) 52%, ${secondaryColorHex || primaryColorHex} 52%)`
             }}
             title={details.name}
           >
+            {/* Top Corner Value Tag */}
+            <div className="flex justify-between items-center w-full px-0.5">
+              <span className="text-[6px] font-black bg-white/90 text-slate-950 px-0.5 py-0.2 rounded leading-none font-mono shadow-xs">
+                {card.value}M
+              </span>
+              <span className="text-[7px] drop-shadow">{isMulticolor ? '✨' : '⭐'}</span>
+            </div>
+
+            {/* Center Symbol */}
             <div className="flex-1 flex items-center justify-center">
-              <span className="text-[13px] drop-shadow-[0_1px_1.5px_rgba(0,0,0,0.7)]">
+              <span className="text-[13px] sm:text-[15px] filter drop-shadow-[0_1px_2px_rgba(0,0,0,0.4)]">
                 {isMulticolor ? '🌈' : '🌟'}
               </span>
             </div>
-            <div className="bg-black/60 text-[6px] text-white font-black text-center py-0.5 leading-none rounded-sm uppercase">
+
+            {/* Bottom Label Badge */}
+            <div className="bg-white/95 border border-slate-300 text-[6px] sm:text-[6.5px] text-slate-900 font-black text-center py-0.2 leading-none rounded uppercase tracking-tight shadow-xs">
               {isMulticolor ? (currentLang === 'en' ? 'WILDCARD' : 'JOKER') : (currentLang === 'en' ? 'DUAL' : 'ÇİFT')}
             </div>
           </div>
@@ -980,20 +1008,28 @@ const GameCardComponent: React.FC<GameCardProps> = ({
       }
 
       if (card.type === 'property') {
+        const maxCount = card.color ? (MAX_IN_SET[card.color as CardColor] || 3) : 3;
         return (
           <div
             id={`card-mini-${card.id}`}
             onClick={onClick}
-            className={`w-[40px] h-[58px] rounded-lg bg-white border border-slate-350 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${holoClass} ${className}`}
-            title={`${details.name} (${localStorage.getItem('language') === 'en' ? 'Property' : 'Tapu'})`}
+            className={`w-[38px] h-[56px] sm:w-[42px] sm:h-[62px] rounded-md bg-white border border-slate-300 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-108 transition-all shadow-xs select-none shrink-0 ${holoClass} ${className}`}
+            title={`${details.name} (${currentLang === 'en' ? 'Property' : 'Tapu'})`}
           >
-            <div className="h-2.5 w-full rounded-t-sm flex-shrink-0" style={{ backgroundColor: primaryColorHex }} />
-            <div className="flex-1 flex items-center justify-center px-0.5 w-full overflow-hidden">
-              {renderCardTitle(details.name, 'mini', true)}
+            {/* Top Color Header Banner */}
+            <div 
+              className="h-3.5 sm:h-4 w-full rounded-t-xs flex-shrink-0 shadow-xs" 
+              style={{ 
+                backgroundColor: primaryColorHex,
+              }}
+            />
+
+            {/* Center Card Count (e.g. 1/3, 1/2, 1/4) */}
+            <div className="flex-1 w-full bg-white flex items-center justify-center py-0.5">
+              <span className="text-[10.5px] sm:text-[11.5px] font-black font-mono text-slate-900 leading-none">
+                1/{maxCount}
+              </span>
             </div>
-            <span className="text-[7.5px] font-black text-slate-600 text-center leading-none mb-0.5">
-              {card.value}M
-            </span>
           </div>
         );
       }
@@ -1001,27 +1037,33 @@ const GameCardComponent: React.FC<GameCardProps> = ({
       // Dedicated Rent Mini card with color indicators
       if (details.isRent) {
         const isMulticolor = !card.color;
-        const currentLang = localStorage.getItem('language') || 'tr';
         return (
           <div
             id={`card-mini-${card.id}`}
             onClick={onClick}
-            className={`w-[40px] h-[58px] rounded-lg border border-black/35 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${holoClass} ${className}`}
+            className={`w-[38px] h-[56px] sm:w-[42px] sm:h-[62px] rounded-md border border-slate-300 bg-white flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-108 transition-all shadow-xs select-none shrink-0 ${holoClass} ${className}`}
             style={{
               background: isMulticolor
-                ? 'linear-gradient(135deg, #EF5350, #FF9800, #FFEE58, #4CAF50, #29B6F6)'
+                ? 'linear-gradient(135deg, #ef4444 0%, #f97316 25%, #eab308 50%, #22c55e 75%, #0ea5e9 100%)'
                 : card.secondaryColor
-                ? `linear-gradient(135deg, ${primaryColorHex} 48%, #ffffff 48%, #ffffff 52%, ${secondaryColorHex} 52%)`
+                ? `linear-gradient(135deg, ${primaryColorHex} 48%, rgba(255,255,255,0.95) 48%, rgba(255,255,255,0.95) 52%, ${secondaryColorHex} 52%)`
                 : primaryColorHex
             }}
             title={details.name}
           >
             <div className="flex justify-between items-center px-0.5">
-              <span className="text-[5.5px] font-black text-slate-900 bg-white/90 px-0.5 rounded leading-none">{translate('rent_label').toUpperCase()}</span>
-              <span className="text-[8px] leading-none drop-shadow-[0_0.5px_0.5px_rgba(0,0,0,0.5)]">💰</span>
+              <span className="text-[5.5px] font-black text-slate-950 bg-white/95 px-0.5 py-0.2 rounded-xs shadow-xs leading-none">
+                {translate('rent_label').toUpperCase()}
+              </span>
+              <span className="text-[7.5px] leading-none">💰</span>
             </div>
-            <div className="bg-black/50 py-0.5 rounded-sm flex items-center justify-center w-full px-0.5 overflow-hidden">
-              {renderCardTitle(isMulticolor ? (currentLang === 'en' ? 'ANY COLOR' : 'HER RENK') : (currentLang === 'en' ? 'RENT' : 'KİRA'), 'mini', false)}
+            
+            <div className="flex-1 flex items-center justify-center">
+              <span className="text-xs drop-shadow-xs">⚡</span>
+            </div>
+
+            <div className="bg-white/95 border border-slate-200 py-0.2 rounded flex items-center justify-center w-full px-0.5 overflow-hidden shadow-xs">
+              {renderCardTitle(isMulticolor ? (currentLang === 'en' ? 'ANY COLOR' : 'HER RENK') : (currentLang === 'en' ? 'RENT' : 'KİRA'), 'mini', true)}
             </div>
           </div>
         );
@@ -1032,15 +1074,32 @@ const GameCardComponent: React.FC<GameCardProps> = ({
         <div
           id={`card-mini-${card.id}`}
           onClick={onClick}
-          className={`w-[40px] h-[58px] rounded-lg border border-black/30 flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-110 transition-all shadow-md select-none fluid-card-container ${holoClass} ${className}`}
-          style={{ backgroundColor: details.isAction && details.bgColor !== '#FFFFFF' ? details.bgColor : '#e2e8f0' }}
+          className={`w-[38px] h-[56px] sm:w-[42px] sm:h-[62px] rounded-md border border-slate-300 bg-white flex flex-col justify-between p-0.5 relative overflow-hidden cursor-pointer hover:scale-108 transition-all shadow-xs select-none shrink-0 ${holoClass} ${className}`}
+          style={{ 
+            background: details.isAction && details.bgColor !== '#FFFFFF' 
+              ? `linear-gradient(145deg, ${details.bgColor}25, #ffffff)`
+              : '#ffffff' 
+          }}
           title={details.name}
         >
-          <div className="text-[12px] mx-auto leading-none mt-0.5">
-            {details.icon}
+          {/* Top Row: Icon & Value */}
+          <div className="flex justify-between items-center px-0.5">
+            <span className="text-[5.5px] font-mono font-black bg-white/90 text-slate-900 px-0.5 py-0.2 rounded border border-slate-200 leading-none shadow-xs">
+              {card.value}M
+            </span>
+            <span className="text-[6.5px] text-amber-500">⚡</span>
           </div>
-          <div className="bg-black/35 py-0.5 rounded-sm flex items-center justify-center w-full px-0.5 overflow-hidden">
-            {renderCardTitle(details.name, 'mini', false)}
+
+          {/* Center Large Icon in Clean Disc */}
+          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white border border-slate-200 flex items-center justify-center mx-auto shadow-xs">
+            <span className="text-[11px] sm:text-[12px] leading-none">
+              {details.icon}
+            </span>
+          </div>
+
+          {/* Bottom Title Badge */}
+          <div className="bg-white border border-slate-200 py-0.2 rounded flex items-center justify-center w-full px-0.5 overflow-hidden shadow-xs">
+            {renderCardTitle(details.name, 'mini', true)}
           </div>
         </div>
       );
@@ -1049,7 +1108,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
     return (
       <div 
         ref={cardRef}
-        className="relative inline-block rounded-lg overflow-hidden"
+        className="relative inline-block rounded-md overflow-hidden shadow-xs"
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         onMouseMove={handleMouseMove}
@@ -1249,14 +1308,14 @@ const GameCardComponent: React.FC<GameCardProps> = ({
   return (
     <Holo
       rarity={rarity}
-      className="relative inline-block rounded-2xl overflow-hidden"
+      className="relative inline-block rounded-xl overflow-hidden"
       style={tiltStyle}
     >
       {tooltipElement}
       <div
         id={`card-normal-${card.id}`}
         onClick={onClick}
-        className={`flex-shrink-0 w-[114px] h-[170px] rounded-2xl border-[3.5px] shadow-2xl transition-all relative select-none flex flex-col justify-between cursor-pointer overflow-hidden p-0.5 ${skin.borderClass} ${skin.fontClass} ${holoClass} ${
+        className={`flex-shrink-0 w-[114px] h-[170px] rounded-xl border-[3px] shadow-2xl transition-all relative select-none flex flex-col justify-between cursor-pointer overflow-hidden p-0.5 ${skin.borderClass} ${skin.fontClass} ${holoClass} ${
           isSelected
             ? 'ring-4 ring-amber-400 scale-105 z-20 shadow-[0_15px_30px_rgba(251,191,36,0.45)]'
             : 'hover:-translate-y-2'
@@ -1267,7 +1326,7 @@ const GameCardComponent: React.FC<GameCardProps> = ({
       {/* A. MONEY CARD DESIGN */}
       {details.isMoney && (
         <div
-          className="w-full h-full rounded-xl flex flex-col justify-between p-1.5 relative border border-black/20 overflow-hidden"
+          className="w-full h-full rounded-lg flex flex-col justify-between p-1.5 relative border border-black/20 overflow-hidden"
           style={{ backgroundColor: details.bgColor }}
         >
           <div className="absolute inset-0 opacity-[0.06] pointer-events-none" style={{

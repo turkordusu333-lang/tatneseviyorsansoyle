@@ -109,7 +109,7 @@ export const getAdminAuthHeader = () => {
 
 export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout }) => {
   const [activeTab, setActiveTab] = useState<'analytics' | 'rules' | 'security' | 'players' | 'quests' | 'achievements' | 'tournaments' | 'translations' | 'voices' | 'shop'>('analytics');
-  
+
   // Password Change state
   const [currentAdminPassword, setCurrentAdminPassword] = useState('');
   const [newAdminPassword, setNewAdminPassword] = useState('');
@@ -1169,9 +1169,8 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
           </div>
         </div>
         {notification && (
-          <div className={`px-4 py-1.5 rounded-lg text-xs font-semibold shadow-md transition-all ${
-            notification.type === 'success' ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400' : 'bg-rose-500/20 border border-rose-500/40 text-rose-400'
-          }`}>
+          <div className={`px-4 py-1.5 rounded-lg text-xs font-semibold shadow-md transition-all ${notification.type === 'success' ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400' : 'bg-rose-500/20 border border-rose-500/40 text-rose-400'
+            }`}>
             {notification.message}
           </div>
         )}
@@ -1183,81 +1182,71 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
         <div className="w-64 bg-slate-950/40 border-r border-slate-900 flex flex-col p-4 gap-2">
           <button
             onClick={() => setActiveTab('analytics')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'analytics' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'analytics' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
-            <span>������</span> Sistem Analitiği
+            <span>⚙️</span> Sistem Analitiği
           </button>
           <button
             onClick={() => setActiveTab('rules')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'rules' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'rules' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
             <span>⚙️</span> Oyun Kuralları
           </button>
           <button
             onClick={() => setActiveTab('security')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'security' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'security' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
             <span>🔐</span> Güvenlik & Şifre
           </button>
           <button
             onClick={() => setActiveTab('players')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'players' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'players' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
             <span>👥</span> Oyuncu Yönetimi
           </button>
           <button
             onClick={() => setActiveTab('quests')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'quests' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'quests' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
             <span>📜</span> Görev Tasarımcısı
           </button>
           <button
             onClick={() => setActiveTab('achievements')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'achievements' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'achievements' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
             <span>🏅</span> Başarımlar & Rozetler
           </button>
           <button
             onClick={() => setActiveTab('tournaments')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'tournaments' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'tournaments' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
             <span>🏆</span> Turnuva Yönetimi
           </button>
           <button
             onClick={() => setActiveTab('translations')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'translations' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'translations' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
             <span>🌐</span> Dil & Kelime Yönetimi
           </button>
           <button
             onClick={() => setActiveTab('voices')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'voices' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'voices' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
             <span>🗣️</span> Seslendirme Yönetimi
           </button>
           <button
             onClick={() => setActiveTab('shop')}
-            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${
-              activeTab === 'shop' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
-            }`}
+            className={`w-full px-4 py-3 rounded-xl text-left text-sm font-semibold flex items-center gap-3 transition-all ${activeTab === 'shop' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-400 hover:bg-slate-900/60 hover:text-slate-200'
+              }`}
           >
             <span>🛒</span> Mağaza Ürün Yönetimi
           </button>
@@ -1317,9 +1306,8 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                 <div className="space-y-4">
                   <div className="flex justify-between items-center py-2.5 border-b border-slate-900">
                     <span className="text-xs text-slate-400">Supabase Bağlantı Durumu</span>
-                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${
-                      stats.supabaseStatus === 'connected' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
-                    }`}>
+                    <span className={`text-xs px-2.5 py-0.5 rounded-full font-semibold ${stats.supabaseStatus === 'connected' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'
+                      }`}>
                       {stats.supabaseStatus === 'connected' ? 'BAĞLI (ONLINE)' : 'ÇEVRİMDIŞI (FALLBACK AKTİF)'}
                     </span>
                   </div>
@@ -1343,9 +1331,8 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                 <div className="flex items-center gap-4">
                   <button
                     onClick={() => handleToggle('maintenanceMode')}
-                    className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${
-                      settings.maintenanceMode ? 'bg-rose-600 text-white shadow-rose-600/25' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                    }`}
+                    className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all shadow-md ${settings.maintenanceMode ? 'bg-rose-600 text-white shadow-rose-600/25' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                      }`}
                   >
                     {settings.maintenanceMode ? 'Bakım Modunu Kapat' : 'Bakım Modunu Aktif Et'}
                   </button>
@@ -1883,7 +1870,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                   {/* Left Column: General Wheel Rules */}
                   <div className="space-y-4 bg-slate-950/40 p-4 rounded-xl border border-white/5">
                     <span className="text-xs text-slate-300 font-bold block border-b border-white/5 pb-2">Temel Kurallar</span>
-                    
+
                     <div className="flex items-center justify-between py-1">
                       <span className="text-xs text-slate-300 font-medium">Şans Çarkı Etkin</span>
                       <input
@@ -1976,7 +1963,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                     {/* Google AdMob (Mobil Uygulama) Configuration */}
                     <div className="border-t border-white/5 pt-3.5 mt-3.5 space-y-3.5">
                       <span className="text-[10px] text-indigo-400 font-extrabold uppercase tracking-widest block">📱 Google AdMob (Mobil / Android & iOS)</span>
-                      
+
                       <div className="flex items-center justify-between py-1">
                         <span className="text-xs text-slate-300 font-medium">Test Reklam Modu (Global)</span>
                         <input
@@ -1990,7 +1977,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                       {/* Ödüllü Reklam (Rewarded Video) */}
                       <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5 space-y-2">
                         <span className="text-[11px] text-amber-400 font-bold block">🎥 Ödüllü Video Reklamı (Deal Card)</span>
-                        
+
                         <div className="space-y-1">
                           <label className="block text-[9px] text-slate-400 font-bold uppercase">Android Rewarded Unit ID</label>
                           <input
@@ -2052,7 +2039,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                   {/* Right Column: Wedges / Rewards Configuration */}
                   <div className="space-y-4 bg-slate-950/40 p-4 rounded-xl border border-white/5">
                     <span className="text-xs text-slate-300 font-bold block border-b border-white/5 pb-2">Çark Bölmeleri ve Ödülleri</span>
-                    
+
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <label className="block text-[10px] text-slate-400 font-bold uppercase mb-1">Bölme 1 (Gold)</label>
@@ -2158,7 +2145,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                 {/* Password Change Form */}
                 <div className="md:col-span-2 bg-slate-900/60 border border-slate-800 rounded-3xl p-6 shadow-xl relative overflow-hidden backdrop-blur-sm">
                   <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-600/10 rounded-full filter blur-2xl pointer-events-none" />
-                  
+
                   <div className="flex items-center gap-3 border-b border-slate-800/80 pb-4 mb-5">
                     <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-lg">
                       🛡️
@@ -2220,11 +2207,10 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                     {/* Notification Messages */}
                     {passwordChangeMsg && (
                       <div
-                        className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 ${
-                          passwordChangeMsg.type === 'success'
-                            ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                            : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
-                        }`}
+                        className={`p-3 rounded-xl border text-xs font-semibold flex items-center gap-2 ${passwordChangeMsg.type === 'success'
+                          ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
+                          : 'bg-rose-950/40 border-rose-500/30 text-rose-300'
+                          }`}
                       >
                         <span>{passwordChangeMsg.type === 'success' ? '✅' : '⚠️'}</span>
                         <span>{passwordChangeMsg.text}</span>
@@ -2992,11 +2978,10 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                           key={lang}
                           type="button"
                           onClick={() => setEditingLang(lang)}
-                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all uppercase cursor-pointer ${
-                            editingLang === lang
-                              ? 'bg-indigo-600 text-white shadow-md'
-                              : 'bg-slate-900/60 border border-slate-800 text-slate-400 hover:text-slate-200'
-                          }`}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold transition-all uppercase cursor-pointer ${editingLang === lang
+                            ? 'bg-indigo-600 text-white shadow-md'
+                            : 'bg-slate-900/60 border border-slate-800 text-slate-400 hover:text-slate-200'
+                            }`}
                         >
                           {lang}
                         </button>
@@ -3070,13 +3055,12 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                         <tr key={item.id} className="hover:bg-slate-900/25 transition-colors">
                           <td className="p-3 font-semibold text-slate-200">{item.name}</td>
                           <td className="p-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              item.scope === 'global'
-                                ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
-                                : item.scope === 'duel'
-                                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                  : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
-                            }`}>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.scope === 'global'
+                              ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                              : item.scope === 'duel'
+                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                              }`}>
                               {item.scope === 'global'
                                 ? 'Herkes (Küresel)'
                                 : item.scope === 'duel'
@@ -3085,7 +3069,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                             </span>
                           </td>
                           <td className="p-3 font-mono text-slate-400 text-[11px]">{item.filename}</td>
-                          
+
                           {/* TR Column */}
                           <td className="p-3">
                             <div className="flex items-center justify-center gap-2">
@@ -3099,7 +3083,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                               ) : (
                                 <span className="text-[10px] text-slate-500 font-semibold italic">Yüklenmedi</span>
                               )}
-                              
+
                               <label className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-[10px] transition-all cursor-pointer border border-slate-750 flex items-center justify-center min-w-[70px]">
                                 {uploadLoading === `${item.id}_tr` ? (
                                   <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-slate-300 border-t-transparent rounded-full" />
@@ -3130,7 +3114,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                               ) : (
                                 <span className="text-[10px] text-slate-500 font-semibold italic">Yüklenmedi</span>
                               )}
-                              
+
                               <label className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-lg text-[10px] transition-all cursor-pointer border border-slate-750 flex items-center justify-center min-w-[70px]">
                                 {uploadLoading === `${item.id}_en` ? (
                                   <span className="animate-spin inline-block w-2.5 h-2.5 border-2 border-slate-300 border-t-transparent rounded-full" />
@@ -3249,11 +3233,10 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                       <button
                         key={cat.id}
                         onClick={() => setShopCategoryFilter(cat.id)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                          shopCategoryFilter === cat.id
-                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-                            : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
-                        }`}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${shopCategoryFilter === cat.id
+                          ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                          : 'bg-slate-900 text-slate-400 hover:text-white hover:bg-slate-800'
+                          }`}
                       >
                         {cat.label}
                       </button>
@@ -3302,7 +3285,7 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                             <div className="absolute top-2 right-2 bg-slate-900/90 border border-slate-750 px-2 py-0.5 rounded-full text-[9px] font-mono font-bold text-slate-300">
                               {item.mediaUrl ? (
                                 isVideoUrl(item.mediaUrl, item.mediaType) ? '🎬 VİDEO' :
-                                item.mediaType === 'gif' || item.mediaUrl.endsWith('.gif') ? '✨ GIF' : '🖼️ RESİM'
+                                  item.mediaType === 'gif' || item.mediaUrl.endsWith('.gif') ? '✨ GIF' : '🖼️ RESİM'
                               ) : (
                                 '⚙️ STANDART'
                               )}
@@ -3389,11 +3372,10 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                             key={tab.id}
                             type="button"
                             onClick={() => setShopModalTab(tab.id as any)}
-                            className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer flex flex-col items-center justify-center ${
-                              shopModalTab === tab.id
-                                ? 'bg-indigo-600 text-white font-extrabold shadow-md shadow-indigo-600/30'
-                                : 'text-slate-400 hover:text-white hover:bg-slate-900 font-medium'
-                            }`}
+                            className={`py-2 px-1 rounded-xl text-center transition-all cursor-pointer flex flex-col items-center justify-center ${shopModalTab === tab.id
+                              ? 'bg-indigo-600 text-white font-extrabold shadow-md shadow-indigo-600/30'
+                              : 'text-slate-400 hover:text-white hover:bg-slate-900 font-medium'
+                              }`}
                           >
                             <span className="text-xs">{tab.label}</span>
                             <span className="text-[8.5px] opacity-70 hidden sm:inline">{tab.desc}</span>
@@ -3729,11 +3711,10 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                                     type="button"
                                     key={mt.id}
                                     onClick={() => setShopForm({ ...shopForm, mediaType: mt.id as any })}
-                                    className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all border ${
-                                      shopForm.mediaType === mt.id
-                                        ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-sm'
-                                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
-                                    }`}
+                                    className={`py-1.5 px-2 rounded-xl text-xs font-bold transition-all border ${shopForm.mediaType === mt.id
+                                      ? 'bg-amber-500/20 border-amber-500 text-amber-300 shadow-sm'
+                                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                                      }`}
                                   >
                                     {mt.label}
                                   </button>
@@ -3816,11 +3797,10 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                                     <button
                                       type="button"
                                       onClick={() => toggleShopAudioPreview()}
-                                      className={`px-3 py-2 rounded-xl text-xs font-black shrink-0 transition-all flex items-center gap-1.5 cursor-pointer ${
-                                        isPlayingShopAudio
-                                          ? 'bg-rose-600 text-white animate-pulse'
-                                          : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
-                                      }`}
+                                      className={`px-3 py-2 rounded-xl text-xs font-black shrink-0 transition-all flex items-center gap-1.5 cursor-pointer ${isPlayingShopAudio
+                                        ? 'bg-rose-600 text-white animate-pulse'
+                                        : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md'
+                                        }`}
                                     >
                                       <span>{isPlayingShopAudio ? '⏸️ Durdur' : '▶️ Dinle'}</span>
                                     </button>
@@ -3970,21 +3950,19 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
 
                           {/* Dynamic Card Container */}
                           <div
-                            className={`relative w-full h-44 rounded-2xl overflow-hidden flex items-center justify-center transition-all ${
-                              shopForm.animType === 'pulse' ? 'animate-pulse' :
+                            className={`relative w-full h-44 rounded-2xl overflow-hidden flex items-center justify-center transition-all ${shopForm.animType === 'pulse' ? 'animate-pulse' :
                               shopForm.animType === 'floating' ? 'animate-bounce' :
-                              shopForm.animType === 'shimmer' ? 'shadow-[inset_0_0_30px_rgba(255,255,255,0.3)]' :
-                              ''
-                            }`}
+                                shopForm.animType === 'shimmer' ? 'shadow-[inset_0_0_30px_rgba(255,255,255,0.3)]' :
+                                  ''
+                              }`}
                             style={{
                               background: shopForm.gradientStart && shopForm.gradientEnd
                                 ? shopForm.gradientDirection === 'radial'
                                   ? `radial-gradient(circle, ${shopForm.gradientStart}, ${shopForm.gradientEnd})`
-                                  : `linear-gradient(${
-                                      shopForm.gradientDirection === 'to-r' ? '90deg' :
-                                      shopForm.gradientDirection === 'to-b' ? '180deg' :
+                                  : `linear-gradient(${shopForm.gradientDirection === 'to-r' ? '90deg' :
+                                    shopForm.gradientDirection === 'to-b' ? '180deg' :
                                       shopForm.gradientDirection === 'to-tr' ? '45deg' : '135deg'
-                                    }, ${shopForm.gradientStart}, ${shopForm.gradientEnd})`
+                                  }, ${shopForm.gradientStart}, ${shopForm.gradientEnd})`
                                 : shopForm.previewColor || '#090d16',
                               borderColor: shopForm.borderColor || shopForm.glowColor || '#334155',
                               borderWidth: `${shopForm.borderWidth || 1}px`,
@@ -3996,17 +3974,16 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                           >
                             {/* Rarity Badge Overlay (Top-Left) */}
                             <div className="absolute top-2.5 left-2.5 z-30 pointer-events-none flex flex-col gap-1">
-                              <span className={`px-2.5 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider shadow-md backdrop-blur-md ${
-                                shopForm.rarity === 'mythic' ? 'bg-gradient-to-r from-red-600/90 via-pink-600/90 to-purple-600/90 text-white border-pink-400 animate-pulse' :
+                              <span className={`px-2.5 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider shadow-md backdrop-blur-md ${shopForm.rarity === 'mythic' ? 'bg-gradient-to-r from-red-600/90 via-pink-600/90 to-purple-600/90 text-white border-pink-400 animate-pulse' :
                                 shopForm.rarity === 'legendary' ? 'bg-amber-500/90 text-amber-100 border-amber-300 animate-pulse' :
-                                shopForm.rarity === 'epic' ? 'bg-purple-600/90 text-purple-100 border-purple-400' :
-                                shopForm.rarity === 'rare' ? 'bg-blue-600/90 text-blue-100 border-blue-400' :
-                                'bg-slate-800/80 text-slate-300 border-slate-600'
-                              }`}>
+                                  shopForm.rarity === 'epic' ? 'bg-purple-600/90 text-purple-100 border-purple-400' :
+                                    shopForm.rarity === 'rare' ? 'bg-blue-600/90 text-blue-100 border-blue-400' :
+                                      'bg-slate-800/80 text-slate-300 border-slate-600'
+                                }`}>
                                 {shopForm.rarity === 'mythic' ? '🔥 MİSTİK' :
-                                 shopForm.rarity === 'legendary' ? '🟡 EFSANEVİ' :
-                                 shopForm.rarity === 'epic' ? '🟣 EPİK' :
-                                 shopForm.rarity === 'rare' ? '🔵 NADİR' : '⚪ YAYGIN'}
+                                  shopForm.rarity === 'legendary' ? '🟡 EFSANEVİ' :
+                                    shopForm.rarity === 'epic' ? '🟣 EPİK' :
+                                      shopForm.rarity === 'rare' ? '🔵 NADİR' : '⚪ YAYGIN'}
                               </span>
 
                               {/* Custom Badge Text if defined */}
@@ -4050,10 +4027,10 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                               <div className="flex flex-col items-center justify-center gap-1 text-slate-400">
                                 <span className="text-3xl">
                                   {shopForm.category === 'avatar' ? '👑' :
-                                   shopForm.category === 'card_back' ? '🃏' :
-                                   shopForm.category === 'board_theme' ? '🎨' :
-                                   shopForm.category === 'player_board' ? '🏆' :
-                                   shopForm.category === 'celebration_sound' ? '🎵' : '✨'}
+                                    shopForm.category === 'card_back' ? '🃏' :
+                                      shopForm.category === 'board_theme' ? '🎨' :
+                                        shopForm.category === 'player_board' ? '🏆' :
+                                          shopForm.category === 'celebration_sound' ? '🎵' : '✨'}
                                 </span>
                                 <span className="text-[10px] font-mono text-slate-400 font-bold">
                                   {shopForm.name || 'Özel Tema Görünümü'}

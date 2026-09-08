@@ -12,7 +12,7 @@ export interface DynamicSetDimensions {
   fontScaleClass: string;
 }
 
-export function useCompactLayout(initialValue = true) {
+export function useCompactLayout(initialValue = false) {
   const [isCompactLayout, setIsCompactLayout] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('mono_deal_compact_layout');

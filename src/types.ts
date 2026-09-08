@@ -227,6 +227,12 @@ export interface UserProfile {
 }
 
 // Multiplayer Game Types
+export interface PropertySet {
+  cards: Card[];
+  hasHouse: boolean;
+  hasHotel: boolean;
+}
+
 export interface GamePlayer {
   id: string;
   username: string;
@@ -247,13 +253,9 @@ export interface GamePlayer {
   isMuted?: boolean;
   hand: Card[];
   bank: Card[];
-  // Grouped properties: color -> list of cards (and action attachments like house/hotel)
+  // Grouped properties: key can be CardColor ('green') or indexed setKey ('green_2', 'blue_2', etc.)
   properties: {
-    [key in CardColor]?: {
-      cards: Card[];
-      hasHouse: boolean;
-      hasHotel: boolean;
-    };
+    [key: string]: PropertySet | undefined;
   };
 }
 

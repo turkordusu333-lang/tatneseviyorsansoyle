@@ -19,16 +19,17 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
 }) => {
   const isRegistered = tournament.status === 'active' || tournament.status === 'completed';
   const rounds = tournament.rounds || [];
+  const isEn = profile?.settings?.language === 'en' || localStorage.getItem('language') === 'en';
 
   // Helper to get round title for any depth (up to 64 players)
   const getRoundTitle = (roundNum: number, totalRounds: number) => {
     const diffFromFinal = totalRounds - roundNum;
-    if (diffFromFinal === 0) return tournament.format === '4player' ? '👑 Büyük Final Masası' : t('grand_final', profile);
-    if (diffFromFinal === 1) return tournament.format === '4player' ? '🥈 Yarı Final Masaları' : t('semi_final', profile);
-    if (diffFromFinal === 2) return tournament.format === '4player' ? '🥉 Çeyrek Final Masaları' : t('quarter_final', profile);
-    if (diffFromFinal === 3) return '⚡ Son 16 Turu';
-    if (diffFromFinal === 4) return '🔥 Son 32 Turu';
-    if (diffFromFinal === 5) return '⚔️ Son 64 Turu';
+    if (diffFromFinal === 0) return tournament.format === '4player' ? (isEn ? '👑 Grand Final Table' : '👑 Büyük Final Masası') : t('grand_final', profile);
+    if (diffFromFinal === 1) return tournament.format === '4player' ? (isEn ? '🥈 Semi-Final Tables' : '🥈 Yarı Final Masaları') : t('semi_final', profile);
+    if (diffFromFinal === 2) return tournament.format === '4player' ? (isEn ? '🥉 Quarter-Final Tables' : '🥉 Çeyrek Final Masaları') : t('quarter_final', profile);
+    if (diffFromFinal === 3) return isEn ? '⚡ Round of 16' : '⚡ Son 16 Turu';
+    if (diffFromFinal === 4) return isEn ? '🔥 Round of 32' : '🔥 Son 32 Turu';
+    if (diffFromFinal === 5) return isEn ? '⚔️ Round of 64' : '⚔️ Son 64 Turu';
     return t('round_n_title', profile, roundNum);
   };
 
@@ -46,13 +47,13 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
         if (isFormat4P) {
           const seats = m.tablePlayers || [m.player1, m.player2, m.player3 || '', m.player4 || ''];
           if (seats.some((s) => s === profile.username || s === 'Sen')) {
-            return { match: m, opponentName: 'Masa Rakipleri', roundNum: currentRound.roundNumber };
+            return { match: m, opponentName: isEn ? 'Table Opponents' : 'Masa Rakipleri', roundNum: currentRound.roundNumber };
           }
         } else if (isFormat2v2) {
           const teamA = m.team1 || [m.player1, m.player3 || ''];
           const teamB = m.team2 || [m.player2, m.player4 || ''];
           if ([...teamA, ...teamB].some((s) => s === profile.username || s === 'Sen')) {
-            return { match: m, opponentName: 'Rakip Takım', roundNum: currentRound.roundNumber };
+            return { match: m, opponentName: isEn ? 'Opponent Team' : 'Rakip Takım', roundNum: currentRound.roundNumber };
           }
         } else {
           const isP1Me = m.player1 === profile.username || m.player1 === 'Sen';
@@ -64,7 +65,7 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
       }
     }
     return null;
-  }, [rounds, tournament.status, tournament.format, profile.username]);
+  }, [rounds, tournament.status, tournament.format, profile.username, isEn]);
 
   const isUserChampion = tournament.status === 'completed' && (tournament.winner === profile.username || tournament.winner === 'Sen');
   const isUserEliminated = tournament.status === 'completed' && !isUserChampion;
@@ -84,19 +85,19 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
                 <Trophy className="w-3.5 h-3.5 text-amber-400" />
                 <span>
                   {tournament.format === '4player'
-                    ? '👥 4 KİŞİLİK MASA'
+                    ? (isEn ? '👥 4-PLAYER TABLE' : '👥 4 KİŞİLİK MASA')
                     : tournament.format === '2v2_team'
-                    ? '⚔️ 2v2 TAKIM ŞAMPİYONASI'
-                    : '🤺 1v1 RESMİ DÜELLO'}
+                    ? (isEn ? '⚔️ 2v2 TEAM CHAMPIONSHIP' : '⚔️ 2v2 TAKIM ŞAMPİYONASI')
+                    : (isEn ? '🤺 1v1 OFFICIAL DUEL' : '🤺 1v1 RESMİ DÜELLO')}
                 </span>
               </span>
 
               <span className="px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 font-bold text-[10px] uppercase tracking-widest">
-                🤖 Bot: {tournament.botDifficulty === 'easy' ? 'Kolay' : tournament.botDifficulty === 'hard' ? 'Zor' : tournament.botDifficulty === 'expert' ? 'Efsane' : 'Orta'}
+                🤖 Bot: {tournament.botDifficulty === 'easy' ? (isEn ? 'Easy' : 'Kolay') : tournament.botDifficulty === 'hard' ? (isEn ? 'Hard' : 'Zor') : tournament.botDifficulty === 'expert' ? (isEn ? 'Expert' : 'Efsane') : (isEn ? 'Medium' : 'Orta')}
               </span>
 
               <span className="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-mono text-[10px]">
-                🎯 {tournament.targetSets || 3} Set
+                🎯 {tournament.targetSets || 3} {isEn ? 'Sets' : 'Set'}
               </span>
 
               {tournament.status === 'registration' && (
@@ -106,24 +107,24 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
               )}
               {tournament.status === 'active' && (
                 <span className="px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 font-extrabold text-[10px] uppercase tracking-widest animate-pulse">
-                  {t('live_ongoing', profile)} (Tur {rounds.length})
+                  {t('live_ongoing', profile)} ({isEn ? `Round ${rounds.length}` : `Tur ${rounds.length}`})
                 </span>
               )}
               {tournament.status === 'completed' && (
                 <span className={`px-3 py-1 rounded-full font-extrabold text-[10px] uppercase tracking-widest ${
                   isUserChampion ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
                 }`}>
-                  {isUserChampion ? '👑 ŞAMPİYON' : 'ELENDİ'}
+                  {isUserChampion ? (isEn ? '👑 CHAMPION' : '👑 ŞAMPİYON') : (isEn ? 'ELIMINATED' : 'ELENDİ')}
                 </span>
               )}
             </div>
 
             <h2 className="text-2xl sm:text-3xl font-black text-white uppercase tracking-wide flex items-center gap-2">
-              <span>{tournament.name}</span>
+              <span>{t(tournament.name, profile)}</span>
             </h2>
 
             <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
-              {tournament.description || t('tournament_rules_desc', profile)}
+              {t(tournament.description, profile) || t('tournament_rules_desc', profile)}
             </p>
           </div>
 
@@ -146,9 +147,9 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
                 👥
               </div>
               <div>
-                <span className="text-[9px] text-slate-400 font-bold uppercase block">Katılımcı & Giriş</span>
+                <span className="text-[9px] text-slate-400 font-bold uppercase block">{isEn ? 'Participants & Entry' : 'Katılımcı & Giriş'}</span>
                 <span className="text-xs font-black text-indigo-200 font-mono">
-                  {tournament.entryFee ? `${tournament.entryFee} 🪙 Giriş | ` : 'Ücretsiz | '}{tournament.maxParticipants || 8} Oyuncu
+                  {tournament.entryFee ? `${tournament.entryFee} 🪙 ${isEn ? 'Entry' : 'Giriş'} | ` : (isEn ? 'Free | ' : 'Ücretsiz | ')}{tournament.maxParticipants || 8} {isEn ? 'Players' : 'Oyuncu'}
                 </span>
               </div>
             </div>
@@ -164,16 +165,16 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
               </div>
               <div>
                 <span className="text-[10px] font-black uppercase text-indigo-400 tracking-wider">
-                  Tur {userActiveMatch.roundNum}: {getRoundTitle(userActiveMatch.roundNum, rounds.length)}
+                  {isEn ? `Round ${userActiveMatch.roundNum}` : `Tur ${userActiveMatch.roundNum}`}: {getRoundTitle(userActiveMatch.roundNum, rounds.length)}
                 </span>
                 <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <span>Rakip:</span>
+                  <span>{isEn ? 'Opponent:' : 'Rakip:'}</span>
                   <span className="text-amber-300">{userActiveMatch.opponentName}</span>
                 </h4>
                 <p className="text-[11px] text-slate-300">
                   {tournament.format === '2v2_team'
-                    ? 'Takımınız hazır! Sadık bot partnerinizle birlikte zafere koşun.'
-                    : 'Karşılaşmanız hazır! Başlamak için butona tıklayın.'}
+                    ? (isEn ? 'Your team is ready! Lead your bot partner to victory.' : 'Takımınız hazır! Sadık bot partnerinizle birlikte zafere koşun.')
+                    : (isEn ? 'Your match is ready! Click the button to start.' : 'Karşılaşmanız hazır! Başlamak için butona tıklayın.')}
                 </p>
               </div>
             </div>
@@ -195,7 +196,7 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
                 className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-red-600/30 active:scale-95 transition-all cursor-pointer flex items-center justify-center gap-2"
               >
                 <Swords className="w-4 h-4" />
-                <span>⚔️ Maça Başla</span>
+                <span>⚔️ {isEn ? 'Play Match' : 'Maça Başla'}</span>
               </button>
             </div>
           </div>
@@ -206,8 +207,10 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
           <div className="mt-6 pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-xs text-slate-300 font-medium">
               <span>
-                {tournament.entryFee ? `Turnuva giriş ücreti: ${tournament.entryFee} 🪙 Altın. ` : 'Katılım ücretsizdir. '}
-                Şampiyon olan oyuncu büyük ödülü kazanır!
+                {tournament.entryFee
+                  ? (isEn ? `Tournament entry fee: ${tournament.entryFee} 🪙 Gold. ` : `Turnuva giriş ücreti: ${tournament.entryFee} 🪙 Altın. `)
+                  : (isEn ? 'Free entry. ' : 'Katılım ücretsizdir. ')}
+                {isEn ? 'The champion wins the grand prize!' : 'Şampiyon olan oyuncu büyük ödülü kazanır!'}
               </span>
             </div>
 
@@ -219,7 +222,7 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
               className="w-full sm:w-auto px-8 py-3.5 bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-red-600/25 hover:shadow-red-600/40 transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
             >
               <Zap className="w-4 h-4" />
-              <span>{tournament.entryFee ? `${tournament.entryFee}🪙 ile Başla` : '🏆 Turnuvaya Başla'}</span>
+              <span>{tournament.entryFee ? (isEn ? `Start with ${tournament.entryFee}🪙` : `${tournament.entryFee}🪙 ile Başla`) : (isEn ? '🏆 Start Tournament' : '🏆 Turnuvaya Başla')}</span>
             </button>
           </div>
         )}
@@ -245,14 +248,16 @@ export const TournamentBracket: React.FC<TournamentBracketProps> = ({
               {profile.username}
             </h3>
             <p className="text-xs text-amber-200/80 mt-1 font-bold">
-              Tebrikler! Turnuvadaki tüm rakipleri eleyerek {tournament.prizeCoins?.toLocaleString()} 🪙 ve {tournament.prizeXp} XP ödülü kazandınız!
+              {isEn
+                ? `Congratulations! You eliminated all opponents in the tournament and won ${tournament.prizeCoins?.toLocaleString()} 🪙 and ${tournament.prizeXp} XP!`
+                : `Tebrikler! Turnuvadaki tüm rakipleri eleyerek ${tournament.prizeCoins?.toLocaleString()} 🪙 ve ${tournament.prizeXp} XP ödülü kazandınız!`}
             </p>
           </div>
 
           <div className="pt-4 flex justify-center">
             <span className="px-6 py-2.5 bg-gradient-to-r from-amber-500/20 to-yellow-500/20 border border-amber-400/40 text-amber-300 font-black text-xs uppercase tracking-wider rounded-xl shadow-lg flex items-center gap-2">
               <Crown className="w-4 h-4 text-amber-400" />
-              <span>🏆 Şampiyonluk Tamamlandı</span>
+              <span>{isEn ? '🏆 Championship Completed' : '🏆 Şampiyonluk Tamamlandı'}</span>
             </span>
           </div>
         </div>

@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎮 Monopoly Deal - Görsel Tasarım & Arazi Stüdyosu</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Outfit', sans-serif; }
+    .font-mono { font-family: 'JetBrains+Mono', monospace; }
+    
+    /* Neon Glows */
+    .glow-orange { box-shadow: 0 0 20px rgba(249, 115, 22, 0.4), inset 0 0 15px rgba(249, 115, 22, 0.1); }
+    .glow-sky { box-shadow: 0 0 20px rgba(14, 165, 233, 0.4), inset 0 0 15px rgba(14, 165, 233, 0.1); }
+    .glow-red { box-shadow: 0 0 25px rgba(239, 68, 68, 0.5), inset 0 0 15px rgba(239, 68, 68, 0.15); }
+    .glow-green { box-shadow: 0 0 20px rgba(34, 197, 94, 0.4), inset 0 0 15px rgba(34, 197, 94, 0.1); }
+    .glow-gold { box-shadow: 0 0 30px rgba(245, 158, 11, 0.6), inset 0 0 15px rgba(245, 158, 11, 0.2); }
+    
+    /* Smooth Transitions */
+    .card-stack-item {
+      transition: all 0.25s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    }
+    .card-stack-item:hover {
+      transform: translateY(-8px) scale(1.05);
+      z-index: 50 !important;
+    }
+    
+    /* Mobile frame container */
+    .mobile-frame {
+      max-width: 440px;
+      border: 10px solid #1e293b;
+      border-radius: 40px;
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.8), 0 0 40px rgba(56, 189, 248, 0.15);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen p-4 sm:p-8 flex flex-col items-center">
+
+  <!-- Header Banner -->
+  <header class="w-full max-w-5xl mb-8 text-center">
+    <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 font-extrabold text-xs mb-3 animate-pulse">
+      ✨ CANLI DEMO & İNTERAKTİF TASARIM MERKEZİ
+    </div>
+    <h1 class="text-3xl sm:text-4xl font-black tracking-tight bg-gradient-to-r from-amber-400 via-emerald-400 to-sky-400 bg-clip-text text-transparent">
+      Monopoly Deal — Yeni Arazi & Masa Tasarım Stüdyosu
+    </h1>
+    <p class="text-sm sm:text-base text-slate-400 mt-2 max-w-2xl mx-auto">
+      Mobil ekrana %100 uyumlu, yazıları kesilmeyen, şık neon parlamalı yeni arazi set modellerini canlı deneyin.
+    </p>
+
+    <!-- Interactive Controls Bar -->
+    <div class="flex flex-wrap items-center justify-center gap-3 mt-6">
+      <button onclick="switchDesign(1)" id="btn-design-1" class="px-4 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25 border border-amber-300/40 cursor-pointer active:scale-95 transition-all">
+        👑 Model 1: Neon Cam Kapsüller (Tavsiye Edilen)
+      </button>
+      <button onclick="switchDesign(2)" id="btn-design-2" class="px-4 py-2 rounded-xl text-xs font-black bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer active:scale-95 transition-all">
+        🎴 Model 2: Kutusuz Masada Süzülen Deste
+      </button>
+      <button onclick="toggleCompletedSet()" class="px-4 py-2 rounded-xl text-xs font-black bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 cursor-pointer active:scale-95 transition-all">
+        ✨ Kırmızı Seti Tamamla / Çıkar
+      </button>
+    </div>
+  </header>
+
+  <!-- Phone Screen Simulator -->
+  <main class="mobile-frame w-full bg-[#080d16] p-4 relative overflow-hidden flex flex-col justify-between min-h-[720px]">
+    
+    <!-- Phone Top Status Bar -->
+    <div class="flex items-center justify-between px-2 py-1 text-[10px] text-slate-400 font-bold border-b border-white/5 pb-2 mb-3">
+      <span>9:41 📱</span>
+      <div class="flex items-center gap-1">
+        <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span class="text-slate-200">MONOPOLY DEAL</span>
+      </div>
+      <span>⚡ %100</span>
+    </div>
+
+    <!-- User Bank Vault & Completed Sets Indicator -->
+    <div class="flex items-center justify-between bg-slate-900/90 border border-white/10 rounded-2xl p-2.5 shadow-md mb-3">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-lg shadow-inner">
+          🏦
+        </div>
+        <div>
+          <div class="text-[9px] text-slate-400 font-bold tracking-wider uppercase">KASAM</div>
+          <div class="text-xs font-black text-emerald-400 font-mono">6M <span class="text-[9px] text-slate-400 font-sans font-bold">(2 Kart)</span></div>
+        </div>
+      </div>
+
+      <!-- 0/3 Sets Win Track -->
+      <div class="flex items-center gap-1.5 bg-black/40 border border-white/10 px-3 py-1.5 rounded-xl">
+        <div class="flex gap-1" id="crown-track">
+          <span class="w-3 h-3 rounded-full bg-slate-700"></span>
+          <span class="w-3 h-3 rounded-full bg-slate-700"></span>
+          <span class="w-3 h-3 rounded-full bg-slate-700"></span>
+        </div>
+        <span class="text-[10px] font-black text-amber-400 ml-1" id="set-count-text">0/3 SET</span>
+      </div>
+    </div>
+
+    <!-- AREA 1: PROPERTIES ZONE (THE REDESIGNED SECTION) -->
+    <div class="flex-1 flex flex-col justify-start">
+      <div class="flex items-center justify-between mb-2 px-1">
+        <span class="text-[11px] font-black tracking-wider text-slate-400 uppercase flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span>
+          ARAZİLERİM & MÜLKLERİM
+        </span>
+        <span class="text-[9px] text-slate-500 font-bold">5 Kolon Kapasite</span>
+      </div>
+
+      <!-- DESIGN 1 CONTAINER: NEON GLASS CAPSULES -->
+      <div id="design-1" class="grid grid-cols-4 gap-2 transition-all duration-300">
+        
+        <!-- 1. ORANGE SET (2/3) -->
+        <div class="bg-gradient-to-b from-orange-950/40 via-slate-900/80 to-slate-950/90 border-2 border-orange-500/50 rounded-2xl p-1.5 flex flex-col justify-between glow-orange relative group">
+          <!-- Top Pill Header -->
+          <div class="bg-orange-500 text-white rounded-lg px-1.5 py-0.5 text-center font-black text-[9.5px] tracking-wide shadow flex items-center justify-between mb-2">
+            <span>TURUNCU</span>
+            <span class="bg-black/30 px-1 rounded text-[8px] font-mono">2/3</span>
+          </div>
+
+          <!-- Stacked Property Cards -->
+          <div class="flex flex-col space-y-[-24px] mb-2">
+            <!-- Card 1 -->
+            <div class="card-stack-item bg-slate-900 border border-orange-400/40 rounded-lg p-1 shadow-md shadow-black relative z-10">
+              <div class="bg-orange-500 h-2.5 rounded-t-[4px] -mx-1 -mt-1 mb-1"></div>
+              <div class="flex items-center justify-between text-[8px] font-black text-slate-100">
+                <span class="truncate">BAĞDAT CD.</span>
+                <span class="text-amber-400 font-mono">2M</span>
+              </div>
+            </div>
+            <!-- Card 2 -->
+            <div class="card-stack-item bg-slate-900 border border-orange-400/40 rounded-lg p-1 shadow-md shadow-black relative z-20">
+              <div class="bg-orange-500 h-2.5 rounded-t-[4px] -mx-1 -mt-1 mb-1"></div>
+              <div class="flex items-center justify-between text-[8px] font-black text-slate-100">
+                <span class="truncate">İSTİKLAL CD.</span>
+                <span class="text-amber-400 font-mono">2M</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Rent Power Badge -->
+          <div class="bg-slate-900/90 border border-orange-500/30 rounded-lg py-0.5 px-1 text-center text-[9px] font-black text-orange-400 flex items-center justify-center gap-1 shadow-inner">
+            <span>⚡ 3M</span>
+          </div>
+        </div>
+
+        <!-- 2. SKY BLUE SET (2/3) -->
+        <div class="bg-gradient-to-b from-sky-950/40 via-slate-900/80 to-slate-950/90 border-2 border-sky-500/50 rounded-2xl p-1.5 flex flex-col justify-between glow-sky relative">
+          <!-- Top Pill Header -->
+          <div class="bg-sky-500 text-white rounded-lg px-1.5 py-0.5 text-center font-black text-[9.5px] tracking-wide shadow flex items-center justify-between mb-2">
+            <span>A.MAVİ</span>
+            <span class="bg-black/30 px-1 rounded text-[8px] font-mono">2/3</span>
+          </div>
+
+          <!-- Stacked Property Cards -->
+          <div class="flex flex-col space-y-[-24px] mb-2">
+            <!-- Card 1 -->
+            <div class="card-stack-item bg-slate-900 border border-sky-400/40 rounded-lg p-1 shadow-md shadow-black relative z-10">
+              <div class="bg-sky-500 h-2.5 rounded-t-[4px] -mx-1 -mt-1 mb-1"></div>
+              <div class="flex items-center justify-between text-[8px] font-black text-slate-100">
+                <span class="truncate">KADIKÖY</span>
+                <span class="text-amber-400 font-mono">1M</span>
+              </div>
+            </div>
+            <!-- Card 2 -->
+            <div class="card-stack-item bg-slate-900 border border-sky-400/40 rounded-lg p-1 shadow-md shadow-black relative z-20">
+              <div class="bg-sky-500 h-2.5 rounded-t-[4px] -mx-1 -mt-1 mb-1"></div>
+              <div class="flex items-center justify-between text-[8px] font-black text-slate-100">
+                <span class="truncate">MODA</span>
+                <span class="text-amber-400 font-mono">1M</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Rent Power Badge -->
+          <div class="bg-slate-900/90 border border-sky-500/30 rounded-lg py-0.5 px-1 text-center text-[9px] font-black text-sky-400 flex items-center justify-center gap-1 shadow-inner">
+            <span>⚡ 2M</span>
+          </div>
+        </div>
+
+        <!-- 3. BROWN SET (1/2) -->
+        <div class="bg-gradient-to-b from-amber-950/30 via-slate-900/80 to-slate-950/90 border-2 border-amber-700/50 rounded-2xl p-1.5 flex flex-col justify-between relative">
+          <!-- Top Pill Header -->
+          <div class="bg-amber-800 text-white rounded-lg px-1.5 py-0.5 text-center font-black text-[9.5px] tracking-wide shadow flex items-center justify-between mb-2">
+            <span>KAHVE</span>
+            <span class="bg-black/30 px-1 rounded text-[8px] font-mono">1/2</span>
+          </div>
+
+          <!-- Stacked Property Cards -->
+          <div class="flex flex-col space-y-[-24px] mb-2">
+            <!-- Card 1 -->
+            <div class="card-stack-item bg-slate-900 border border-amber-700/40 rounded-lg p-1 shadow-md shadow-black relative z-10">
+              <div class="bg-amber-800 h-2.5 rounded-t-[4px] -mx-1 -mt-1 mb-1"></div>
+              <div class="flex items-center justify-between text-[8px] font-black text-slate-100">
+                <span class="truncate">KASIMPAŞA</span>
+                <span class="text-amber-400 font-mono">1M</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Rent Power Badge -->
+          <div class="bg-slate-900/90 border border-amber-700/30 rounded-lg py-0.5 px-1 text-center text-[9px] font-black text-amber-400 flex items-center justify-center gap-1 shadow-inner">
+            <span>⚡ 1M</span>
+          </div>
+        </div>
+
+        <!-- 4. RED SET (3/3 COMPLETE / FULL WITH HOUSE) -->
+        <div id="red-set-card" class="bg-gradient-to-b from-rose-950/50 via-slate-900/90 to-slate-950 border-2 border-rose-500 rounded-2xl p-1.5 flex flex-col justify-between glow-red relative animate-pulse">
+          
+          <!-- Crown Icon Header -->
+          <div class="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-400 to-amber-600 text-slate-950 px-2 py-0.5 rounded-full text-[8px] font-black shadow-lg flex items-center gap-0.5 border border-white/40">
+            <span>👑</span> TAM SET
+          </div>
+
+          <!-- Top Pill Header -->
+          <div class="bg-rose-600 text-white rounded-lg px-1.5 py-0.5 text-center font-black text-[9.5px] tracking-wide shadow flex items-center justify-between mt-1 mb-2">
+            <span>KIRMIZI</span>
+            <span class="bg-amber-400 text-slate-950 px-1 rounded text-[8px] font-black">FULL</span>
+          </div>
+
+          <!-- Stacked Property Cards + House -->
+          <div class="flex flex-col space-y-[-24px] mb-2">
+            <!-- Card 1 -->
+            <div class="card-stack-item bg-slate-900 border border-rose-400/40 rounded-lg p-1 shadow-md shadow-black relative z-10">
+              <div class="bg-rose-600 h-2.5 rounded-t-[4px] -mx-1 -mt-1 mb-1"></div>
+              <div class="flex items-center justify-between text-[8px] font-black text-slate-100">
+                <span class="truncate">BEBEK</span>
+                <span class="text-amber-400 font-mono">3M</span>
+              </div>
+            </div>
+            <!-- Card 2 -->
+            <div class="card-stack-item bg-slate-900 border border-rose-400/40 rounded-lg p-1 shadow-md shadow-black relative z-20">
+              <div class="bg-rose-600 h-2.5 rounded-t-[4px] -mx-1 -mt-1 mb-1"></div>
+              <div class="flex items-center justify-between text-[8px] font-black text-slate-100">
+                <span class="truncate">NİŞANTAŞI</span>
+                <span class="text-amber-400 font-mono">3M</span>
+              </div>
+            </div>
+            <!-- Card 3 -->
+            <div class="card-stack-item bg-slate-900 border border-rose-400/40 rounded-lg p-1 shadow-md shadow-black relative z-30">
+              <div class="bg-rose-600 h-2.5 rounded-t-[4px] -mx-1 -mt-1 mb-1"></div>
+              <div class="flex items-center justify-between text-[8px] font-black text-slate-100">
+                <span class="truncate">ETİLER</span>
+                <span class="text-amber-400 font-mono">3M</span>
+              </div>
+            </div>
+            <!-- House Token Badge -->
+            <div class="bg-emerald-500/90 text-slate-950 font-black text-[8px] rounded px-1 py-0.5 flex items-center justify-center gap-1 shadow relative z-40 border border-emerald-300">
+              🏠 +3M EV
+            </div>
+          </div>
+
+          <!-- Bottom Rent Power Badge -->
+          <div class="bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 rounded-lg py-0.5 px-1 text-center text-[9px] font-black flex items-center justify-center gap-1 shadow-lg font-mono">
+            <span>⚡ 9M KİRA</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- DESIGN 2 CONTAINER: BORDERLESS SLAY THE SPIRE STACK -->
+      <div id="design-2" class="hidden grid-cols-4 gap-2 transition-all duration-300">
+        
+        <!-- 1. ORANGE -->
+        <div class="flex flex-col items-center">
+          <div class="w-3 h-3 rounded-full bg-orange-500 shadow-md shadow-orange-500/50 mb-1 flex items-center justify-center text-[7px] font-black text-white">2</div>
+          <div class="w-full bg-slate-900/80 border border-orange-500/40 rounded-xl p-1 shadow-xl flex flex-col space-y-[-28px]">
+            <div class="bg-slate-800 p-1.5 rounded-lg border-t-4 border-orange-500 text-[8px] font-bold">BAĞDAT</div>
+            <div class="bg-slate-800 p-1.5 rounded-lg border-t-4 border-orange-500 text-[8px] font-bold">İSTİKLAL</div>
+          </div>
+          <span class="text-[9px] font-black text-orange-400 mt-1">3M</span>
+        </div>
+
+        <!-- 2. SKY BLUE -->
+        <div class="flex flex-col items-center">
+          <div class="w-3 h-3 rounded-full bg-sky-500 shadow-md shadow-sky-500/50 mb-1 flex items-center justify-center text-[7px] font-black text-white">2</div>
+          <div class="w-full bg-slate-900/80 border border-sky-500/40 rounded-xl p-1 shadow-xl flex flex-col space-y-[-28px]">
+            <div class="bg-slate-800 p-1.5 rounded-lg border-t-4 border-sky-500 text-[8px] font-bold">KADIKÖY</div>
+            <div class="bg-slate-800 p-1.5 rounded-lg border-t-4 border-sky-500 text-[8px] font-bold">MODA</div>
+          </div>
+          <span class="text-[9px] font-black text-sky-400 mt-1">2M</span>
+        </div>
+
+        <!-- 3. BROWN -->
+        <div class="flex flex-col items-center">
+          <div class="w-3 h-3 rounded-full bg-amber-700 shadow-md mb-1 flex items-center justify-center text-[7px] font-black text-white">1</div>
+          <div class="w-full bg-slate-900/80 border border-amber-700/40 rounded-xl p-1 shadow-xl">
+            <div class="bg-slate-800 p-1.5 rounded-lg border-t-4 border-amber-700 text-[8px] font-bold">KASIMPAŞA</div>
+          </div>
+          <span class="text-[9px] font-black text-amber-400 mt-1">1M</span>
+        </div>
+
+        <!-- 4. RED (COMPLETE) -->
+        <div class="flex flex-col items-center">
+          <div class="px-1.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[7px] shadow mb-1">👑 FULL</div>
+          <div class="w-full bg-slate-900/90 border-2 border-rose-500 rounded-xl p-1 shadow-2xl glow-red flex flex-col space-y-[-28px]">
+            <div class="bg-slate-800 p-1.5 rounded-lg border-t-4 border-rose-500 text-[8px] font-bold">BEBEK</div>
+            <div class="bg-slate-800 p-1.5 rounded-lg border-t-4 border-rose-500 text-[8px] font-bold">NİŞANTAŞI</div>
+            <div class="bg-slate-800 p-1.5 rounded-lg border-t-4 border-rose-500 text-[8px] font-bold">ETİLER 🏠</div>
+          </div>
+          <span class="text-[9px] font-black text-amber-300 mt-1">9M</span>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- AREA 2: BOTTOM ACTION TOOLBAR & FANNED HAND CARDS -->
+    <div class="border-t border-white/10 pt-2">
+      <!-- Toolbar -->
+      <div class="flex items-center justify-between mb-1">
+        <div class="flex items-center gap-1">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,1)]"></span>
+          <button class="bg-slate-800 text-[9px] font-black px-2 py-0.5 rounded-lg ml-1 border border-white/10">Masa ▼</button>
+        </div>
+        <button class="bg-slate-800 hover:bg-slate-700 text-white text-xs font-black px-3 py-1 rounded-xl border border-white/20 shadow">
+          Turu bitir
+        </button>
+      </div>
+
+      <!-- Fanned Hand Deck -->
+      <div class="flex justify-center items-end overflow-hidden pt-2 pb-1">
+        <div class="w-14 h-20 bg-gradient-to-br from-indigo-900 to-indigo-950 border border-indigo-400/40 rounded-xl shadow-lg -rotate-6 transform hover:-translate-y-4 transition-all duration-200 cursor-pointer p-1 text-[8px] font-black flex flex-col justify-between">
+          <span class="bg-indigo-500 text-[7px] px-1 py-0.5 rounded text-white">AKSYON</span>
+          <span class="text-center text-[7.5px] leading-tight">ANLAŞMA BOZAN</span>
+          <span class="text-right text-amber-300">5M</span>
+        </div>
+        <div class="w-14 h-20 bg-gradient-to-br from-amber-900 to-amber-950 border border-amber-400/40 rounded-xl shadow-lg -ml-5 -rotate-2 transform hover:-translate-y-4 transition-all duration-200 cursor-pointer p-1 text-[8px] font-black flex flex-col justify-between">
+          <span class="bg-amber-500 text-[7px] px-1 py-0.5 rounded text-slate-950">NAKİT</span>
+          <span class="text-center text-xs font-mono font-black text-amber-300">10M</span>
+          <span class="text-right text-amber-300">10M</span>
+        </div>
+        <div class="w-14 h-20 bg-gradient-to-br from-emerald-900 to-emerald-950 border border-emerald-400/40 rounded-xl shadow-lg -ml-5 rotate-3 transform hover:-translate-y-4 transition-all duration-200 cursor-pointer p-1 text-[8px] font-black flex flex-col justify-between">
+          <span class="bg-emerald-500 text-[7px] px-1 py-0.5 rounded text-white">SAVUNMA</span>
+          <span class="text-center text-[7.5px] leading-tight">HAYIR TEŞEKKÜRLER</span>
+          <span class="text-right text-amber-300">4M</span>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Interactive JavaScript -->
+  <script>
+    let isRedSetComplete = true;
+
+    function switchDesign(model) {
+      const d1 = document.getElementById('design-1');
+      const d2 = document.getElementById('design-2');
+      const b1 = document.getElementById('btn-design-1');
+      const b2 = document.getElementById('btn-design-2');
+
+      if (model === 1) {
+        d1.classList.remove('hidden');
+        d1.classList.add('grid');
+        d2.classList.add('hidden');
+        d2.classList.remove('grid');
+        
+        b1.className = 'px-4 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-lg shadow-amber-500/25 border border-amber-300/40 cursor-pointer active:scale-95 transition-all';
+        b2.className = 'px-4 py-2 rounded-xl text-xs font-black bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer active:scale-95 transition-all';
+      } else {
+        d2.classList.remove('hidden');
+        d2.classList.add('grid');
+        d1.classList.add('hidden');
+        d1.classList.remove('grid');
+
+        b2.className = 'px-4 py-2 rounded-xl text-xs font-black bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-lg shadow-sky-500/25 border border-sky-300/40 cursor-pointer active:scale-95 transition-all';
+        b1.className = 'px-4 py-2 rounded-xl text-xs font-black bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 cursor-pointer active:scale-95 transition-all';
+      }
+    }
+
+    function toggleCompletedSet() {
+      isRedSetComplete = !isRedSetComplete;
+      const redCard = document.getElementById('red-set-card');
+      const crownTrack = document.getElementById('crown-track');
+      const setCountText = document.getElementById('set-count-text');
+
+      if (isRedSetComplete) {
+        redCard.classList.remove('opacity-40');
+        crownTrack.innerHTML = '<span class="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(245,158,11,1)]"></span><span class="w-3 h-3 rounded-full bg-slate-700"></span><span class="w-3 h-3 rounded-full bg-slate-700"></span>';
+        setCountText.textContent = '1/3 SET';
+      } else {
+        redCard.classList.add('opacity-40');
+        crownTrack.innerHTML = '<span class="w-3 h-3 rounded-full bg-slate-700"></span><span class="w-3 h-3 rounded-full bg-slate-700"></span><span class="w-3 h-3 rounded-full bg-slate-700"></span>';
+        setCountText.textContent = '0/3 SET';
+      }
+    }
+  </script>
+</body>
+</html>
