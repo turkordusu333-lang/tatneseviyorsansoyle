@@ -884,6 +884,16 @@ async function startServer() {
     next();
   });
 
+  // Support Discord Activity Proxy prefix mapping (e.g. /.proxy/api/...)
+  app.use((req, res, next) => {
+    if (req.url.startsWith('/.proxy/')) {
+      req.url = req.url.replace('/.proxy', '');
+    } else if (req.url === '/.proxy') {
+      req.url = '/';
+    }
+    next();
+  });
+
   // Load administrative settings and custom quests from Supabase/Backup
   await loadAdminData();
 
@@ -2091,7 +2101,168 @@ async function startServer() {
     });
   });
 
-  // --- STANDARD API ROUTES ---
+  // --- DISCORD ACTIVITY API ROUTES ---
+  app.get('/api/discord/config', (req, res) => {
+    res.json({
+      clientId: process.env.DISCORD_CLIENT_ID || '',
+      isConfigured: !!(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET),
+    });
+  });
+
+  app.post('/api/discord/token', async (req, res) => {
+    try {
+      const { code, channelId, guildId } = req.body;
+      const clientId = process.env.DISCORD_CLIENT_ID;
+      const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+
+      let discordUser: any = null;
+      let accessToken = '';
+
+      if (clientId && clientSecret && code) {
+        try {
+          const params = new URLSearchParams({
+            client_id: clientId,
+            client_secret: clientSecret,
+            grant_type: 'authorization_code',
+            code: String(code),
+          });
+
+          const tokenResponse = await fetch('https://discord.com/api/oauth2/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: params.toString(),
+          });
+
+          if (tokenResponse.ok) {
+            const tokenData = await tokenResponse.json();
+            accessToken = tokenData.access_token;
+
+            const userResponse = await fetch('https://discord.com/api/users/@me', {
+              headers: { Authorization: `Bearer ${accessToken}` },
+            });
+
+            if (userResponse.ok) {
+              discordUser = await userResponse.json();
+            }
+          } else {
+            const errTxt = await tokenResponse.text();
+            console.warn('[Discord Auth] Token exchange response not ok:', errTxt);
+          }
+        } catch (authFetchErr) {
+          console.error('[Discord Auth] Failed contacting Discord API:', authFetchErr);
+        }
+      }
+
+      // Fallback guest Discord profile if no credentials or test mode
+      if (!discordUser) {
+        const fallbackRandom = Math.floor(Math.random() * 9000 + 1000);
+        discordUser = {
+          id: `dc-${Date.now().toString(36)}-${fallbackRandom}`,
+          username: `DiscordPlayer_${fallbackRandom}`,
+          global_name: `Discord Oyuncusu`,
+          avatar: null,
+        };
+      }
+
+      const users = await loadUsers();
+      const displayName = (discordUser.global_name || discordUser.username || 'Discord Oyuncusu').trim();
+      const avatarUrl = discordUser.avatar
+        ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
+        : `https://cdn.discordapp.com/embed/avatars/${parseInt(String(discordUser.id).slice(-2) || '0', 10) % 5}.png`;
+
+      // Find user by discordId or matching username
+      let user = Object.values(users).find(
+        (u) => (u.discordId && u.discordId === discordUser.id) ||
+               u.username.toLowerCase() === displayName.toLowerCase()
+      );
+
+      if (user) {
+        user.discordId = discordUser.id;
+        if (discordUser.avatar) {
+          user.avatarUrl = avatarUrl;
+        }
+        users[user.id] = user;
+        await saveUsers(users);
+      } else {
+        const newId = `user-dc-${discordUser.id || Math.random().toString(36).substr(2, 9)}`;
+        user = {
+          id: newId,
+          username: displayName,
+          discordId: discordUser.id,
+          country: 'TR',
+          coins: 1000,
+          level: 1,
+          xp: 0,
+          rankPoints: 0,
+          avatarId: 'avatar_classic',
+          avatarUrl: avatarUrl,
+          stats: {
+            gamesPlayed: 0,
+            gamesWon: 0,
+            gamesLost: 0,
+            winRate: 0,
+            totalRentCollected: 0,
+            totalCardsStolen: 0,
+            totalSetsCompleted: 0,
+            totalMoneyBanked: 0,
+          },
+          settings: {
+            soundVolume: 70,
+            soundPitch: 1.0,
+            synthType: 'sine',
+            cardBack: 'back_classic',
+            boardTheme: 'theme_slate',
+            avatarId: 'avatar_classic',
+            clothesId: 'clothes_none',
+            profileFrame: 'frame_none',
+            celebrationSound: 'sound_classic',
+            playerBoard: 'board_classic',
+            language: 'tr',
+          },
+          unlockedItems: ['avatar_classic', 'back_classic', 'theme_slate', 'frame_none', 'sound_classic', 'board_classic'],
+          friends: [
+            { id: 'bot-memo', username: 'Bot Memo', status: 'online', avatarId: 'avatar_skater' },
+            { id: 'bot-can', username: 'Bot Can', status: 'offline', avatarId: 'avatar_classic' },
+          ],
+          achievements: (globalAchievements || []).map((a: any) => ({
+            id: a.id,
+            title: a.title,
+            description: a.description,
+            targetValue: a.targetValue,
+            currentValue: 0,
+            completed: false,
+            rewardCoins: a.rewardCoins,
+            type: a.type || 'stats',
+          })),
+          dailyQuests: (globalQuests || []).map((q: any) => ({
+            id: q.id,
+            description: q.description,
+            targetValue: q.targetValue,
+            currentValue: 0,
+            completed: false,
+            claimed: false,
+            rewardCoins: q.rewardCoins,
+            rewardXp: q.rewardXp,
+            type: q.type || 'stats',
+          })),
+          gamesHistory: [],
+        };
+        users[newId] = user;
+        await saveUsers(users);
+      }
+
+      res.json({
+        success: true,
+        access_token: accessToken,
+        channelId: channelId || null,
+        guildId: guildId || null,
+        userProfile: sanitizeProfile(user),
+      });
+    } catch (err: any) {
+      console.error('[Discord Auth Error]:', err);
+      res.status(500).json({ error: 'Discord yetkilendirme işlemi başarısız oldu.', details: err?.message || err });
+    }
+  });
 
   // Auth / Get Profile
   app.post('/api/auth', authLimiter, async (req, res) => {
@@ -3883,7 +4054,7 @@ async function startServer() {
               match.turnStartedAt = Math.min(Date.now(), match.turnStartedAt + bonusSec * 1000);
             }
 
-            broadcastMatchState(match);
+            broadcastToRoom(roomId, { type: 'room_update', matchState: match });
             break;
           }
 
@@ -5687,32 +5858,6 @@ async function startServer() {
     console.log(`[Server] Deal Master PRO Deal running on http://0.0.0.0:${PORT}`);
   });
 }
-
-const COLOR_LABELS: Record<CardColor, string> = {
-  brown: 'Kahverengi',
-  lightblue: 'Açık Mavi',
-  pink: 'Pembe',
-  orange: 'Turuncu',
-  red: 'Kırmızı',
-  yellow: 'Sarı',
-  green: 'Yeşil',
-  darkblue: 'Koyu Mavi',
-  railroad: 'Demiryolu',
-  utility: 'Kamu Hizmeti',
-};
-
-const RENT_VALUES: Record<CardColor, number[]> = {
-  brown: [1, 2],
-  lightblue: [1, 2, 3],
-  pink: [1, 2, 4],
-  orange: [1, 3, 5],
-  red: [2, 3, 6],
-  yellow: [2, 4, 6],
-  green: [2, 4, 7],
-  darkblue: [3, 8],
-  railroad: [1, 2, 3, 4],
-  utility: [1, 2],
-};
 
 async function executeOriginalActionServer(match: any, req: any) {
   const sourcePlayer = match.players.find((p: any) => p.id === req.sourcePlayerId);

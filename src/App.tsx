@@ -15,6 +15,7 @@ import { PrivacyAndDeleteAccountPages } from './components/PrivacyAndDeleteAccou
 import { AdMobBanner } from './components/AdMobBanner';
 import { AvatarWithFrame } from './components/AvatarWithFrame';
 import { getOrCreateLocalProfile, saveLocalProfile } from './lib/offlineManager';
+import { isDiscordEmbedded, initializeDiscordActivity, getDiscordChannelRoomId, DiscordSession } from './lib/discordSdk';
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -108,6 +109,49 @@ export default function App() {
 
   // Translation update listener state
   const [translationVersion, setTranslationVersion] = React.useState(0);
+
+  const [discordSession, setDiscordSession] = React.useState<DiscordSession | null>(null);
+  const [isDiscordConnecting, setIsDiscordConnecting] = React.useState<boolean>(() => isDiscordEmbedded());
+
+  // Discord Embedded App SDK Lifecycle
+  React.useEffect(() => {
+    if (!isDiscordEmbedded()) return;
+
+    let isMounted = true;
+    setIsDiscordConnecting(true);
+
+    initializeDiscordActivity()
+      .then((session) => {
+        if (!isMounted) return;
+        if (session) {
+          setDiscordSession(session);
+          setProfile(session.userProfile);
+          setIsOfflineMode(false);
+          saveLocalProfile(session.userProfile);
+          sounds.playCoin(session.userProfile.settings);
+
+          // If launched from a Discord voice/text channel, automatically join channel's match room!
+          if (session.channelId) {
+            const dcRoomId = getDiscordChannelRoomId(session.channelId);
+            if (dcRoomId) {
+              setCurrentRoom({ roomId: dcRoomId, isOffline: false });
+            }
+          }
+        }
+      })
+      .catch((err) => {
+        console.error('[Discord SDK] Error during activity initialization:', err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsDiscordConnecting(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   React.useEffect(() => {
     return addTranslationListener(() => setTranslationVersion((v) => v + 1));
@@ -541,6 +585,29 @@ export default function App() {
     );
   }
 
+  if (isDiscordConnecting) {
+    const isEn = (localStorage.getItem('language') || 'tr') === 'en';
+    return (
+      <div className="fixed inset-0 bg-[#0f1117] flex flex-col items-center justify-center p-6 text-center z-50 text-white font-sans select-none">
+        <div className="relative mb-6">
+          <div className="w-20 h-20 rounded-3xl bg-[#5865F2]/20 border border-[#5865F2]/40 flex items-center justify-center shadow-[0_0_40px_rgba(88,101,242,0.35)]">
+            <span className="text-4xl animate-bounce">🎮</span>
+          </div>
+          <div className="absolute -inset-1 rounded-3xl border border-[#5865F2]/30 animate-ping pointer-events-none" />
+        </div>
+        <h2 className="text-xl font-black text-[#5865F2] uppercase tracking-wider mb-2">
+          {isEn ? 'Connecting to Discord Activity...' : 'Discord Aktivitesine Bağlanılıyor...'}
+        </h2>
+        <p className="text-xs text-zinc-400 max-w-xs mb-4">
+          {isEn
+            ? 'Synchronizing your Discord profile and session arena.'
+            : 'Discord profiliniz ve ses kanalı oturumunuz senkronize ediliyor.'}
+        </p>
+        <div className="w-8 h-8 border-4 border-t-transparent border-[#5865F2] rounded-full animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen min-h-[100dvh] bg-[#0A0C10] flex flex-col justify-between selection:bg-red-500 selection:text-white overflow-x-clip overflow-y-visible">
 
@@ -836,14 +903,48 @@ export default function App() {
               />
             </GameRoomErrorBoundary>
           ) : (
-            <MainMenu
-              profile={profile}
-              onUpdateProfile={handleUpdateProfile}
-              onJoinRoom={handleJoinRoom}
-              adminSettings={adminSettings}
-              onUpdateAdminSettings={(settings) => setAdminSettings(settings)}
-              isOfflineMode={isOfflineMode}
-            />
+            <>
+              {discordSession?.channelId && (
+                <div className="max-w-4xl mx-auto w-full px-4 pt-3">
+                  <div className="bg-[#5865F2]/20 border border-[#5865F2]/40 rounded-2xl p-3 flex items-center justify-between shadow-lg backdrop-blur-md">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-[#5865F2] flex items-center justify-center text-white text-lg shadow-md">
+                        🎮
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-white uppercase tracking-wider">
+                          Discord Ses Kanalı Masası
+                        </div>
+                        <div className="text-[10px] text-[#A2A9FA] font-medium">
+                          Aynı ses kanalındaki arkadaşlarınla ortak masaya tek tıkla gir
+                        </div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const dcRoomId = getDiscordChannelRoomId(discordSession.channelId);
+                        if (dcRoomId) {
+                          handleJoinRoom(dcRoomId, false);
+                        }
+                      }}
+                      className="px-4 py-2 bg-[#5865F2] hover:bg-[#4752C4] text-white font-black text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 cursor-pointer flex items-center gap-1.5"
+                    >
+                      <span>🚀</span>
+                      <span>Kanal Masasına Gir</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+              <MainMenu
+                profile={profile}
+                onUpdateProfile={handleUpdateProfile}
+                onJoinRoom={handleJoinRoom}
+                adminSettings={adminSettings}
+                onUpdateAdminSettings={(settings) => setAdminSettings(settings)}
+                isOfflineMode={isOfflineMode}
+              />
+            </>
           )}
         </div>
       )}

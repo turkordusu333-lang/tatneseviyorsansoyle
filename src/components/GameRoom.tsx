@@ -6101,7 +6101,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
           const set = currentBot.properties[targetSetKey];
           if (set && set.cards.length > 0) {
-            if (set.hasHotel) rentVal += 4;
+            let rentVal = calculateSetRent(set.cards, chosenColor, set.hasHouse, set.hasHotel);
             if (isDouble) {
               rentVal *= 2;
               const drIdx = currentBot.hand.findIndex((c) => c.actionType === 'double-rent');

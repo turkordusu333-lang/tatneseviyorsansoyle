@@ -221,6 +221,7 @@ export interface UserProfile {
   gamesHistory?: GameHistoryItem[];
   tournaments?: Record<string, Tournament>;
   password?: string; // Optional user account password
+  discordId?: string; // Discord User Snowflake ID
   rankPoints?: number; // Ranked / League Points
   mmr?: number; // Secret Matchmaking Rating
   lastLuckyWheelSpin?: string; // ISO string of last wheel spin
@@ -326,6 +327,7 @@ export interface ActionRequest {
   targetCardId?: string;
   myCardId?: string;
   targetColor?: CardColor;
+  targetSetKey?: string;
   chosenColor?: CardColor;
   originalAction?: {
     type: 'sly-deal' | 'forced-deal' | 'deal-breaker' | 'rent' | 'debt-collector' | 'birthday';
