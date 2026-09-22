@@ -4419,7 +4419,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
         // Register client
         ws.send(JSON.stringify({ type: 'register', userId: profile.id }));
         // Join room
-        ws.send(JSON.stringify({ type: 'join_room', userId: profile.id, roomId, password: roomPassword }));
+        ws.send(JSON.stringify({
+          type: 'join_room',
+          userId: profile.id,
+          username: profile.username,
+          avatarUrl: profile.avatarUrl,
+          roomId,
+          password: roomPassword,
+        }));
       };
 
       ws.onclose = (event) => {
@@ -7496,7 +7503,30 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     setChatText('');
   };
 
-  if (!match) return <div className="text-center py-20 text-white font-bold">Oda yükleniyor...</div>;
+  if (!match) {
+    const isEn = profile?.settings?.language === 'en';
+    return (
+      <div className="fixed inset-0 bg-[#0A0C10] flex flex-col items-center justify-center p-6 text-center select-none text-white z-50">
+        <div className="w-16 h-16 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(245,158,11,0.2)]">
+          <span className="text-3xl animate-bounce">🃏</span>
+        </div>
+        <div className="w-8 h-8 border-4 border-t-transparent border-amber-400 rounded-full animate-spin mb-4" />
+        <h3 className="text-lg font-black text-amber-400 uppercase tracking-widest mb-1">
+          {isEn ? 'Connecting to Room...' : 'Odaya Bağlanılıyor...'}
+        </h3>
+        <p className="text-xs text-zinc-400 max-w-xs mb-6">
+          {isEn ? 'Synchronizing match state with game server.' : 'Oyun masası ve oyuncu verileri senkronize ediliyor.'}
+        </p>
+        <button
+          type="button"
+          onClick={() => onLeaveRoom()}
+          className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-xs font-bold text-zinc-300 hover:text-white rounded-xl transition-all cursor-pointer shadow-md active:scale-95"
+        >
+          {isEn ? 'Return to Menu' : 'Menüye Dön'}
+        </button>
+      </div>
+    );
+  }
 
   const localPlayer = match.players.find((p) => p.id === profile.id) || match.players[0];
   const otherPlayers = match.players.filter((p) => p.id !== localPlayer.id);

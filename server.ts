@@ -3202,8 +3202,30 @@ async function startServer() {
 
           case 'join_room': {
             const users = await loadUsers();
-            const user = users[userId];
-            if (!user) break;
+            let user = users[userId];
+            if (!user) {
+              const fallbackName = payload.username || (userId && String(userId).startsWith('user-dc') ? 'Discord Oyuncusu' : `Oyuncu_${String(userId).slice(-4)}`);
+              user = {
+                id: userId,
+                username: fallbackName,
+                country: 'TR',
+                coins: 1000,
+                level: 1,
+                xp: 0,
+                rankPoints: 0,
+                avatarId: 'avatar_classic',
+                avatarUrl: payload.avatarUrl || '',
+                stats: { gamesPlayed: 0, gamesWon: 0, gamesLost: 0, winRate: 0, totalRentCollected: 0, totalCardsStolen: 0, totalSetsCompleted: 0, totalMoneyBanked: 0 },
+                settings: { soundVolume: 70, soundPitch: 1.0, synthType: 'sine', cardBack: 'back_classic', boardTheme: 'theme_slate', avatarId: 'avatar_classic', clothesId: 'clothes_none', profileFrame: 'frame_none', celebrationSound: 'sound_classic', playerBoard: 'board_classic', language: 'tr' },
+                unlockedItems: ['avatar_classic', 'back_classic', 'theme_slate', 'frame_none', 'sound_classic', 'board_classic'],
+                friends: [],
+                achievements: [],
+                dailyQuests: [],
+                gamesHistory: [],
+              };
+              users[userId] = user;
+              await saveUsers(users);
+            }
 
             const roomPassword = payload.password; // Optional password passed from client
 
@@ -3259,7 +3281,7 @@ async function startServer() {
               }
             }
 
-            clients[clientId].roomId = roomId;
+            clients[clientId] = { ...(clients[clientId] || { ws, userId }), roomId };
 
             // Join if not already in
             const existingPlayer = match.players.find((p) => p.id === userId);
