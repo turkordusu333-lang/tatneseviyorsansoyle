@@ -58,11 +58,28 @@ function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): 
   ]);
 }
 
-/**
- * Initializes Discord Embedded App SDK, authenticates with Discord,
- * and fetches/synchronizes the UserProfile with the backend.
- */
-export async function initializeDiscordActivity(): Promise<DiscordSession | null> {
+// Memoized singleton promise and cached session to prevent duplicate execution & duplicate guest creation
+let activityInitPromise: Promise<DiscordSession | null> | null = null;
+let cachedDiscordSession: DiscordSession | null = null;
+
+export function initializeDiscordActivity(): Promise<DiscordSession | null> {
+  if (cachedDiscordSession) {
+    return Promise.resolve(cachedDiscordSession);
+  }
+  if (activityInitPromise) {
+    return activityInitPromise;
+  }
+  activityInitPromise = runInitializeDiscordActivity().then((session) => {
+    if (session) cachedDiscordSession = session;
+    return session;
+  }).catch((err) => {
+    activityInitPromise = null;
+    throw err;
+  });
+  return activityInitPromise;
+}
+
+async function runInitializeDiscordActivity(): Promise<DiscordSession | null> {
   if (!isDiscordEmbedded()) {
     return null;
   }
@@ -121,6 +138,13 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
       console.warn('[Discord SDK] Authorize cancelled, timed out or skipped:', authErr);
     }
 
+    // Check if we have a locally stored Discord profile to pass as fallback
+    let existingStoredUser: any = null;
+    try {
+      const storedRaw = localStorage.getItem('deal_master_last_profile');
+      if (storedRaw) existingStoredUser = JSON.parse(storedRaw);
+    } catch (_) {}
+
     // 4. Exchange code or create session on backend
     let userProfile: UserProfile | null = null;
     let accessToken = '';
@@ -134,6 +158,8 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
             code: code || undefined,
             channelId: discordSdk.channelId,
             guildId: discordSdk.guildId,
+            cachedDiscordId: existingStoredUser?.discordId,
+            cachedUserId: existingStoredUser?.id,
           }),
         }),
         10000,
@@ -162,24 +188,68 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
         );
         console.log('[Discord SDK] Authenticated successfully with Discord Client!', authClientRes);
         
-        // Ensure user profile contains real Discord username and avatar
-        if (authClientRes?.user && userProfile) {
+        // Ensure user profile contains real Discord snowflake ID, username, and avatar
+        if (authClientRes?.user) {
           const authUser = authClientRes.user;
           const realName = (authUser.global_name || authUser.username || '').trim();
-          if (realName) {
-            userProfile.username = realName;
+          const realId = `user-dc-${authUser.id}`;
+
+          if (!userProfile) {
+            userProfile = {
+              id: realId,
+              username: realName || `Discord_${authUser.id.slice(-4)}`,
+              discordId: authUser.id,
+              coins: 1000,
+              level: 1,
+              xp: 0,
+              avatarId: 'avatar_classic',
+              friends: [],
+              stats: { gamesPlayed: 0, gamesWon: 0, gamesLost: 0, winRate: 0, totalRentCollected: 0, totalCardsStolen: 0, totalSetsCompleted: 0, totalMoneyBanked: 0 },
+              unlockedItems: ['avatar_classic', 'back_classic', 'theme_slate', 'frame_none', 'sound_classic'],
+              settings: { soundVolume: 70, soundPitch: 1.0, synthType: 'sine', cardBack: 'back_classic', boardTheme: 'theme_slate', avatarId: 'avatar_classic', clothesId: 'clothes_classic', profileFrame: 'frame_none', celebrationSound: 'sound_classic', language: 'tr' },
+              achievements: [],
+              dailyQuests: [],
+              gamesHistory: [],
+            };
+          } else {
+            // Overwrite guest placeholder ID with REAL Discord snowflake ID
+            userProfile.id = realId;
+            userProfile.discordId = authUser.id;
+            if (realName) {
+              userProfile.username = realName;
+            }
           }
+
           if (authUser.avatar) {
             const ext = authUser.avatar.startsWith('a_') ? 'gif' : 'png';
             userProfile.avatarUrl = `https://cdn.discordapp.com/avatars/${authUser.id}/${authUser.avatar}.${ext}?size=256`;
+          } else {
+            try {
+              const defaultIndex = Math.abs(Number((BigInt(authUser.id) >> 22n) % 6n));
+              userProfile.avatarUrl = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+            } catch {
+              userProfile.avatarUrl = `https://cdn.discordapp.com/embed/avatars/0.png`;
+            }
           }
+
+          // Sync the verified Discord identity to the server database
+          fetch(`${apiBase}/api/profile/update`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: userProfile.id,
+              username: userProfile.username,
+              avatarUrl: userProfile.avatarUrl,
+              discordId: userProfile.discordId,
+            }),
+          }).catch(() => {});
         }
       } catch (authClientErr) {
         console.warn('[Discord SDK] authenticate command warning:', authClientErr);
       }
     }
 
-    // 6. Once authenticated, we can safely query connected participants
+    // 6. Query connected participants for additional name / avatar resolution
     try {
       const participantsRes = await withTimeout(
         discordSdk.commands.getInstanceConnectedParticipants(),
@@ -188,7 +258,7 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
       );
       if (participantsRes?.participants && participantsRes.participants.length > 0 && userProfile) {
         const p = participantsRes.participants[0];
-        if (p && (userProfile.username.includes('Discord Oyuncusu') || userProfile.username.startsWith('DiscordPlayer_'))) {
+        if (p && (userProfile.username.includes('Discord Oyuncusu') || userProfile.username.startsWith('DiscordPlayer_') || userProfile.username.startsWith('Oyuncu_'))) {
           const realName = (p.global_name || p.nickname || p.username || '').trim();
           if (realName) {
             userProfile.username = realName;
@@ -204,7 +274,6 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
     }
 
     if (!userProfile) {
-      // Create guest Discord profile if backend was unreachable
       const randomId = Math.floor(Math.random() * 9000 + 1000);
       userProfile = {
         id: `user-dc-${randomId}`,

@@ -114,15 +114,17 @@ export default function App() {
   const [isDiscordConnecting, setIsDiscordConnecting] = React.useState<boolean>(() => isDiscordEmbedded());
 
   // Discord Embedded App SDK Lifecycle
+  const didInitDiscordRef = React.useRef(false);
+
   React.useEffect(() => {
     if (!isDiscordEmbedded()) return;
+    if (didInitDiscordRef.current) return;
+    didInitDiscordRef.current = true;
 
-    let isMounted = true;
     setIsDiscordConnecting(true);
 
     initializeDiscordActivity()
       .then((session) => {
-        if (!isMounted) return;
         if (session && session.userProfile) {
           setDiscordSession(session);
           setProfile(session.userProfile);
@@ -135,31 +137,18 @@ export default function App() {
             const dcRoomId = getDiscordChannelRoomId(session.channelId);
             if (dcRoomId) {
               setTimeout(() => {
-                if (isMounted) {
-                  setCurrentRoom({ roomId: dcRoomId, isOffline: false });
-                }
-              }, 80);
+                setCurrentRoom({ roomId: dcRoomId, isOffline: false });
+              }, 150);
             }
           }
-        } else {
-          const fallbackUser = getOrCreateLocalProfile('Discord Oyuncusu');
-          setProfile(fallbackUser);
         }
       })
       .catch((err) => {
         console.error('[Discord SDK] Error during activity initialization:', err);
-        const fallbackUser = getOrCreateLocalProfile('Discord Oyuncusu');
-        setProfile(fallbackUser);
       })
       .finally(() => {
-        if (isMounted) {
-          setIsDiscordConnecting(false);
-        }
+        setIsDiscordConnecting(false);
       });
-
-    return () => {
-      isMounted = false;
-    };
   }, []);
 
   React.useEffect(() => {

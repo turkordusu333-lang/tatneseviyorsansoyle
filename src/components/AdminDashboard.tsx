@@ -14,12 +14,16 @@ interface Quest {
 interface Player {
   id: string;
   username: string;
+  discordId?: string;
+  avatarUrl?: string;
   level: number;
   xp: number;
   coins: number;
   gamesWon: number;
   gamesPlayed: number;
   friendsCount: number;
+  isDiscord?: boolean;
+  isGuest?: boolean;
 }
 
 interface AdminSettings {
@@ -233,6 +237,25 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
   const [editCoins, setEditCoins] = useState(0);
   const [editLevel, setEditLevel] = useState(1);
   const [editXp, setEditXp] = useState(0);
+
+  // New Player Creation State (Server Database)
+  const [isAddPlayerModalOpen, setIsAddPlayerModalOpen] = useState(false);
+  const [newPlayerUsername, setNewPlayerUsername] = useState('');
+  const [newPlayerCoins, setNewPlayerCoins] = useState(1000);
+  const [newPlayerLevel, setNewPlayerLevel] = useState(1);
+  const [newPlayerXp, setNewPlayerXp] = useState(0);
+  const [newPlayerDiscordId, setNewPlayerDiscordId] = useState('');
+
+  // Local Accounts (Browser Storage / LocalStorage)
+  const [localAccounts, setLocalAccounts] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('mono_deal_saved_accounts');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [newLocalUsername, setNewLocalUsername] = useState('');
 
   const [quests, setQuests] = useState<any[]>([]);
   const [newQuestDesc, setNewQuestDesc] = useState('');
@@ -927,6 +950,149 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
         console.error(err);
         setNotification({ message: 'Sunucu hatası.', type: 'error' });
       });
+  };
+
+  const handleCreateServerPlayer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPlayerUsername.trim()) {
+      setNotification({ message: 'Kullanıcı adı boş bırakılamaz.', type: 'error' });
+      return;
+    }
+
+    fetch(`${API_BASE_URL}/api/admin/players/add`, {
+      method: 'POST',
+      headers: getAdminHeaders(),
+      body: JSON.stringify({
+        username: newPlayerUsername.trim(),
+        coins: newPlayerCoins,
+        level: newPlayerLevel,
+        xp: newPlayerXp,
+        discordId: newPlayerDiscordId.trim() || undefined
+      })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setNotification({ message: `"${data.player.username}" veritabanına başarıyla eklendi!`, type: 'success' });
+          setIsAddPlayerModalOpen(false);
+          setNewPlayerUsername('');
+          setNewPlayerCoins(1000);
+          setNewPlayerLevel(1);
+          setNewPlayerXp(0);
+          setNewPlayerDiscordId('');
+          fetchPlayers();
+        } else {
+          setNotification({ message: data.error || 'Oyuncu eklenemedi.', type: 'error' });
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        setNotification({ message: 'Sunucu hatası oluştu.', type: 'error' });
+      });
+  };
+
+  const handleDeleteServerPlayer = (p: Player) => {
+    if (!window.confirm(`"${p.username}" kullanıcısını VERİTABANINDAN ve SUNUCUDAN kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz!`)) return;
+
+    fetch(`${API_BASE_URL}/api/admin/players/delete`, {
+      method: 'POST',
+      headers: getAdminHeaders(),
+      body: JSON.stringify({ userId: p.id })
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setNotification({ message: data.message || 'Oyuncu başarıyla silindi.', type: 'success' });
+          fetchPlayers();
+          if (selectedPlayer?.id === p.id) setSelectedPlayer(null);
+        } else {
+          setNotification({ message: data.error || 'Silme işlemi başarısız.', type: 'error' });
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        setNotification({ message: 'Sunucu hatası oluştu.', type: 'error' });
+      });
+  };
+
+  const handleClearPlaceholders = () => {
+    if (!window.confirm("Tüm geçici misafir (Oyuncu_*, user-guest-*) ve hayalet Discord (Discord Oyuncusu) hesaplarını veritabanından kalıcı olarak temizlemek istiyor musunuz?")) return;
+
+    fetch(`${API_BASE_URL}/api/admin/players/clear-placeholders`, {
+      method: 'POST',
+      headers: getAdminHeaders()
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          setNotification({ message: data.message, type: 'success' });
+          fetchPlayers();
+        } else {
+          setNotification({ message: data.error || 'Temizleme başarısız.', type: 'error' });
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        setNotification({ message: 'Sunucu hatası oluştu.', type: 'error' });
+      });
+  };
+
+  // Local Storage Account Handlers
+  const handleDeleteLocalAccount = (username: string) => {
+    if (!window.confirm(`"${username}" yerel hesabını bu cihazın önbelleğinden silmek istiyor musunuz?`)) return;
+
+    const updated = localAccounts.filter((a: any) => a.username !== username);
+    localStorage.setItem('mono_deal_saved_accounts', JSON.stringify(updated));
+    localStorage.removeItem(`deal_master_local_profile_${username.toLowerCase()}`);
+    if (localStorage.getItem('last_logged_username') === username) {
+      localStorage.removeItem('last_logged_username');
+    }
+    setLocalAccounts(updated);
+    setNotification({ message: `"${username}" hesabı bu cihazdan temizlendi.`, type: 'success' });
+  };
+
+  const handleAddLocalAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newLocalUsername.trim()) return;
+    const trimmed = newLocalUsername.trim();
+
+    if (localAccounts.some((a: any) => a.username.toLowerCase() === trimmed.toLowerCase())) {
+      setNotification({ message: 'Bu isimde bir yerel hesap zaten kayıtlı.', type: 'error' });
+      return;
+    }
+
+    const newAcc = {
+      username: trimmed,
+      lastLogin: Date.now(),
+      coins: 1000,
+      level: 1
+    };
+    const updated = [newAcc, ...localAccounts];
+    localStorage.setItem('mono_deal_saved_accounts', JSON.stringify(updated));
+    setLocalAccounts(updated);
+    setNewLocalUsername('');
+    setNotification({ message: `"${trimmed}" hesabı cihaza yerel olarak kaydedildi!`, type: 'success' });
+  };
+
+  const handleClearAllLocalData = () => {
+    if (!window.confirm("DİKKAT! Bu cihazdaki TÜM yerel kayıtlı hesaplar, çevrimdışı profiller ve oturum önbelleği silinecek. Emin misiniz?")) return;
+
+    localStorage.removeItem('mono_deal_saved_accounts');
+    localStorage.removeItem('last_logged_username');
+    localStorage.removeItem('deal_master_offline_profile');
+    localStorage.removeItem('deal_master_last_profile');
+    localStorage.removeItem('deal_master_last_auth');
+    localStorage.removeItem('deal_master_auth_user');
+    localStorage.removeItem('discord_access_token');
+    
+    Object.keys(localStorage).forEach(k => {
+      if (k.startsWith('deal_master_local_profile_')) {
+        localStorage.removeItem(k);
+      }
+    });
+
+    setLocalAccounts([]);
+    setNotification({ message: 'Tüm yerel hesaplar ve önbellek başarıyla sıfırlandı!', type: 'success' });
   };
 
   const handleAddQuest = (e: React.FormEvent) => {
@@ -2279,24 +2445,151 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
             </div>
           )}
 
-          {/* TAB 3: PLAYERS */}
+          {/* TAB 3: PLAYERS & ACCOUNT MANAGEMENT */}
           {activeTab === 'players' && (
-            <div className="space-y-6">
-              <div className="flex items-center gap-4 justify-between">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-300">Oyuncu Profil & İlerleme Yönetimi</h3>
-                <input
-                  type="text"
-                  placeholder="Kullanıcı adı ara..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="px-4 py-2 text-xs rounded-xl bg-slate-900 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500 w-64"
-                />
+            <div className="space-y-8">
+              {/* Header & Quick Action Bar */}
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-4 rounded-2xl border border-slate-800">
+                <div>
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                    <span>👥</span> Oyuncu Hesap & Profil Yönetimi
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Veritabanı (Supabase/Sunucu) ve bu tarayıcıdaki yerel hesapları ekleyin, düzenleyin veya silin.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="text"
+                    placeholder="Veritabanında oyuncu ara..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="px-3.5 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500 w-48"
+                  />
+                  <button
+                    onClick={() => setIsAddPlayerModalOpen(true)}
+                    className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <span>➕</span> Yeni Hesap Ekle
+                  </button>
+                  <button
+                    onClick={handleClearPlaceholders}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                    title="Oyuncu_*, DiscordPlayer_*, Discord Oyuncusu gibi geçici/hayalet hesapları temizler"
+                  >
+                    <span>🧹</span> Hayalet Hesapları Temizle
+                  </button>
+                  <button
+                    onClick={fetchPlayers}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-all flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>🔄</span> Yenile
+                  </button>
+                </div>
               </div>
 
+              {/* Add Player to Database Modal / Expandable Form */}
+              {isAddPlayerModalOpen && (
+                <div className="bg-gradient-to-br from-indigo-950/40 via-slate-900/80 to-slate-950 p-5 rounded-2xl border border-indigo-500/30 space-y-4 shadow-xl">
+                  <div className="flex justify-between items-center border-b border-indigo-500/20 pb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-indigo-400 text-base">➕</span>
+                      <h4 className="text-sm font-bold text-slate-100">Veritabanına Yeni Oyuncu Hesabı Ekle</h4>
+                    </div>
+                    <button
+                      onClick={() => setIsAddPlayerModalOpen(false)}
+                      className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg bg-slate-800/60"
+                    >
+                      ✕ Kapat
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCreateServerPlayer} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-400 uppercase font-bold">Kullanıcı Adı *</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Örn: KralOyuncu"
+                          value={newPlayerUsername}
+                          onChange={(e) => setNewPlayerUsername(e.target.value)}
+                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500 font-medium"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-400 uppercase font-bold">Başlangıç Altını</label>
+                        <input
+                          type="number"
+                          value={newPlayerCoins}
+                          onChange={(e) => setNewPlayerCoins(Number(e.target.value))}
+                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-400 uppercase font-bold">Seviye (Level)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={newPlayerLevel}
+                          onChange={(e) => setNewPlayerLevel(Number(e.target.value))}
+                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-slate-400 uppercase font-bold">Deneyim (XP)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={newPlayerXp}
+                          onChange={(e) => setNewPlayerXp(Number(e.target.value))}
+                          className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-slate-400 uppercase font-bold">Discord Kullanıcı ID (Snowflake - İsteğe Bağlı)</label>
+                      <input
+                        type="text"
+                        placeholder="Örn: 163045930814144512 (Discord kullanıcısı ile otomatik eşleşmesi için)"
+                        value={newPlayerDiscordId}
+                        onChange={(e) => setNewPlayerDiscordId(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500 font-mono"
+                      />
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsAddPlayerModalOpen(false)}
+                        className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold cursor-pointer"
+                      >
+                        İptal
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs text-white font-bold transition-all shadow-lg cursor-pointer"
+                      >
+                        Hesabı Veritabanına Kaydet
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Edit Selected Player Form */}
               {selectedPlayer && (
-                <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-4">
+                <div className="bg-slate-900/60 border border-indigo-500/40 rounded-2xl p-5 space-y-4 shadow-lg">
                   <div className="flex justify-between items-center">
-                    <h4 className="text-sm font-bold text-indigo-400">👤 {selectedPlayer.username} Profili Düzenleniyor</h4>
+                    <h4 className="text-sm font-bold text-indigo-400 flex items-center gap-2">
+                      <span>✏️</span> {selectedPlayer.username} Profili Düzenleniyor
+                      {selectedPlayer.isDiscord && (
+                        <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30">
+                          Discord
+                        </span>
+                      )}
+                    </h4>
                     <button
                       onClick={() => setSelectedPlayer(null)}
                       className="text-xs text-slate-500 hover:text-slate-300"
@@ -2333,45 +2626,201 @@ export const AdminDashboard: React.FC<Props> = ({ onSettingsUpdated, onLogout })
                       />
                     </div>
                   </div>
-                  <button
-                    onClick={handleUpdatePlayer}
-                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold"
-                  >
-                    Değişiklikleri Kaydet
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleUpdatePlayer}
+                      className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold cursor-pointer"
+                    >
+                      Değişiklikleri Kaydet
+                    </button>
+                    <button
+                      onClick={() => setSelectedPlayer(null)}
+                      className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 font-semibold cursor-pointer"
+                    >
+                      İptal
+                    </button>
+                  </div>
                 </div>
               )}
 
-              <div className="bg-slate-900/30 border border-slate-800 rounded-2xl overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-950/40 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
-                    <tr>
-                      <th className="px-5 py-3">Oyuncu</th>
-                      <th className="px-5 py-3">Seviye</th>
-                      <th className="px-5 py-3">Altın</th>
-                      <th className="px-5 py-3">Galibiyet / Toplam</th>
-                      <th className="px-5 py-3 text-right">İşlem</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-900">
-                    {filteredPlayers.map((p) => (
-                      <tr key={p.id} className="hover:bg-slate-900/20">
-                        <td className="px-5 py-3 font-semibold text-slate-200">{p.username}</td>
-                        <td className="px-5 py-3 text-slate-300">Level {p.level} ({p.xp} XP)</td>
-                        <td className="px-5 py-3 text-amber-400 font-bold">{p.coins} 🪙</td>
-                        <td className="px-5 py-3 text-slate-400">{p.gamesWon} / {p.gamesPlayed} Maç</td>
-                        <td className="px-5 py-3 text-right">
-                          <button
-                            onClick={() => selectPlayerForEdit(p)}
-                            className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium transition-all"
-                          >
-                            Düzenle
-                          </button>
-                        </td>
+              {/* SECTION 1: VERİTABANI VE SUNUCU HESAPLARI TABLOSU */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-slate-300 uppercase tracking-wider">
+                      🌐 Veritabanı & Sunucu Hesapları
+                    </span>
+                    <span className="text-[11px] bg-slate-800 px-2 py-0.5 rounded-full text-slate-400 font-mono">
+                      {filteredPlayers.length} Oyuncu
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    Kalıcı olarak Supabase ve users.json üzerinde saklanan hesaplar
+                  </span>
+                </div>
+
+                <div className="bg-slate-900/30 border border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-950/50 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                      <tr>
+                        <th className="px-5 py-3">Oyuncu</th>
+                        <th className="px-5 py-3">Hesap Türü</th>
+                        <th className="px-5 py-3">Seviye & XP</th>
+                        <th className="px-5 py-3">Altın</th>
+                        <th className="px-5 py-3">Galibiyet / Toplam</th>
+                        <th className="px-5 py-3 text-right">İşlemler</th>
                       </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-900">
+                      {filteredPlayers.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
+                            Hiçbir oyuncu bulunamadı.
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredPlayers.map((p) => (
+                          <tr key={p.id} className="hover:bg-slate-900/30 transition-colors">
+                            <td className="px-5 py-3">
+                              <div className="flex items-center gap-3">
+                                {p.avatarUrl ? (
+                                  <img
+                                    src={p.avatarUrl}
+                                    alt={p.username}
+                                    className="w-8 h-8 rounded-full border border-slate-700 object-cover bg-slate-800"
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="w-8 h-8 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center font-bold text-slate-300 text-xs">
+                                    {p.username.charAt(0).toUpperCase()}
+                                  </div>
+                                )}
+                                <div>
+                                  <div className="font-semibold text-slate-200">{p.username}</div>
+                                  <div className="text-[10px] text-slate-500 font-mono">{p.id}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-5 py-3">
+                              {p.isDiscord ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 px-2 py-0.5 rounded-md font-medium">
+                                  <span>💬</span> Discord
+                                </span>
+                              ) : p.isGuest ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-md font-medium">
+                                  <span>👤</span> Misafir
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md font-medium">
+                                  <span>⭐</span> Kayıtlı
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-5 py-3 text-slate-300">
+                              <span className="font-bold text-slate-200">Lvl {p.level}</span>{' '}
+                              <span className="text-[10px] text-slate-400">({p.xp} XP)</span>
+                            </td>
+                            <td className="px-5 py-3 text-amber-400 font-bold">
+                              {p.coins.toLocaleString()} 🪙
+                            </td>
+                            <td className="px-5 py-3 text-slate-400">
+                              <span className="text-emerald-400 font-semibold">{p.gamesWon}</span> / {p.gamesPlayed} Maç
+                            </td>
+                            <td className="px-5 py-3 text-right">
+                              <div className="inline-flex items-center gap-1.5">
+                                <button
+                                  onClick={() => selectPlayerForEdit(p)}
+                                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium transition-all cursor-pointer"
+                                  title="Seviye ve bakiye düzenle"
+                                >
+                                  ✏️ Düzenle
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteServerPlayer(p)}
+                                  className="px-2.5 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-[11px] font-medium transition-all cursor-pointer"
+                                  title="Veritabanından kalıcı olarak sil"
+                                >
+                                  🗑️ Sil
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* SECTION 2: BU CİHAZDAKİ YEREL HESAPLAR & ÖNBELLEK (LOCALSTORAGE) */}
+              <div className="space-y-4 pt-4 border-t border-slate-800/80">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+                      <span>💻</span> Bu Cihazdaki Yerel / Tarayıcı Hesapları
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Giriş ekranındaki hızlı hesap seçici (LocalStorage) ve çevrimdışı profil önbelleğini yönetin.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleClearAllLocalData}
+                    className="self-start sm:self-auto px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    <span>⚠️</span> Bu Cihazdaki Tüm Önbelleği & Hesapları Sıfırla
+                  </button>
+                </div>
+
+                {/* Quick Add Local Account Form */}
+                <form onSubmit={handleAddLocalAccount} className="flex items-center gap-2 max-w-md">
+                  <input
+                    type="text"
+                    placeholder="Yeni yerel hesap adı..."
+                    value={newLocalUsername}
+                    onChange={(e) => setNewLocalUsername(e.target.value)}
+                    className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-100 focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold cursor-pointer whitespace-nowrap"
+                  >
+                    + Cihaza Kaydet
+                  </button>
+                </form>
+
+                {/* Local Accounts Grid / Cards */}
+                {localAccounts.length === 0 ? (
+                  <div className="bg-slate-900/20 border border-slate-800/60 rounded-xl p-4 text-center text-xs text-slate-500">
+                    Bu cihazın tarayıcısında kayıtlı yerel hesap bulunmuyor.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {localAccounts.map((acc: any) => (
+                      <div
+                        key={acc.username}
+                        className="bg-slate-900/40 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3 group hover:border-slate-700 transition-all"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-slate-200 truncate flex items-center gap-1.5">
+                            <span>👤</span> {acc.username}
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-0.5">
+                            {acc.coins ? `${acc.coins} 🪙` : '1,000 🪙'} • Lvl {acc.level || 1}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteLocalAccount(acc.username)}
+                          className="px-2 py-1 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] font-bold border border-rose-500/20 transition-all cursor-pointer"
+                          title="Cihazdan kaldır"
+                        >
+                          ✕ Sil
+                        </button>
+                      </div>
                     ))}
-                  </tbody>
-                </table>
+                  </div>
+                )}
               </div>
             </div>
           )}

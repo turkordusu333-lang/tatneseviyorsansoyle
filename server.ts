@@ -1107,14 +1107,168 @@ async function startServer() {
     const list = Object.values(users).map((u) => ({
       id: u.id,
       username: u.username,
+      discordId: u.discordId,
+      avatarUrl: u.avatarUrl,
       level: u.level,
       xp: u.xp,
       coins: u.coins,
       gamesWon: u.stats?.gamesWon || 0,
       gamesPlayed: u.stats?.gamesPlayed || 0,
-      friendsCount: u.friends?.length || 0
+      friendsCount: u.friends?.length || 0,
+      isDiscord: !!u.discordId || u.id.startsWith('user-dc-'),
+      isGuest: u.id.startsWith('user-guest-') || u.id.startsWith('dc-') || u.username === 'Discord Oyuncusu'
     }));
     res.json(list);
+  });
+
+  // Add a new player directly into the database
+  app.post('/api/admin/players/add', async (req, res) => {
+    const { username, coins, level, xp, discordId, avatarUrl } = req.body;
+    if (!username || !username.trim()) {
+      return res.status(400).json({ error: 'Kullanıcı adı boş bırakılamaz.' });
+    }
+
+    const trimmedUsername = username.trim();
+    const users = await loadUsers();
+
+    const existing = Object.values(users).find(
+      (u) => u.username.toLowerCase() === trimmedUsername.toLowerCase()
+    );
+    if (existing) {
+      return res.status(400).json({ error: `"${trimmedUsername}" adına sahip bir oyuncu zaten mevcut.` });
+    }
+
+    const newId = discordId ? `user-dc-${discordId}` : `user-reg-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    const newPlayer: UserProfile = {
+      id: newId,
+      username: trimmedUsername,
+      discordId: discordId ? String(discordId) : undefined,
+      country: 'TR',
+      coins: coins !== undefined && !isNaN(Number(coins)) ? Number(coins) : 1000,
+      level: level !== undefined && !isNaN(Number(level)) ? Number(level) : 1,
+      xp: xp !== undefined && !isNaN(Number(xp)) ? Number(xp) : 0,
+      rankPoints: 0,
+      avatarId: 'avatar_classic',
+      avatarUrl: avatarUrl || `https://cdn.discordapp.com/embed/avatars/${Math.floor(Math.random() * 5)}.png`,
+      stats: {
+        gamesPlayed: 0,
+        gamesWon: 0,
+        gamesLost: 0,
+        winRate: 0,
+        totalRentCollected: 0,
+        totalCardsStolen: 0,
+        totalSetsCompleted: 0,
+        totalMoneyBanked: 0,
+      },
+      settings: {
+        soundVolume: 70,
+        soundPitch: 1.0,
+        synthType: 'sine',
+        cardBack: 'back_classic',
+        boardTheme: 'theme_slate',
+        avatarId: 'avatar_classic',
+        clothesId: 'clothes_none',
+        profileFrame: 'frame_none',
+        celebrationSound: 'sound_classic',
+        playerBoard: 'board_classic',
+        language: 'tr',
+      },
+      unlockedItems: ['avatar_classic', 'back_classic', 'theme_slate', 'frame_none', 'sound_classic', 'board_classic'],
+      friends: [],
+      achievements: (globalAchievements || []).map((a: any) => ({
+        id: a.id,
+        title: a.title,
+        description: a.description,
+        targetValue: a.targetValue,
+        currentValue: 0,
+        completed: false,
+        rewardCoins: a.rewardCoins,
+        type: a.type || 'stats',
+      })),
+      dailyQuests: (globalQuests || []).map((q: any) => ({
+        id: q.id,
+        description: q.description,
+        targetValue: q.targetValue,
+        currentValue: 0,
+        completed: false,
+        claimed: false,
+        rewardCoins: q.rewardCoins,
+        rewardXp: q.rewardXp,
+        type: q.type || 'stats',
+      })),
+      gamesHistory: [],
+    };
+
+    users[newId] = newPlayer;
+    await saveUsers(users);
+
+    res.json({ success: true, player: newPlayer });
+  });
+
+  // Delete a player permanently (from memory, local file, and Supabase)
+  app.post('/api/admin/players/delete', async (req, res) => {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'Geçersiz oyuncu ID.' });
+
+    const users = await loadUsers();
+    const user = users[userId];
+    if (!user) {
+      return res.status(404).json({ error: 'Silinecek oyuncu bulunamadı.' });
+    }
+
+    const deletedUsername = user.username;
+    delete users[userId];
+    await saveUsers(users);
+
+    if (supabase) {
+      try {
+        await supabase.from('users').delete().eq('id', userId);
+        console.log(`[Database] Deleted user ${userId} (${deletedUsername}) from Supabase.`);
+      } catch (err) {
+        console.error('[Database] Failed to delete user from Supabase:', err);
+      }
+    }
+
+    res.json({ success: true, message: `"${deletedUsername}" oyuncusu başarıyla silindi.` });
+  });
+
+  // Clear ghost / placeholder accounts
+  app.post('/api/admin/players/clear-placeholders', async (req, res) => {
+    const users = await loadUsers();
+    const toDeleteIds: string[] = [];
+
+    for (const [id, u] of Object.entries(users)) {
+      const uname = (u.username || '').trim().toLowerCase();
+      if (
+        uname === 'discord oyuncusu' ||
+        uname.startsWith('discordplayer_') ||
+        uname.startsWith('oyuncu_') ||
+        id.startsWith('user-guest-') ||
+        id.startsWith('dc-')
+      ) {
+        toDeleteIds.push(id);
+      }
+    }
+
+    if (toDeleteIds.length === 0) {
+      return res.json({ success: true, count: 0, message: 'Temizlenecek geçici/hayalet hesap bulunamadı.' });
+    }
+
+    for (const id of toDeleteIds) {
+      delete users[id];
+    }
+    await saveUsers(users);
+
+    if (supabase) {
+      try {
+        await supabase.from('users').delete().in('id', toDeleteIds);
+        console.log(`[Database] Deleted ${toDeleteIds.length} placeholders from Supabase.`);
+      } catch (err) {
+        console.error('[Database] Supabase placeholder delete error:', err);
+      }
+    }
+
+    res.json({ success: true, count: toDeleteIds.length, message: `${toDeleteIds.length} adet geçici / hayalet hesap veritabanından temizlendi.` });
   });
 
   // Update a player's profiles (xp, level, coins)
@@ -2115,6 +2269,9 @@ async function startServer() {
     });
   });
 
+  // In-memory cache for Discord token exchanges to prevent duplicate code redemption (invalid_grant)
+  const discordTokenExchangeCache = new Map<string, { user: UserProfile; accessToken: string; expiresAt: number }>();
+
   // --- DISCORD ACTIVITY API ROUTES ---
   app.get('/api/discord/config', (req, res) => {
     res.json({
@@ -2138,9 +2295,20 @@ async function startServer() {
 
   app.post('/api/discord/token', async (req, res) => {
     try {
-      const { code, channelId, guildId, participantUser } = req.body;
+      const { code, channelId, guildId, participantUser, cachedDiscordId, cachedUserId } = req.body;
       const clientId = process.env.DISCORD_CLIENT_ID || '1551722975013773412';
       const clientSecret = process.env.DISCORD_CLIENT_SECRET || 'IYFctmJHTg3do4zubdKYv1lmTvpGM4i_';
+
+      const users = await loadUsers();
+
+      // 1. Check in-memory exchange cache if code was already redeemed in the last 2 minutes
+      if (code && typeof code === 'string') {
+        const cached = discordTokenExchangeCache.get(code);
+        if (cached && Date.now() < cached.expiresAt) {
+          console.log('[Discord Auth] Returning in-memory cached exchange for code:', code.slice(0, 8));
+          return res.json({ success: true, userProfile: cached.user, access_token: cached.accessToken });
+        }
+      }
 
       let discordUser: any = null;
       let accessToken = '';
@@ -2195,24 +2363,35 @@ async function startServer() {
         }
       }
 
-      // If backend token exchange didn't yield user, fallback to participant info provided by SDK
-      if (!discordUser && participantUser && (participantUser.username || participantUser.global_name)) {
-        console.log('[Discord Auth] Falling back to SDK participantUser:', participantUser);
-        discordUser = participantUser;
+      // 2. If token exchange failed or code was expired/invalid, try matching existing user before falling back to guest!
+      if (!discordUser) {
+        if (participantUser && (participantUser.id || participantUser.username)) {
+          discordUser = participantUser;
+        } else if (cachedDiscordId) {
+          const existingByDcId = Object.values(users).find(
+            (u) => (u.discordId && u.discordId === cachedDiscordId) || u.id === `user-dc-${cachedDiscordId}`
+          );
+          if (existingByDcId) {
+            console.log('[Discord Auth] Found existing user by cachedDiscordId:', existingByDcId.username);
+            return res.json({ success: true, userProfile: existingByDcId, access_token: accessToken || '' });
+          }
+        } else if (cachedUserId && users[cachedUserId]) {
+          console.log('[Discord Auth] Found existing user by cachedUserId:', users[cachedUserId].username);
+          return res.json({ success: true, userProfile: users[cachedUserId], access_token: accessToken || '' });
+        }
       }
 
-      // Fallback guest Discord profile if no credentials or test mode
+      // Fallback guest Discord profile only if no credentials at all
       if (!discordUser) {
         const fallbackRandom = Math.floor(Math.random() * 9000 + 1000);
         discordUser = {
           id: `dc-${Date.now().toString(36)}-${fallbackRandom}`,
-          username: `DiscordPlayer_${fallbackRandom}`,
+          username: `Discord_${fallbackRandom}`,
           global_name: `Discord Oyuncusu`,
           avatar: null,
         };
       }
 
-      const users = await loadUsers();
       const displayName = (discordUser.global_name || discordUser.username || '').trim();
       const isAnimated = typeof discordUser.avatar === 'string' && discordUser.avatar.startsWith('a_');
       let avatarUrl = '';
@@ -2312,13 +2491,12 @@ async function startServer() {
         users[newId] = user;
         await saveUsers(users);
       } else {
-        // GUEST / UNVERIFIED USER: ALWAYS generate a completely UNIQUE guest profile!
-        // NEVER share guest profiles between different players!
+        // Guest Discord profile (do NOT spam 'Oyuncu_XXXX', use clear Discord guest info)
         const guestRandom = Math.floor(1000 + Math.random() * 9000);
         const guestId = `user-guest-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
         user = {
           id: guestId,
-          username: `Oyuncu_${guestRandom}`,
+          username: `Discord_${guestRandom}`,
           country: 'TR',
           coins: 1000,
           level: 1,
@@ -2359,13 +2537,17 @@ async function startServer() {
         await saveUsers(users);
       }
 
+      if (code && typeof code === 'string' && user) {
+        discordTokenExchangeCache.set(code, { user, accessToken, expiresAt: Date.now() + 120000 });
+      }
+
       res.json({
         success: true,
+        userProfile: sanitizeProfile(user),
         access_token: accessToken,
         authError: lastAuthError || undefined,
         channelId: channelId || null,
         guildId: guildId || null,
-        userProfile: sanitizeProfile(user),
       });
     } catch (err: any) {
       console.error('[Discord Auth Error]:', err);
