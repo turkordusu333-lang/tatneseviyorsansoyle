@@ -2127,10 +2127,11 @@ async function startServer() {
     try {
       const { code, channelId, guildId, participantUser } = req.body;
       const clientId = process.env.DISCORD_CLIENT_ID || '1551722975013773412';
-      const clientSecret = process.env.DISCORD_CLIENT_SECRET || '99eMYm5JLe8_ENkWdy6MCDsizbafgSFD';
+      const clientSecret = process.env.DISCORD_CLIENT_SECRET || 'IYFctmJHTg3do4zubdKYv1lmTvpGM4i_';
 
       let discordUser: any = null;
       let accessToken = '';
+      let lastAuthError = '';
 
       if (clientId && clientSecret && code) {
         try {
@@ -2160,10 +2161,11 @@ async function startServer() {
               console.log('[Discord Auth] Received user from @me:', discordUser?.username, discordUser?.id);
             }
           } else {
-            const errTxt = await tokenResponse.text();
-            console.warn('[Discord Auth] Token exchange response not ok:', errTxt);
+            lastAuthError = await tokenResponse.text();
+            console.error('[Discord Auth] Discord OAuth token exchange failed:', tokenResponse.status, lastAuthError);
           }
-        } catch (authFetchErr) {
+        } catch (authFetchErr: any) {
+          lastAuthError = authFetchErr?.message || String(authFetchErr);
           console.error('[Discord Auth] Failed contacting Discord API:', authFetchErr);
         }
       }
@@ -2285,6 +2287,7 @@ async function startServer() {
       res.json({
         success: true,
         access_token: accessToken,
+        authError: lastAuthError || undefined,
         channelId: channelId || null,
         guildId: guildId || null,
         userProfile: sanitizeProfile(user),

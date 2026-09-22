@@ -100,30 +100,8 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
       console.warn('[Discord SDK] ready() timed out or failed, continuing in fallback mode:', readyErr);
     }
 
-    // 3. Try to get connected participant info directly from Discord Client
-    let discordUserData: { id?: string; username?: string; global_name?: string; avatar?: string } | null = null;
-    try {
-      const participantsRes = await withTimeout(
-        discordSdk.commands.getInstanceConnectedParticipants(),
-        4000,
-        'Participants fetch timeout'
-      );
-      if (participantsRes?.participants && participantsRes.participants.length > 0) {
-        const p = participantsRes.participants[0];
-        discordUserData = {
-          id: p.id,
-          username: p.username,
-          global_name: p.global_name || p.nickname || p.username,
-          avatar: p.avatar || undefined,
-        };
-        console.log('[Discord SDK] Successfully retrieved participant info:', discordUserData);
-      }
-    } catch (pErr) {
-      console.warn('[Discord SDK] getInstanceConnectedParticipants warning:', pErr);
-    }
-
     let code = '';
-    // 4. Authorize via Discord OAuth2 (wait up to 90 seconds for user to click 'Yetkilendir / Authorize')
+    // 3. Authorize via Discord OAuth2 (wait up to 90 seconds for user to click 'Yetkilendir / Authorize')
     try {
       console.log('[Discord SDK] Requesting OAuth2 authorization modal...');
       const authResult = await withTimeout(
@@ -143,7 +121,7 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
       console.warn('[Discord SDK] Authorize cancelled, timed out or skipped:', authErr);
     }
 
-    // 5. Exchange code or create session on backend
+    // 4. Exchange code or create session on backend
     let userProfile: UserProfile | null = null;
     let accessToken = '';
 
@@ -156,7 +134,6 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
             code: code || undefined,
             channelId: discordSdk.channelId,
             guildId: discordSdk.guildId,
-            participantUser: discordUserData || undefined,
           }),
         }),
         10000,
@@ -167,12 +144,15 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
         const data = await tokenRes.json();
         userProfile = data.userProfile;
         accessToken = data.access_token;
+        if (data.authError) {
+          console.error('[Discord SDK] Backend OAuth error from Discord API:', data.authError);
+        }
       }
     } catch (backendErr) {
       console.warn('[Discord SDK] Backend sync failed, using local profile fallback:', backendErr);
     }
 
-    // 6. Authenticate with Discord Client if token available
+    // 5. Authenticate with Discord Client if token available
     if (accessToken) {
       try {
         const authClientRes = await withTimeout(
@@ -199,17 +179,28 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
       }
     }
 
-    // 7. If userProfile still has placeholder name, apply participant info directly!
-    if (userProfile && (userProfile.username.includes('Discord Oyuncusu') || userProfile.username.startsWith('DiscordPlayer_'))) {
-      if (discordUserData) {
-        if (discordUserData.global_name || discordUserData.username) {
-          userProfile.username = (discordUserData.global_name || discordUserData.username)!.trim();
-        }
-        if (discordUserData.avatar && discordUserData.id) {
-          const ext = discordUserData.avatar.startsWith('a_') ? 'gif' : 'png';
-          userProfile.avatarUrl = `https://cdn.discordapp.com/avatars/${discordUserData.id}/${discordUserData.avatar}.${ext}?size=256`;
+    // 6. Once authenticated, we can safely query connected participants
+    try {
+      const participantsRes = await withTimeout(
+        discordSdk.commands.getInstanceConnectedParticipants(),
+        3000,
+        'Participants fetch timeout'
+      );
+      if (participantsRes?.participants && participantsRes.participants.length > 0 && userProfile) {
+        const p = participantsRes.participants[0];
+        if (p && (userProfile.username.includes('Discord Oyuncusu') || userProfile.username.startsWith('DiscordPlayer_'))) {
+          const realName = (p.global_name || p.nickname || p.username || '').trim();
+          if (realName) {
+            userProfile.username = realName;
+          }
+          if (p.avatar) {
+            const ext = p.avatar.startsWith('a_') ? 'gif' : 'png';
+            userProfile.avatarUrl = `https://cdn.discordapp.com/avatars/${p.id}/${p.avatar}.${ext}?size=256`;
+          }
         }
       }
+    } catch (pErr) {
+      // Ignored if not yet authenticated
     }
 
     if (!userProfile) {
