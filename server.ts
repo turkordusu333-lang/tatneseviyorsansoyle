@@ -2123,6 +2123,19 @@ async function startServer() {
     });
   });
 
+  app.get('/api/discord/debug', (req, res) => {
+    const sec = process.env.DISCORD_CLIENT_SECRET || 'IYFctmJHTg3do4zubdKYv1lmTvpGM4i_';
+    res.json({
+      clientId: process.env.DISCORD_CLIENT_ID || '1551722975013773412',
+      hasSecret: !!sec,
+      secretPrefix: sec ? `${sec.substring(0, 4)}...${sec.slice(-4)}` : 'none',
+      lastAuthError: (global as any).lastDiscordAuthError || 'none',
+      lastDiscordUser: (global as any).lastDiscordUser || null,
+      lastAuthTime: (global as any).lastDiscordAuthTime || null,
+      lastCodeReceived: (global as any).lastDiscordCode ? 'present' : 'none',
+    });
+  });
+
   app.post('/api/discord/token', async (req, res) => {
     try {
       const { code, channelId, guildId, participantUser } = req.body;
@@ -2132,6 +2145,9 @@ async function startServer() {
       let discordUser: any = null;
       let accessToken = '';
       let lastAuthError = '';
+
+      (global as any).lastDiscordCode = !!code;
+      (global as any).lastDiscordAuthTime = new Date().toISOString();
 
       if (clientId && clientSecret && code) {
         try {
@@ -2158,14 +2174,23 @@ async function startServer() {
 
             if (userResponse.ok) {
               discordUser = await userResponse.json();
+              (global as any).lastDiscordUser = {
+                id: discordUser.id,
+                username: discordUser.username,
+                global_name: discordUser.global_name,
+                avatar: discordUser.avatar,
+              };
+              (global as any).lastDiscordAuthError = null;
               console.log('[Discord Auth] Received user from @me:', discordUser?.username, discordUser?.id);
             }
           } else {
             lastAuthError = await tokenResponse.text();
+            (global as any).lastDiscordAuthError = `${tokenResponse.status}: ${lastAuthError}`;
             console.error('[Discord Auth] Discord OAuth token exchange failed:', tokenResponse.status, lastAuthError);
           }
         } catch (authFetchErr: any) {
           lastAuthError = authFetchErr?.message || String(authFetchErr);
+          (global as any).lastDiscordAuthError = `Fetch error: ${lastAuthError}`;
           console.error('[Discord Auth] Failed contacting Discord API:', authFetchErr);
         }
       }
