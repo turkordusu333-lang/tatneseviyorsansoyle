@@ -4595,6 +4595,22 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
     }
   }, [roomId, isOffline, reconnectTrigger]);
 
+  // Synchronize profile changes (like Discord profile resolution) to the active room
+  React.useEffect(() => {
+    if (isOffline) return;
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN && profile) {
+      if (profile.username && profile.username !== 'Discord Oyuncusu') {
+        socketRef.current.send(JSON.stringify({
+          type: 'sync_player_profile',
+          userId: profile.id,
+          roomId,
+          username: profile.username,
+          avatarUrl: profile.avatarUrl,
+        }));
+      }
+    }
+  }, [profile?.username, profile?.avatarUrl, roomId, isOffline]);
+
   // Listen for online status and tab visibility to trigger instant reconnect
   React.useEffect(() => {
     if (isOffline) return;

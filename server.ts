@@ -2125,9 +2125,9 @@ async function startServer() {
 
   app.post('/api/discord/token', async (req, res) => {
     try {
-      const { code, channelId, guildId } = req.body;
-      const clientId = process.env.DISCORD_CLIENT_ID;
-      const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+      const { code, channelId, guildId, participantUser } = req.body;
+      const clientId = process.env.DISCORD_CLIENT_ID || '1551722975013773412';
+      const clientSecret = process.env.DISCORD_CLIENT_SECRET || '99eMYm5JLe8_ENkWdy6MCDsizbafgSFD';
 
       let discordUser: any = null;
       let accessToken = '';
@@ -2157,6 +2157,7 @@ async function startServer() {
 
             if (userResponse.ok) {
               discordUser = await userResponse.json();
+              console.log('[Discord Auth] Received user from @me:', discordUser?.username, discordUser?.id);
             }
           } else {
             const errTxt = await tokenResponse.text();
@@ -2165,6 +2166,12 @@ async function startServer() {
         } catch (authFetchErr) {
           console.error('[Discord Auth] Failed contacting Discord API:', authFetchErr);
         }
+      }
+
+      // If backend token exchange didn't yield user, fallback to participant info provided by SDK
+      if (!discordUser && participantUser && (participantUser.username || participantUser.global_name)) {
+        console.log('[Discord Auth] Falling back to SDK participantUser:', participantUser);
+        discordUser = participantUser;
       }
 
       // Fallback guest Discord profile if no credentials or test mode
@@ -3317,12 +3324,17 @@ async function startServer() {
                 assignedTeam = blueCount <= redCount ? 'team_blue' : 'team_red';
               }
 
+              const effectiveUsername = (payload.username && payload.username !== 'Discord Oyuncusu')
+                ? payload.username
+                : user.username;
+              const effectiveAvatarUrl = payload.avatarUrl || user.avatarUrl;
+
               match.players.push({
                 id: userId,
-                username: user.username,
+                username: effectiveUsername,
                 country: user.country || 'TR',
                 avatarId: user.avatarId,
-                avatarUrl: user.avatarUrl,
+                avatarUrl: effectiveAvatarUrl,
                 profileFrame: user.settings.profileFrame || 'frame_none',
                 playerBoard: user.settings.playerBoard || 'board_classic',
                 cardBack: user.settings.cardBack || 'back_classic',
@@ -3336,18 +3348,24 @@ async function startServer() {
               });
               match.logs.push({
                 id: `join-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                message: `${user.username} odaya katıldı.${assignedTeam ? ` (${assignedTeam === 'team_blue' ? '🔵 Mavi Takım' : '🔴 Kırmızı Takım'})` : ''}`,
+                message: `${effectiveUsername} odaya katıldı.${assignedTeam ? ` (${assignedTeam === 'team_blue' ? '🔵 Mavi Takım' : '🔴 Kırmızı Takım'})` : ''}`,
                 timestamp: Date.now(),
               });
             } else {
               // Reconnecting / updating equipped items!
               existingPlayer.isDisconnected = false;
-              if (user.username) {
+              if (payload.username && payload.username !== 'Discord Oyuncusu') {
+                existingPlayer.username = payload.username;
+              } else if (user.username) {
                 existingPlayer.username = user.username;
+              }
+              if (payload.avatarUrl) {
+                existingPlayer.avatarUrl = payload.avatarUrl;
+              } else if (user.avatarUrl) {
+                existingPlayer.avatarUrl = user.avatarUrl;
               }
               existingPlayer.country = user.country || 'TR';
               existingPlayer.avatarId = user.avatarId;
-              existingPlayer.avatarUrl = user.avatarUrl;
               existingPlayer.profileFrame = user.settings.profileFrame || 'frame_none';
               existingPlayer.playerBoard = user.settings.playerBoard || 'board_classic';
               existingPlayer.cardBack = user.settings.cardBack || 'back_classic';
@@ -3357,13 +3375,13 @@ async function startServer() {
               if (match.status === 'lobby') {
                 match.logs.push({
                   id: `join-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                  message: `${user.username} odaya katıldı.`,
+                  message: `${existingPlayer.username} odaya katıldı.`,
                   timestamp: Date.now(),
                 });
               } else {
                 match.logs.push({
                   id: `reconnect-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                  message: `${user.username} oyuna geri döndü. Kontrolü devraldı!`,
+                  message: `${existingPlayer.username} oyuna geri döndü. Kontrolü devraldı!`,
                   timestamp: Date.now(),
                 });
               }
@@ -3380,6 +3398,25 @@ async function startServer() {
               if (allHumansConnected) {
                 startMatchGame(match);
               }
+            }
+            break;
+          }
+
+          case 'sync_player_profile': {
+            const match = activeMatches[roomId];
+            if (!match) break;
+            const player = match.players.find((p) => p.id === userId);
+            if (player) {
+              if (payload.username && payload.username !== 'Discord Oyuncusu') {
+                player.username = payload.username;
+              }
+              if (payload.avatarUrl) {
+                player.avatarUrl = payload.avatarUrl;
+              }
+              broadcastToRoom(roomId, {
+                type: 'room_update',
+                matchState: match,
+              });
             }
             break;
           }
