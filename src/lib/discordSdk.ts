@@ -49,6 +49,16 @@ export function getDiscordChannelRoomId(channelId?: string | null): string | nul
 }
 
 /**
+ * Helper to race any promise with a timeout
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(errorMessage)), ms)),
+  ]);
+}
+
+/**
  * Initializes Discord Embedded App SDK, authenticates with Discord,
  * and fetches/synchronizes the UserProfile with the backend.
  */
@@ -60,70 +70,131 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
   try {
     console.log('[Discord SDK] Initializing Discord Activity session...');
 
-    // 1. Fetch public Discord Client ID from backend
+    // 1. Resolve Discord Client ID (env first, then config API)
     const apiBase = getApiBaseUrl();
-    let clientId = '';
-    try {
-      const configRes = await fetch(`${apiBase}/api/discord/config`);
-      if (configRes.ok) {
-        const configData = await configRes.json();
-        clientId = configData.clientId || '';
+    let clientId = (import.meta as any).env?.VITE_DISCORD_CLIENT_ID || '1551722975013773412';
+
+    if (!clientId) {
+      try {
+        const configRes = await withTimeout(fetch(`${apiBase}/api/discord/config`), 2000, 'Config fetch timeout');
+        if (configRes.ok) {
+          const configData = await configRes.json();
+          if (configData.clientId) {
+            clientId = configData.clientId;
+          }
+        }
+      } catch (e) {
+        console.warn('[Discord SDK] Config fetch fallback:', e);
       }
-    } catch (e) {
-      console.warn('[Discord SDK] Could not fetch discord config from backend:', e);
     }
-
-    // Fallback client ID from environment or URL search params if present
-    if (!clientId) {
-      const urlParams = new URLSearchParams(window.location.search);
-      clientId = urlParams.get('client_id') || (import.meta as any).env?.VITE_DISCORD_CLIENT_ID || '';
-    }
-
-    if (!clientId) {
-      console.warn('[Discord SDK] No Discord Client ID configured on server or client.');
-      return null;
-    }
-
-    // With Root Mapping configured in Developer Portal, all relative requests map automatically.
 
     // 2. Instantiate Discord SDK
     const discordSdk = new DiscordSDK(clientId);
     discordSdkInstance = discordSdk;
 
-    await discordSdk.ready();
-    console.log('[Discord SDK] Discord client is ready. Channel:', discordSdk.channelId, 'Guild:', discordSdk.guildId);
-
-    // 3. Authorize via Discord OAuth2
-    const { code } = await discordSdk.commands.authorize({
-      client_id: clientId,
-      response_type: 'code',
-      state: '',
-      prompt: 'none',
-      scope: ['identify', 'guilds'],
-    });
-
-    // 4. Exchange code on backend for access_token & authenticated profile
-    const tokenRes = await fetch(`${apiBase}/api/discord/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        code,
-        channelId: discordSdk.channelId,
-        guildId: discordSdk.guildId,
-      }),
-    });
-
-    if (!tokenRes.ok) {
-      const errorText = await tokenRes.text();
-      throw new Error(`Backend token exchange failed: ${errorText}`);
+    // Ready handshake with Discord client (max 3.5s)
+    try {
+      await withTimeout(discordSdk.ready(), 3500, 'Discord ready() timeout');
+      console.log('[Discord SDK] Ready! Channel:', discordSdk.channelId, 'Guild:', discordSdk.guildId);
+    } catch (readyErr) {
+      console.warn('[Discord SDK] ready() timed out or failed, continuing in fallback mode:', readyErr);
     }
 
-    const { access_token, userProfile } = await tokenRes.json();
+    let code = '';
+    // 3. Authorize via Discord OAuth2 (max 5s)
+    try {
+      const authResult = await withTimeout(
+        discordSdk.commands.authorize({
+          client_id: clientId,
+          response_type: 'code',
+          state: '',
+          prompt: 'none',
+          scope: ['identify', 'guilds'],
+        }),
+        5000,
+        'Authorize timeout'
+      );
+      code = authResult.code;
+    } catch (authErr) {
+      console.warn('[Discord SDK] Authorize skipped or failed, proceeding with guest session:', authErr);
+    }
 
-    // 5. Authenticate with Discord Client
-    if (access_token) {
-      await discordSdk.commands.authenticate({ access_token });
-      console.log('[Discord SDK] Discord authentication completed successfully!');
+    // 4. Exchange code or create session on backend
+    let userProfile: UserProfile | null = null;
+    let accessToken = '';
+
+    try {
+      const tokenRes = await withTimeout(
+        fetch(`${apiBase}/api/discord/token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            code: code || undefined,
+            channelId: discordSdk.channelId,
+            guildId: discordSdk.guildId,
+          }),
+        }),
+        4000,
+        'Backend token exchange timeout'
+      );
+
+      if (tokenRes.ok) {
+        const data = await tokenRes.json();
+        userProfile = data.userProfile;
+        accessToken = data.access_token;
+      }
+    } catch (backendErr) {
+      console.warn('[Discord SDK] Backend sync failed, using local profile fallback:', backendErr);
+    }
+
+    // 5. Authenticate with Discord Client if token available
+    if (accessToken) {
+      try {
+        await withTimeout(discordSdk.commands.authenticate({ access_token: accessToken }), 3000, 'Authenticate timeout');
+        console.log('[Discord SDK] Authenticated successfully with Discord Client!');
+      } catch (authClientErr) {
+        console.warn('[Discord SDK] authenticate command ignored:', authClientErr);
+      }
+    }
+
+    if (!userProfile) {
+      // Create guest Discord profile if backend was unreachable
+      const randomId = Math.floor(Math.random() * 9000 + 1000);
+      userProfile = {
+        id: `user-dc-${randomId}`,
+        username: `Discord Oyuncusu #${randomId}`,
+        coins: 1000,
+        level: 1,
+        xp: 0,
+        avatarId: 'avatar_classic',
+        friends: [],
+        stats: {
+          gamesPlayed: 0,
+          gamesWon: 0,
+          gamesLost: 0,
+          winRate: 0,
+          totalRentCollected: 0,
+          totalCardsStolen: 0,
+          totalSetsCompleted: 0,
+          totalMoneyBanked: 0,
+        },
+        unlockedItems: ['avatar_classic', 'back_classic', 'theme_slate', 'frame_none', 'sound_classic'],
+        settings: {
+          soundVolume: 70,
+          soundPitch: 1.0,
+          synthType: 'sine',
+          cardBack: 'back_classic',
+          boardTheme: 'theme_slate',
+          avatarId: 'avatar_classic',
+          clothesId: 'clothes_classic',
+          profileFrame: 'frame_none',
+          celebrationSound: 'sound_classic',
+          language: 'tr',
+        },
+        achievements: [],
+        dailyQuests: [],
+        gamesHistory: [],
+      };
     }
 
     activeSession = {
@@ -136,7 +207,7 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
 
     return activeSession;
   } catch (error) {
-    console.error('[Discord SDK] Failed to initialize Discord Activity:', error);
+    console.error('[Discord SDK] Unexpected error in initializeDiscordActivity:', error);
     return null;
   }
 }

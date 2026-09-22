@@ -123,7 +123,7 @@ export default function App() {
     initializeDiscordActivity()
       .then((session) => {
         if (!isMounted) return;
-        if (session) {
+        if (session && session.userProfile) {
           setDiscordSession(session);
           setProfile(session.userProfile);
           setIsOfflineMode(false);
@@ -137,10 +137,15 @@ export default function App() {
               setCurrentRoom({ roomId: dcRoomId, isOffline: false });
             }
           }
+        } else {
+          const fallbackUser = getOrCreateLocalProfile('Discord Oyuncusu');
+          setProfile(fallbackUser);
         }
       })
       .catch((err) => {
         console.error('[Discord SDK] Error during activity initialization:', err);
+        const fallbackUser = getOrCreateLocalProfile('Discord Oyuncusu');
+        setProfile(fallbackUser);
       })
       .finally(() => {
         if (isMounted) {
@@ -398,7 +403,7 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2500);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const response = await fetch(`${API_BASE_URL}/api/auth`, {
         method: 'POST',
@@ -451,7 +456,7 @@ export default function App() {
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
 
       const response = await fetch(`${API_BASE_URL}/api/auth`, {
         method: 'POST',
@@ -603,7 +608,19 @@ export default function App() {
             ? 'Synchronizing your Discord profile and session arena.'
             : 'Discord profiliniz ve ses kanalı oturumunuz senkronize ediliyor.'}
         </p>
-        <div className="w-8 h-8 border-4 border-t-transparent border-[#5865F2] rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-t-transparent border-[#5865F2] rounded-full animate-spin mb-6" />
+
+        <button
+          type="button"
+          onClick={() => {
+            const guest = getOrCreateLocalProfile('Discord Oyuncusu');
+            setProfile(guest);
+            setIsDiscordConnecting(false);
+          }}
+          className="px-5 py-2.5 bg-white/10 hover:bg-white/20 text-xs font-bold text-zinc-300 hover:text-white rounded-xl transition-all cursor-pointer shadow-sm active:scale-95"
+        >
+          {isEn ? '⚡ Enter Game Now' : '⚡ Hemen Masaya Gir'}
+        </button>
       </div>
     );
   }

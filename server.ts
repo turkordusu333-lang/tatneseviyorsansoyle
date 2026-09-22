@@ -272,8 +272,17 @@ function handleSupabaseError(error: any, context: string) {
   }
 }
 
+// In-memory cache for fast user lookup
+let cachedUsers: Record<string, UserProfile> | null = null;
+let lastUsersLoadTime = 0;
+const USERS_CACHE_TTL = 8000; // 8 seconds cache for instant auth response
+
 // Helper to load/save users
 async function loadUsers(): Promise<Record<string, UserProfile>> {
+  if (cachedUsers && (Date.now() - lastUsersLoadTime < USERS_CACHE_TTL)) {
+    return cachedUsers;
+  }
+
   let users: Record<string, UserProfile> = {};
   let loadedFromSupabase = false;
 
@@ -420,6 +429,8 @@ async function loadUsers(): Promise<Record<string, UserProfile>> {
     await saveUsers(users);
   }
 
+  cachedUsers = users;
+  lastUsersLoadTime = Date.now();
   return users;
 }
 
@@ -427,6 +438,9 @@ async function loadUsers(): Promise<Record<string, UserProfile>> {
 let userSaveQueue: Promise<void> = Promise.resolve();
 
 async function saveUsers(users: Record<string, UserProfile>): Promise<void> {
+  cachedUsers = users;
+  lastUsersLoadTime = Date.now();
+
   userSaveQueue = userSaveQueue.then(async () => {
     // 1. Atomic async write to local backup file using a temporary file first
     const payload = JSON.stringify(users, null, 2);
