@@ -2213,39 +2213,46 @@ async function startServer() {
       }
 
       const users = await loadUsers();
-      const displayName = (discordUser.global_name || discordUser.username || 'Discord Oyuncusu').trim();
+      const displayName = (discordUser.global_name || discordUser.username || '').trim();
       const isAnimated = typeof discordUser.avatar === 'string' && discordUser.avatar.startsWith('a_');
       let avatarUrl = '';
-      if (discordUser.avatar) {
+      if (discordUser.avatar && discordUser.id) {
         avatarUrl = `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.${isAnimated ? 'gif' : 'png'}?size=256`;
-      } else {
+      } else if (discordUser.id) {
         try {
-          const defaultIndex = discordUser.id ? Math.abs(Number((BigInt(discordUser.id) >> 22n) % 6n)) : 0;
+          const defaultIndex = Math.abs(Number((BigInt(discordUser.id) >> 22n) % 6n));
           avatarUrl = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
         } catch {
           avatarUrl = `https://cdn.discordapp.com/embed/avatars/0.png`;
         }
       }
 
-      // Find user by discordId or matching username
-      let user = Object.values(users).find(
-        (u) => (u.discordId && u.discordId === discordUser.id) ||
-               u.username.toLowerCase() === displayName.toLowerCase()
-      );
+      // 1. Is this a REAL Discord user with a valid snowflake ID?
+      const isRealDiscordUser = discordUser.id && !String(discordUser.id).startsWith('dc-');
+      let user: UserProfile | undefined = undefined;
 
-      if (user) {
+      if (isRealDiscordUser) {
+        // Find existing user ONLY by their exact discordId or user-dc-[discordId]
+        user = Object.values(users).find(
+          (u) => (u.discordId && u.discordId === discordUser.id) || u.id === `user-dc-${discordUser.id}`
+        );
+      }
+
+      if (user && isRealDiscordUser) {
         user.discordId = discordUser.id;
-        if (displayName && displayName !== 'Discord Oyuncusu') {
+        if (displayName) {
           user.username = displayName;
         }
-        user.avatarUrl = avatarUrl;
+        if (avatarUrl) {
+          user.avatarUrl = avatarUrl;
+        }
         users[user.id] = user;
         await saveUsers(users);
-      } else {
-        const newId = `user-dc-${discordUser.id || Math.random().toString(36).substr(2, 9)}`;
+      } else if (isRealDiscordUser) {
+        const newId = `user-dc-${discordUser.id}`;
         user = {
           id: newId,
-          username: displayName,
+          username: displayName || `Discord_${discordUser.id.slice(-4)}`,
           discordId: discordUser.id,
           country: 'TR',
           coins: 1000,
@@ -2278,10 +2285,7 @@ async function startServer() {
             language: 'tr',
           },
           unlockedItems: ['avatar_classic', 'back_classic', 'theme_slate', 'frame_none', 'sound_classic', 'board_classic'],
-          friends: [
-            { id: 'bot-memo', username: 'Bot Memo', status: 'online', avatarId: 'avatar_skater' },
-            { id: 'bot-can', username: 'Bot Can', status: 'offline', avatarId: 'avatar_classic' },
-          ],
+          friends: [],
           achievements: (globalAchievements || []).map((a: any) => ({
             id: a.id,
             title: a.title,
@@ -2306,6 +2310,52 @@ async function startServer() {
           gamesHistory: [],
         };
         users[newId] = user;
+        await saveUsers(users);
+      } else {
+        // GUEST / UNVERIFIED USER: ALWAYS generate a completely UNIQUE guest profile!
+        // NEVER share guest profiles between different players!
+        const guestRandom = Math.floor(1000 + Math.random() * 9000);
+        const guestId = `user-guest-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        user = {
+          id: guestId,
+          username: `Oyuncu_${guestRandom}`,
+          country: 'TR',
+          coins: 1000,
+          level: 1,
+          xp: 0,
+          rankPoints: 0,
+          avatarId: 'avatar_classic',
+          avatarUrl: `https://cdn.discordapp.com/embed/avatars/${guestRandom % 5}.png`,
+          stats: {
+            gamesPlayed: 0,
+            gamesWon: 0,
+            gamesLost: 0,
+            winRate: 0,
+            totalRentCollected: 0,
+            totalCardsStolen: 0,
+            totalSetsCompleted: 0,
+            totalMoneyBanked: 0,
+          },
+          settings: {
+            soundVolume: 70,
+            soundPitch: 1.0,
+            synthType: 'sine',
+            cardBack: 'back_classic',
+            boardTheme: 'theme_slate',
+            avatarId: 'avatar_classic',
+            clothesId: 'clothes_none',
+            profileFrame: 'frame_none',
+            celebrationSound: 'sound_classic',
+            playerBoard: 'board_classic',
+            language: 'tr',
+          },
+          unlockedItems: ['avatar_classic', 'back_classic', 'theme_slate', 'frame_none', 'sound_classic', 'board_classic'],
+          friends: [],
+          achievements: [],
+          dailyQuests: [],
+          gamesHistory: [],
+        };
+        users[guestId] = user;
         await saveUsers(users);
       }
 
