@@ -3343,7 +3343,14 @@ async function startServer() {
             clients[clientId] = { ...(clients[clientId] || { ws, userId }), roomId };
 
             // Join if not already in
-            const existingPlayer = match.players.find((p) => p.id === userId);
+            let existingPlayer = match.players.find((p) => p.id === userId);
+            if (!existingPlayer && roomId.startsWith('dc_room_') && match.status === 'lobby') {
+              const placeholderPlayer = match.players.find(p => p.username === 'Discord Oyuncusu' || p.username.startsWith('DiscordPlayer_'));
+              if (placeholderPlayer) {
+                placeholderPlayer.id = userId;
+                existingPlayer = placeholderPlayer;
+              }
+            }
             if (!existingPlayer) {
               let assignedTeam: 'team_blue' | 'team_red' | undefined = undefined;
               if (match.settings?.gameMode === '2v2_team') {

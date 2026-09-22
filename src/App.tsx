@@ -134,7 +134,11 @@ export default function App() {
           if (session.channelId) {
             const dcRoomId = getDiscordChannelRoomId(session.channelId);
             if (dcRoomId) {
-              setCurrentRoom({ roomId: dcRoomId, isOffline: false });
+              setTimeout(() => {
+                if (isMounted) {
+                  setCurrentRoom({ roomId: dcRoomId, isOffline: false });
+                }
+              }, 80);
             }
           }
         } else {
