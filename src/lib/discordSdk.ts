@@ -101,22 +101,41 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
     }
 
     let code = '';
-    // 3. Authorize via Discord OAuth2 (max 5s)
+    // 3. Authorize via Discord OAuth2
     try {
-      const authResult = await withTimeout(
+      // Step 3a: Try silent authorization first (quick check if already consented)
+      const silentAuth = await withTimeout(
         discordSdk.commands.authorize({
           client_id: clientId,
           response_type: 'code',
           state: '',
           prompt: 'none',
-          scope: ['identify', 'guilds'],
+          scope: ['identify'],
         }),
-        5000,
-        'Authorize timeout'
+        2500,
+        'Silent authorize timeout'
       );
-      code = authResult.code;
-    } catch (authErr) {
-      console.warn('[Discord SDK] Authorize skipped or failed, proceeding with guest session:', authErr);
+      code = silentAuth.code;
+      console.log('[Discord SDK] Silent authorization successful!');
+    } catch (silentErr) {
+      console.log('[Discord SDK] Silent auth not available, requesting authorization modal...');
+      try {
+        // Step 3b: If not previously authorized, open Discord OAuth consent modal
+        const promptAuth = await withTimeout(
+          discordSdk.commands.authorize({
+            client_id: clientId,
+            response_type: 'code',
+            state: '',
+            scope: ['identify'],
+          }),
+          45000,
+          'User authorize modal timeout or cancelled'
+        );
+        code = promptAuth.code;
+        console.log('[Discord SDK] User modal authorization successful!');
+      } catch (modalErr) {
+        console.warn('[Discord SDK] Authorization modal skipped or rejected:', modalErr);
+      }
     }
 
     // 4. Exchange code or create session on backend
@@ -134,7 +153,7 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
             guildId: discordSdk.guildId,
           }),
         }),
-        4000,
+        8000,
         'Backend token exchange timeout'
       );
 
@@ -150,10 +169,27 @@ export async function initializeDiscordActivity(): Promise<DiscordSession | null
     // 5. Authenticate with Discord Client if token available
     if (accessToken) {
       try {
-        await withTimeout(discordSdk.commands.authenticate({ access_token: accessToken }), 3000, 'Authenticate timeout');
-        console.log('[Discord SDK] Authenticated successfully with Discord Client!');
+        const authClientRes = await withTimeout(
+          discordSdk.commands.authenticate({ access_token: accessToken }),
+          5000,
+          'Authenticate timeout'
+        );
+        console.log('[Discord SDK] Authenticated successfully with Discord Client!', authClientRes);
+        
+        // Ensure user profile contains real Discord username and avatar
+        if (authClientRes?.user && userProfile) {
+          const authUser = authClientRes.user;
+          const realName = (authUser.global_name || authUser.username || '').trim();
+          if (realName) {
+            userProfile.username = realName;
+          }
+          if (authUser.avatar) {
+            const ext = authUser.avatar.startsWith('a_') ? 'gif' : 'png';
+            userProfile.avatarUrl = `https://cdn.discordapp.com/avatars/${authUser.id}/${authUser.avatar}.${ext}?size=256`;
+          }
+        }
       } catch (authClientErr) {
-        console.warn('[Discord SDK] authenticate command ignored:', authClientErr);
+        console.warn('[Discord SDK] authenticate command warning:', authClientErr);
       }
     }
 

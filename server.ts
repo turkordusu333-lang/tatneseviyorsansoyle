@@ -2180,9 +2180,18 @@ async function startServer() {
 
       const users = await loadUsers();
       const displayName = (discordUser.global_name || discordUser.username || 'Discord Oyuncusu').trim();
-      const avatarUrl = discordUser.avatar
-        ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
-        : `https://cdn.discordapp.com/embed/avatars/${parseInt(String(discordUser.id).slice(-2) || '0', 10) % 5}.png`;
+      const isAnimated = typeof discordUser.avatar === 'string' && discordUser.avatar.startsWith('a_');
+      let avatarUrl = '';
+      if (discordUser.avatar) {
+        avatarUrl = `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.${isAnimated ? 'gif' : 'png'}?size=256`;
+      } else {
+        try {
+          const defaultIndex = discordUser.id ? Math.abs(Number((BigInt(discordUser.id) >> 22n) % 6n)) : 0;
+          avatarUrl = `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+        } catch {
+          avatarUrl = `https://cdn.discordapp.com/embed/avatars/0.png`;
+        }
+      }
 
       // Find user by discordId or matching username
       let user = Object.values(users).find(
@@ -2192,9 +2201,10 @@ async function startServer() {
 
       if (user) {
         user.discordId = discordUser.id;
-        if (discordUser.avatar) {
-          user.avatarUrl = avatarUrl;
+        if (displayName && displayName !== 'Discord Oyuncusu') {
+          user.username = displayName;
         }
+        user.avatarUrl = avatarUrl;
         users[user.id] = user;
         await saveUsers(users);
       } else {
@@ -3225,6 +3235,20 @@ async function startServer() {
               };
               users[userId] = user;
               await saveUsers(users);
+            } else {
+              let changed = false;
+              if (payload.username && payload.username !== 'Discord Oyuncusu' && (user.username === 'Discord Oyuncusu' || user.username.startsWith('DiscordPlayer_'))) {
+                user.username = payload.username;
+                changed = true;
+              }
+              if (payload.avatarUrl && (!user.avatarUrl || user.avatarUrl.includes('embed/avatars'))) {
+                user.avatarUrl = payload.avatarUrl;
+                changed = true;
+              }
+              if (changed) {
+                users[userId] = user;
+                await saveUsers(users);
+              }
             }
 
             const roomPassword = payload.password; // Optional password passed from client
@@ -3318,6 +3342,9 @@ async function startServer() {
             } else {
               // Reconnecting / updating equipped items!
               existingPlayer.isDisconnected = false;
+              if (user.username) {
+                existingPlayer.username = user.username;
+              }
               existingPlayer.country = user.country || 'TR';
               existingPlayer.avatarId = user.avatarId;
               existingPlayer.avatarUrl = user.avatarUrl;
