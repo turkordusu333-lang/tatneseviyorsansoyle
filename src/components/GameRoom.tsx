@@ -16,6 +16,7 @@ import { getCountryByCode } from '../lib/countryData';
 import { HlsVideoPlayer, isVideoUrl } from './HlsVideoPlayer';
 import { StartingTurnRouletteOverlay } from './StartingTurnRouletteOverlay';
 import { advanceOfflineTournamentMatch } from '../lib/offlineManager';
+import { isDiscordEmbedded } from '../lib/discordSdk';
 
 interface Props {
   roomId: string;
@@ -2292,19 +2293,21 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
   };
 
   // Layout & Adaptive Mobile States
+  const isDiscord = React.useMemo(() => isDiscordEmbedded(), []);
+  const isMobile = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
   const handScrollRef = React.useRef<HTMLDivElement>(null);
   const [isHandExpanded, setIsHandExpanded] = React.useState(true);
-  const [showChatPanel, setShowChatPanel] = React.useState(true);
+  const [showChatPanel, setShowChatPanel] = React.useState(!isDiscord && !isMobile);
   const [showChatOverlay, setShowChatOverlay] = React.useState(false);
-  const { isCompactLayout, setIsCompactLayout, toggleCompactLayout, getDynamicSetDimensions } = useCompactLayout();
+  const { isCompactLayout, setIsCompactLayout, toggleCompactLayout, getDynamicSetDimensions } = useCompactLayout(isDiscord || isMobile);
   const [timeLeft, setTimeLeft] = React.useState(30);
   const [actionTimeLeft, setActionTimeLeft] = React.useState<number | null>(null);
   const [managedSetColor, setManagedSetColor] = React.useState<CardColor | null>(null);
   const [buildingTooltipColor, setBuildingTooltipColor] = React.useState<CardColor | null>(null);
-  const [isOpponentsGrid, setIsOpponentsGrid] = React.useState(false);
-  const [hideOwnBoard, setHideOwnBoard] = React.useState(false);
+  const [isOpponentsGrid, setIsOpponentsGrid] = React.useState(isMobile);
+  const [hideOwnBoard, setHideOwnBoard] = React.useState(isDiscord);
   const [showDiscardModal, setShowDiscardModal] = React.useState(false);
-  const [isArenaCollapsed, setIsArenaCollapsed] = React.useState(false);
+  const [isArenaCollapsed, setIsArenaCollapsed] = React.useState(isDiscord);
 
   React.useEffect(() => {
     if (onArenaCollapseChange) {
@@ -8940,7 +8943,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
       {/* ACTIVE PLAYING STATE */}
       {match.status === 'playing' && (
-        <div className={`flex-1 flex flex-col justify-between min-h-0 relative z-10 transition-all duration-300 ${showChatPanel ? 'lg:pr-80' : ''}`}>
+        <div className={`flex-1 flex flex-col justify-between min-h-0 relative z-10 transition-all duration-300 overflow-y-auto overflow-x-hidden scrollbar-thin ${showChatPanel ? 'lg:pr-80' : ''}`}>
 
           {/* 1. Opponents & My Profile Carousel Row at the top */}
           <div className="px-3 pt-2 flex-shrink-0">
@@ -9056,10 +9059,12 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               const visiblePlayers = match.players.filter((p) => !(hideOwnBoard && p.id === profile.id));
               const count = visiblePlayers.length;
 
-              // Oyuncu masaları: Yan yana 2'şerli olarak alt alta sıralanan 2 sütunlu ızgara
-              const arenaLayoutClass = count === 1
-                ? "grid grid-cols-1 max-w-xs sm:max-w-sm mx-auto pb-1 w-full"
-                : "grid grid-cols-2 max-w-4xl mx-auto gap-2 pb-1 w-full";
+              // Oyuncu masaları: Izgara veya Yatay Kaydırma
+              const arenaLayoutClass = isOpponentsGrid
+                ? (count === 1
+                  ? "grid grid-cols-1 max-w-xs sm:max-w-sm mx-auto pb-1 w-full"
+                  : "grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(170px,1fr))] max-w-5xl mx-auto gap-1.5 sm:gap-2 pb-1 w-full")
+                : "flex items-stretch overflow-x-auto gap-2 pb-1.5 w-full scrollbar-thin snap-x px-0.5";
 
               return (
                 <div className={arenaLayoutClass}>
@@ -9135,7 +9140,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                             setShowOpponentAssetsModal(true);
                           }
                         }}
-                        className={`w-full p-2 sm:p-2.5 rounded-xl border backdrop-blur-xl transition-all cursor-pointer relative overflow-hidden select-none shrink-0 ${bStyle.bgClass} ${bStyle.textClass || 'text-slate-200'} ${playerVisualStates[p.id]?.type === 'card_gain'
+                        className={`${isOpponentsGrid ? 'w-full' : 'min-w-[165px] sm:min-w-[195px] max-w-[220px] flex-shrink-0 snap-start'} p-2 sm:p-2.5 rounded-xl border backdrop-blur-xl transition-all cursor-pointer relative overflow-hidden select-none shrink-0 ${bStyle.bgClass} ${bStyle.textClass || 'text-slate-200'} ${playerVisualStates[p.id]?.type === 'card_gain'
                           ? 'border-cyan-400 ring-2 ring-cyan-500 shadow-[0_0_25px_rgba(34,211,238,0.8)] scale-[1.03] z-20'
                           : playerVisualStates[p.id]?.type === 'deal_breaker_target'
                             ? 'border-fuchsia-500 ring-2 ring-fuchsia-600 shadow-[0_0_30px_rgba(217,70,239,0.9)] scale-[1.03] z-20'
@@ -9678,7 +9683,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
           </div>
 
           {/* 2. Middle area: My Properties Collection */}
-          <div className="flex-1 min-h-0 flex flex-col justify-start px-2 sm:px-3 pt-0.5 pb-0.5 transition-all">
+          <div className="flex-1 min-h-[160px] sm:min-h-[190px] flex flex-col justify-start px-2 sm:px-3 pt-0.5 pb-0.5 transition-all">
 
             {/* BENİM VARLIKLARIM (My Assets - Full-Width Modern Luxury Board) */}
             {(() => {
@@ -9693,7 +9698,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
 
               return (
                 <div
-                  className={`border rounded-2xl flex flex-col flex-1 min-h-0 transition-all shadow-2xl backdrop-blur-xl relative overflow-hidden ${isCompactLayout ? 'p-1 sm:p-1.5' : 'p-1 sm:p-1.5'} ${myBoardStyle.bgClass} ${myBoardStyle.borderClass} ${myBoardStyle.glowClass}`}
+                  className={`border rounded-2xl flex flex-col flex-1 min-h-[145px] transition-all shadow-2xl backdrop-blur-xl relative overflow-hidden ${isCompactLayout ? 'p-1 sm:p-1.5' : 'p-1 sm:p-1.5'} ${myBoardStyle.bgClass} ${myBoardStyle.borderClass} ${myBoardStyle.glowClass}`}
                   style={{
                     background: myBoardItem?.gradientStart && myBoardItem?.gradientEnd
                       ? `linear-gradient(135deg, ${myBoardItem.gradientStart}, ${myBoardItem.gradientEnd})`
@@ -9930,7 +9935,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         }
                       }}
                       className={(() => {
-                        return `w-full flex-1 min-h-0 overflow-y-auto scrollbar-thin rounded-2xl transition-all grid grid-cols-5 items-start content-start gap-1 sm:gap-1.5 p-1 sm:p-2 select-none bg-slate-950/30 border border-white/5 shadow-inner ${isDragOverProperties
+                        return `w-full flex-1 min-h-[80px] overflow-y-auto scrollbar-thin rounded-2xl transition-all grid grid-cols-[repeat(auto-fill,minmax(52px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(64px,1fr))] items-start content-start gap-1 sm:gap-1.5 p-1 sm:p-2 select-none bg-slate-950/30 border border-white/5 shadow-inner ${isDragOverProperties
                           ? 'ring-2 ring-amber-400 bg-amber-500/10 shadow-[inset_0_0_25px_rgba(245,158,11,0.3)] animate-pulse'
                           : draggingCard
                             ? 'border-dashed border-amber-500/40 bg-amber-500/[0.03]'
