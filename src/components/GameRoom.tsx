@@ -9063,11 +9063,14 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
               const arenaLayoutClass = isOpponentsGrid
                 ? (count === 1
                   ? "grid grid-cols-1 max-w-xs sm:max-w-sm mx-auto pb-1 w-full"
-                  : "grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(170px,1fr))] max-w-5xl mx-auto gap-1.5 sm:gap-2 pb-1 w-full")
+                  : "grid max-w-5xl mx-auto gap-1.5 sm:gap-2 pb-1 w-full")
                 : "flex items-stretch overflow-x-auto gap-2 pb-1.5 w-full scrollbar-thin snap-x px-0.5";
 
               return (
-                <div className={arenaLayoutClass}>
+                <div
+                  className={arenaLayoutClass}
+                  style={isOpponentsGrid && count > 1 ? { gridTemplateColumns: 'repeat(auto-fill, minmax(145px, 1fr))' } : undefined}
+                >
                   {visiblePlayers.map((p) => {
                     const isMe = p.id === profile.id;
                     const isCurrentTurn = match.players[match.turnIndex].id === p.id;
@@ -9935,7 +9938,7 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                         }
                       }}
                       className={(() => {
-                        return `w-full flex-1 min-h-[80px] overflow-y-auto scrollbar-thin rounded-2xl transition-all grid grid-cols-[repeat(auto-fill,minmax(52px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(64px,1fr))] items-start content-start gap-1 sm:gap-1.5 p-1 sm:p-2 select-none bg-slate-950/30 border border-white/5 shadow-inner ${isDragOverProperties
+                        return `w-full flex-1 min-h-[80px] overflow-y-auto scrollbar-thin rounded-2xl transition-all grid items-start content-start gap-1 sm:gap-1.5 p-1 sm:p-2 select-none bg-slate-950/30 border border-white/5 shadow-inner ${isDragOverProperties
                           ? 'ring-2 ring-amber-400 bg-amber-500/10 shadow-[inset_0_0_25px_rgba(245,158,11,0.3)] animate-pulse'
                           : draggingCard
                             ? 'border-dashed border-amber-500/40 bg-amber-500/[0.03]'
@@ -9946,6 +9949,11 @@ export const GameRoom: React.FC<Props> = ({ roomId, isOffline, profile, onLeaveR
                                 : 'border-white/5'
                           }`;
                       })()}
+                      style={{
+                        gridTemplateColumns: isCompactLayout
+                          ? 'repeat(auto-fill, minmax(48px, 1fr))'
+                          : 'repeat(auto-fill, minmax(56px, 1fr))'
+                      }}
                     >
 
                       {(() => {
